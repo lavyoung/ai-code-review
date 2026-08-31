@@ -1,0 +1,885 @@
+# ai-review-flow 设计规划文档
+
+## 1. 背景
+
+团队在日常研发中会产生大量代码提交、分支合并和流水线构建。传统 Code Review 主要依赖人工完成，容易出现以下问题：
+
+- 简单规范问题反复占用人工评审时间。
+- 高风险改动在合并前暴露较晚。
+- 不同仓库、不同平台的评审标准不一致。
+- Push、Merge Request、手动检查等场景缺少统一的自动化评审入口。
+- 评审结果无法及时同步到企业微信、钉钉、飞书等团队协作工具。
+
+`ai-review-flow` 的目标是在 CI/CD 流水线中提供一层 AI 自动评审能力，让团队在人工 Review 前先完成基础风险筛查和问题通知。
+
+## 2. 项目目标
+
+### 2.1 核心目标
+
+- 支持在代码提交、合并请求、手动触发等场景中自动执行 AI Review。
+- 支持阿里云 CodeUp，并预留 GitHub、GitLab 等平台扩展能力。
+- 支持企业微信通知，并预留钉钉、飞书、邮件、通用 Webhook 等通知扩展能力。
+- 支持 PR / MR 评论回写，将 AI Review 结果沉淀到代码托管平台的评审上下文中。
+- 支持输出结构化评审结果，便于流水线判断是否通过。
+- 支持按照严重级别控制是否通知、是否阻断流水线。
+
+### 2.2 非目标
+
+第一阶段不做以下能力：
+
+- 不做 Web 管理后台。
+- 不做复杂多租户权限体系。
+- 不做插件市场分发。
+- 不做完整代码质量平台。
+- 不替代 SonarQube、Checkstyle、SpotBugs 等静态扫描工具。
+- 不承诺 AI Review 结果完全准确，仍需保留人工判断。
+
+## 3. 使用场景
+
+### 3.1 Push 触发评审
+
+开发者向远程分支提交代码后，流水线自动触发 AI Review。
+
+适合场景：
+
+- 个人分支自检。
+- 主干提交保护。
+- 高频提交中的快速风险提醒。
+
+注意事项：
+
+- Push 触发频率高，通知策略应更克制。
+- 建议只在 `high` 或 `critical` 问题出现时发送企业微信通知。
+- 普通问题可只输出到 CI 日志，避免消息刷屏。
+
+### 3.2 Merge Request / Pull Request 触发评审
+
+创建或更新合并请求时，自动评审源分支相对于目标分支的整体 diff。
+
+适合场景：
+
+- 合并前风险把关。
+- 给人工 reviewer 提供预审摘要。
+- 将 AI Review 结果回写为 MR / PR 评论。
+
+注意事项：
+
+- MR / PR 场景适合输出更完整的评审摘要。
+- 第一阶段优先支持摘要评论，行级评论作为后续增强，避免过早绑定不同平台的行号模型。
+
+### 3.3 手动触发评审
+
+开发者或流水线手动执行评审命令。
+
+适合场景：
+
+- 本地调试。
+- 临时检查某个分支。
+- 接入新仓库前验证配置。
+
+### 3.4 定时触发评审
+
+按计划周期对指定分支或范围进行评审。
+
+适合场景：
+
+- 夜间批量检查。
+- 长期分支风险巡检。
+- 重点仓库定期质量巡检。
+
+第一阶段仅预留模型，不优先实现。
+
+## 4. 总体架构
+
+```text
+Trigger Adapter
+      ↓
+Event Resolver
+      ↓
+Diff Resolver
+      ↓
+Context Loader
+      ↓
+AI Reviewer
+      ↓
+Policy Engine
+      ↓
+Reporter / Notifier Fanout
+```
+
+整体设计采用 DDD 的分层思想，但第一阶段不做过度抽象。核心原则是：评审业务规则放在领域层，流水线、Git、CodeUp、GitHub、企业微信等外部细节放在基础设施层，应用层只负责编排一次评审用例。
+
+```text
+Interfaces Layer
+  CLI / CI Entry / Webhook Entry
+        ↓
+Application Layer
+  ReviewUseCase / NotifyUseCase / CommentUseCase
+        ↓
+Domain Layer
+  ReviewEvent / CodeChange / ReviewResult / ReviewPolicy
+        ↓
+Infrastructure Layer
+  Git / CodeUp / GitHub / GitLab / WeCom / DingTalk / Feishu / Email
+```
+
+### 4.1 Trigger Adapter
+
+负责识别当前评审来源。
+
+计划支持：
+
+- `push`
+- `merge_request`
+- `pull_request`
+- `manual`
+- `schedule`
+
+不同平台的环境变量、Webhook Payload、流水线参数不同，统一转换为内部事件模型。
+
+### 4.2 Event Resolver
+
+负责将外部平台事件转换为统一的 `ReviewEvent`。
+
+事件中应包含：
+
+- 事件类型。
+- 代码平台。
+- 仓库名称。
+- 仓库地址。
+- 源分支。
+- 目标分支。
+- 起始提交。
+- 结束提交。
+- 合并请求编号。
+- 提交人。
+- 触发人。
+
+### 4.3 Diff Resolver
+
+负责获取本次需要评审的代码变更。
+
+计划支持：
+
+- 本地 Git diff。
+- Commit range diff。
+- Branch compare diff。
+- CodeUp API diff。
+- GitHub API diff。
+- GitLab API diff。
+
+第一阶段优先使用本地 Git 命令获取 diff，降低平台 API 接入复杂度。
+
+### 4.4 Context Loader
+
+负责加载评审上下文。
+
+可加载内容：
+
+- 仓库级评审规则。
+- 项目语言和技术栈信息。
+- `AGENTS.md`、`README.md`、自定义规则文件。
+- 变更文件的相关上下文片段。
+
+第一阶段只加载必要规则和 diff，避免上下文过大。
+
+### 4.5 AI Reviewer
+
+负责调用 AI 模型完成代码评审，并输出结构化结果。
+
+评审关注点：
+
+- 明显逻辑错误。
+- 空值风险。
+- 并发风险。
+- SQL / 性能风险。
+- 安全风险。
+- 异常处理问题。
+- 破坏兼容性的行为变更。
+- 测试缺失或验证不足。
+- 项目规范违背。
+
+AI 输出必须结构化，便于机器处理。
+
+### 4.6 Policy Engine
+
+负责根据评审结果决定后续动作。
+
+策略包括：
+
+- 哪些严重级别需要通知。
+- 哪些严重级别需要阻断流水线。
+- 哪些事件类型需要通知。
+- 单次通知最多展示多少条问题。
+- 无问题时是否发送通过通知。
+
+### 4.7 Reporter / Notifier Fanout
+
+负责将评审结果输出到多个目标。
+
+计划支持：
+
+- CI Log。
+- 企业微信。
+- 通用 Webhook。
+- 钉钉。
+- 飞书。
+- Email。
+- MR / PR 评论。
+
+Fanout 模式允许一次评审结果同时发送到多个渠道。
+
+### 4.8 Comment Publisher
+
+负责将评审结果回写到代码托管平台。
+
+计划支持：
+
+- MR / PR 摘要评论。
+- MR / PR 行级评论。
+- 已存在评论的更新或折叠。
+- 同一次评审的幂等识别。
+
+第一阶段优先支持摘要评论，原因是不同平台对 diff position、line、old line、new line 的定义差异较大，直接做行级评论容易增加平台适配复杂度。
+
+## 5. DDD 分层设计
+
+### 5.1 领域层
+
+领域层表达 AI Review 的核心业务概念，不依赖具体平台、HTTP、Git 命令或 CI 环境变量。
+
+核心对象：
+
+- `ReviewEvent`：一次评审触发事件。
+- `CodeChange`：本次需要评审的代码变更。
+- `ReviewRuleSet`：评审规则集合。
+- `ReviewFinding`：单条评审问题。
+- `ReviewResult`：一次评审结果。
+- `ReviewPolicy`：通知、评论、阻断流水线等策略。
+- `ReviewComment`：需要回写到 PR / MR 的评论内容。
+
+领域服务：
+
+- `ReviewPolicyEvaluator`：根据评审结果判断是否通知、是否评论、是否失败。
+- `ReviewResultSummarizer`：将结构化问题汇总为摘要。
+- `ReviewCommentPlanner`：根据平台能力和配置决定生成摘要评论还是行级评论。
+
+领域层不直接调用 AI 模型。AI 调用属于应用服务编排的外部能力，通过端口接入。
+
+### 5.2 应用层
+
+应用层负责编排完整用例。
+
+核心用例：
+
+- `RunReviewUseCase`：执行一次完整评审。
+- `PublishNotificationUseCase`：发布通知。
+- `PublishReviewCommentUseCase`：发布 PR / MR 评论。
+
+应用层流程：
+
+```text
+解析事件
+  ↓
+获取 diff
+  ↓
+加载规则和上下文
+  ↓
+调用 AI Review Port
+  ↓
+解析评审结果
+  ↓
+执行策略判断
+  ↓
+发布通知和评论
+  ↓
+返回流水线退出状态
+```
+
+### 5.3 端口层
+
+端口定义领域和应用层需要的外部能力。
+
+主要端口：
+
+- `DiffProvider`：获取 diff。
+- `RepositoryProvider`：获取仓库、分支、提交、MR / PR 元数据。
+- `AiReviewPort`：调用 AI 完成评审。
+- `NotifierPort`：发送企业微信、钉钉、飞书、邮件等通知。
+- `ReviewCommentPort`：回写 PR / MR 评论。
+- `ConfigPort`：读取配置。
+
+端口只定义能力，不包含平台实现。
+
+### 5.4 基础设施层
+
+基础设施层实现具体平台适配。
+
+平台适配：
+
+- `LocalGitDiffProvider`
+- `CodeUpRepositoryProvider`
+- `CodeUpReviewCommentAdapter`
+- `GitHubRepositoryProvider`
+- `GitHubReviewCommentAdapter`
+- `GitLabRepositoryProvider`
+- `GitLabReviewCommentAdapter`
+
+通知适配：
+
+- `WeComNotifier`
+- `DingTalkNotifier`
+- `FeishuNotifier`
+- `EmailNotifier`
+- `GenericWebhookNotifier`
+
+AI 适配：
+
+- `OpenAiReviewAdapter`
+- 后续可扩展其他模型提供方。
+
+### 5.5 接口层
+
+接口层负责接收外部触发。
+
+第一阶段接口：
+
+- CLI 命令。
+- CI 环境变量。
+
+后续接口：
+
+- Webhook Server。
+- 配置检测命令。
+- 本地调试命令。
+
+## 6. 核心数据模型
+
+### 6.1 ReviewEvent
+
+```ts
+type ReviewEventType =
+  | 'push'
+  | 'merge_request'
+  | 'pull_request'
+  | 'manual'
+  | 'schedule';
+
+type ProviderType =
+  | 'local'
+  | 'codeup'
+  | 'github'
+  | 'gitlab';
+
+interface ReviewEvent {
+  type: ReviewEventType;
+  provider: ProviderType;
+  repositoryName: string;
+  repositoryUrl?: string;
+  sourceBranch?: string;
+  targetBranch?: string;
+  beforeSha?: string;
+  afterSha?: string;
+  mergeRequestId?: string;
+  pullRequestId?: string;
+  author?: string;
+  triggeredBy?: string;
+}
+```
+
+### 6.2 CodeChange
+
+```ts
+interface CodeChange {
+  baseSha?: string;
+  headSha?: string;
+  diff: string;
+  files: ChangedFile[];
+}
+
+interface ChangedFile {
+  path: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed';
+  additions?: number;
+  deletions?: number;
+}
+```
+
+### 6.3 ReviewFinding
+
+```ts
+type Severity =
+  | 'info'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'critical';
+
+interface ReviewFinding {
+  severity: Severity;
+  title: string;
+  file?: string;
+  line?: number;
+  category?: string;
+  description: string;
+  suggestion?: string;
+  confidence?: number;
+}
+```
+
+### 6.4 ReviewComment
+
+```ts
+interface ReviewComment {
+  type: 'summary' | 'line';
+  body: string;
+  file?: string;
+  line?: number;
+  findingIds?: string[];
+}
+```
+
+### 6.5 ReviewResult
+
+```ts
+interface ReviewResult {
+  event: ReviewEvent;
+  summary: string;
+  findings: ReviewFinding[];
+  highestSeverity: Severity;
+  shouldFail: boolean;
+  shouldNotify: boolean;
+  shouldComment: boolean;
+  comments: ReviewComment[];
+  metadata?: Record<string, string>;
+}
+```
+
+## 7. 配置设计
+
+默认配置文件名：
+
+```text
+ai-review-flow.yml
+```
+
+示例：
+
+```yaml
+review:
+  mode: diff
+  severity_threshold: medium
+  fail_on:
+    - critical
+  max_findings: 20
+
+events:
+  push:
+    enabled: true
+    notify_on:
+      - high
+      - critical
+  merge_request:
+    enabled: true
+    notify_on:
+      - medium
+      - high
+      - critical
+  manual:
+    enabled: true
+
+providers:
+  codeup:
+    enabled: true
+    token: ${CODEUP_TOKEN}
+  github:
+    enabled: false
+    token: ${GITHUB_TOKEN}
+  gitlab:
+    enabled: false
+    token: ${GITLAB_TOKEN}
+
+notifiers:
+  ci_log:
+    enabled: true
+  wecom:
+    enabled: true
+    webhook_url: ${WECOM_WEBHOOK_URL}
+  generic_webhook:
+    enabled: false
+    url: ${REVIEW_WEBHOOK_URL}
+
+comments:
+  enabled: true
+  mode: summary
+  update_existing: true
+  comment_on:
+    - merge_request
+    - pull_request
+```
+
+## 8. PR / MR 评论设计
+
+### 8.1 评论模式
+
+第一阶段支持摘要评论：
+
+- 将本次 AI Review 的结果汇总为一条 MR / PR 评论。
+- 评论包含问题数量、最高严重级别、主要风险和建议。
+- 评论中保留固定标识，便于后续重复运行时更新旧评论。
+
+后续支持行级评论：
+
+- 将具体问题评论到对应文件和行。
+- 需要处理不同平台的 diff line position 差异。
+- 需要处理过期评论、重复评论和 force push 后行号失效问题。
+
+### 8.2 幂等策略
+
+PR / MR 评论需要避免重复刷屏。
+
+建议做法：
+
+- 摘要评论中加入隐藏标识或固定标题。
+- 再次运行时优先查找并更新上一条 AI Review 评论。
+- 如果平台不支持更新，则追加新评论并在内容中说明运行时间和 commit。
+
+### 8.3 评论内容
+
+摘要评论建议包含：
+
+- 评审状态。
+- 本次评审 commit range。
+- 问题统计。
+- Top findings。
+- 是否触发流水线失败。
+- 完整日志或流水线链接。
+
+### 8.4 平台适配顺序
+
+优先级：
+
+1. CodeUp MR 摘要评论。
+2. GitHub PR 摘要评论。
+3. GitLab MR 摘要评论。
+4. 行级评论。
+
+## 9. 企业微信通知设计
+
+### 9.1 配置方式
+
+企业微信机器人 Webhook 不写入仓库，统一通过环境变量注入。
+
+```bash
+WECOM_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"
+```
+
+### 9.2 通知内容
+
+通知应包含：
+
+- 项目名称。
+- 事件类型。
+- 分支信息。
+- 提交范围或 MR 编号。
+- 问题总数。
+- 最高严重级别。
+- Top findings 摘要。
+- 流水线链接或 MR 链接。
+
+### 9.3 通知策略
+
+建议默认策略：
+
+- Push 事件：仅 `high`、`critical` 问题通知。
+- MR / PR 事件：`medium` 及以上问题通知。
+- Manual 事件：默认输出 CI Log，可配置是否通知。
+- 无问题时：默认不通知，避免打扰。
+
+## 10. CodeUp 支持规划
+
+### 10.1 推荐接入方式
+
+第一阶段优先支持 CodeUp + 云效 Flow。
+
+```text
+CodeUp 代码事件
+    ↓
+云效 Flow 触发流水线
+    ↓
+流水线拉取仓库代码
+    ↓
+执行 ai-review-flow
+    ↓
+输出 CI 日志并发送企业微信通知
+```
+
+### 10.2 事件支持
+
+计划支持：
+
+- Push 事件。
+- Merge Request 创建。
+- Merge Request 更新。
+- Merge Request 重新打开。
+
+### 10.3 Diff 获取策略
+
+优先级：
+
+1. 流水线本地 Git diff。
+2. CodeUp 环境变量提供的 commit range。
+3. CodeUp API 获取 MR diff。
+
+第一阶段优先实现前两种，CodeUp API 作为后续增强。
+
+### 10.4 MR 评论策略
+
+CodeUp 支持应优先完成 MR 摘要评论。
+
+第一阶段策略：
+
+- 在 MR 触发场景下生成一条 AI Review 摘要评论。
+- 评论失败不应默认阻断流水线，但必须输出 CI Log。
+- 是否因为评论失败而失败流水线由配置控制。
+
+后续增强：
+
+- 支持查询历史评论并更新已有 AI Review 评论。
+- 支持行级评论。
+- 支持将高危问题作为 MR 阻断依据。
+
+## 11. CLI 设计
+
+计划提供统一命令入口：
+
+```bash
+ai-review-flow review --event push
+ai-review-flow review --event merge-request
+ai-review-flow review --event manual
+```
+
+常用参数：
+
+```bash
+ai-review-flow review \
+  --provider codeup \
+  --event merge-request \
+  --target main \
+  --source feature/demo \
+  --config ai-review-flow.yml
+```
+
+本地调试：
+
+```bash
+ai-review-flow review \
+  --provider local \
+  --event manual \
+  --target main
+```
+
+## 12. 模块规划
+
+```text
+src/
+  cli/
+    index.ts
+  config/
+    load-config.ts
+    resolve-env.ts
+  events/
+    review-event.ts
+    resolve-event.ts
+  providers/
+    local-git.ts
+    codeup.ts
+    github.ts
+    gitlab.ts
+  diff/
+    diff-resolver.ts
+    git-diff.ts
+  context/
+    context-loader.ts
+    rules-loader.ts
+  reviewer/
+    ai-reviewer.ts
+    prompt-builder.ts
+    result-parser.ts
+  policy/
+    policy-engine.ts
+  comments/
+    comment-planner.ts
+    review-comment.ts
+  notifiers/
+    notifier.ts
+    ci-log.ts
+    wecom.ts
+    generic-webhook.ts
+  reporters/
+    markdown-renderer.ts
+    json-renderer.ts
+```
+
+DDD 风格目录可进一步演进为：
+
+```text
+src/
+  domain/
+    review/
+      review-event.ts
+      code-change.ts
+      review-finding.ts
+      review-result.ts
+      review-policy.ts
+      review-comment.ts
+      review-policy-evaluator.ts
+      review-comment-planner.ts
+  application/
+    run-review-use-case.ts
+    publish-notification-use-case.ts
+    publish-review-comment-use-case.ts
+    ports/
+      diff-provider.ts
+      ai-review-port.ts
+      notifier-port.ts
+      review-comment-port.ts
+      repository-provider.ts
+  infrastructure/
+    git/
+    codeup/
+    github/
+    gitlab/
+    notifiers/
+    ai/
+    config/
+  interfaces/
+    cli/
+    ci/
+```
+
+第一阶段建议直接采用 DDD 分层目录，避免后续平台扩展时再大规模搬迁。
+
+## 13. MVP 实施计划
+
+### 阶段一：基础闭环
+
+目标：
+
+- 能在本地或 CI 中运行。
+- 能读取 Git diff。
+- 能调用 AI 生成结构化评审结果。
+- 能输出 CI Log。
+- 能发送企业微信通知。
+- 能在 MR / PR 场景生成摘要评论内容。
+
+验收标准：
+
+- 执行 `ai-review-flow review --event manual --provider local --target main` 能完成评审。
+- 有问题时能在控制台输出 Markdown 摘要。
+- 达到通知阈值时企业微信能收到消息。
+- 达到失败阈值时进程以非 0 状态退出。
+- MR / PR 场景下能生成可回写的摘要评论文本。
+
+### 阶段二：CodeUp / Flow 接入
+
+目标：
+
+- 支持云效 Flow 中运行。
+- 支持 CodeUp Push 和 Merge Request 场景。
+- 能根据环境变量自动识别事件上下文。
+- 支持 CodeUp MR 摘要评论回写。
+
+验收标准：
+
+- CodeUp Push 触发时能评审本次提交范围。
+- CodeUp Merge Request 触发时能评审源分支到目标分支的 diff。
+- 企业微信通知中包含 CodeUp 仓库、分支和 MR 信息。
+- CodeUp Merge Request 页面能看到 AI Review 摘要评论。
+
+### 阶段三：多通知渠道
+
+目标：
+
+- 支持通用 Webhook。
+- 支持钉钉和飞书。
+- 通知渠道可组合启用。
+
+验收标准：
+
+- 同一次评审结果可以同时输出到 CI Log 和多个通知渠道。
+- 单个通知渠道失败不影响其他渠道发送。
+- 通知失败可在 CI Log 中明确展示。
+
+### 阶段四：平台扩展
+
+目标：
+
+- 支持 GitHub Actions。
+- 支持 GitLab CI。
+- 支持 GitHub PR 和 GitLab MR 摘要评论回写。
+- 预留 MR / PR 行级评论能力。
+
+验收标准：
+
+- GitHub Pull Request 事件可完成 diff 评审。
+- GitLab Merge Request 事件可完成 diff 评审。
+- 平台适配逻辑不影响 CodeUp 使用。
+- GitHub PR 和 GitLab MR 能看到 AI Review 摘要评论。
+
+## 14. 风险与约束
+
+### 14.1 AI 误报与漏报
+
+AI Review 结果不能作为唯一质量门禁。高危阻断策略应谨慎开启，建议先观察一段时间。
+
+### 14.2 Token 和上下文限制
+
+大型 MR 可能产生超长 diff，需要支持 diff 裁剪、文件过滤和分批评审。
+
+### 14.3 通知噪音
+
+Push 触发频率高，如果所有问题都通知，会影响团队体验。默认应采用高严重级别通知策略。
+
+### 14.4 平台环境差异
+
+CodeUp、GitHub、GitLab 的事件变量和 diff 获取方式不同。平台差异必须限制在 Provider 层，不能扩散到核心评审流程。
+
+### 14.5 PR / MR 评论差异
+
+不同平台的评论 API 差异较大，尤其是行级评论。第一阶段应先做摘要评论，避免让行号定位、diff position、重复评论清理拖慢 MVP。
+
+### 14.6 密钥安全
+
+企业微信 Webhook、AI API Key、平台 Token 必须通过环境变量或 CI Secret 注入，不允许写入仓库。
+
+## 15. 技术选型建议
+
+第一阶段建议使用 Node.js / TypeScript 实现。
+
+原因：
+
+- 适合编写 CLI 工具。
+- CI 环境安装成本低。
+- HTTP、Webhook、JSON、YAML 处理方便。
+- 后续发布 npm 包更自然。
+- GitHub Actions、CodeUp Flow、GitLab CI 都容易接入。
+
+后续如需企业内部强类型服务化部署，可再考虑提供 Java / Spring Boot 服务端，但不建议作为第一阶段 MVP 起点。
+
+## 16. 当前推荐路线
+
+推荐按以下顺序推进：
+
+1. 创建基础 CLI 工程。
+2. 实现本地 Git diff 获取。
+3. 实现 AI Review 调用与结构化结果解析。
+4. 实现 CI Log 输出。
+5. 实现企业微信通知。
+6. 实现摘要评论生成。
+7. 接入 CodeUp / 云效 Flow。
+8. 实现 CodeUp MR 摘要评论回写。
+9. 增加通用 Webhook。
+10. 扩展钉钉、飞书、GitHub、GitLab。
+
+这条路线可以最快验证核心价值，同时保留足够清晰的扩展边界。
