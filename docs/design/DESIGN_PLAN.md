@@ -689,7 +689,7 @@ src/
     load-config.ts
     resolve-env.ts
   events/
-    review-event.ts
+    review-event.test.ts
     resolve-event.ts
   providers/
     local-git.ts
@@ -727,7 +727,7 @@ DDD 风格目录可进一步演进为：
 src/
   domain/
     review/
-      review-event.ts
+      review-event.test.ts
       code-change.ts
       review-finding.ts
       review-result.ts

@@ -1,0 +1,38 @@
+{
+  "name": "ai-code-review",
+  "version": "1.0.0",
+  "description": "AI-powered code review workflow for push, pull request, merge request, and CI pipelines.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "tsx src/interfaces/cli/index.ts",
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lavyoung/ai-code-review.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lavyoung/ai-code-review/issues"
+  },
+  "homepage": "https://github.com/lavyoung/ai-code-review#readme",
+  "private": "true",
+  "type": "module",
+  "dependencies": {
+    "commander": "^15.0.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}
