@@ -4,11 +4,14 @@ import {
     isReviewEventType,
     type ReviewEventType,
 } from "../../domain/review/review-event.js";
+import { redactReviewConfiguration } from "./redact-review-configuration.js";
+import { resolveCliConfiguration } from "../../infrastructure/config/resolve-cli-configuration.js";
 
 interface ReviewCommandOptions {
     event: ReviewEventType;
     provider: string;
     target?: string;
+    config?: string;
 }
 
 const parseReviewEventType = (value: string): ReviewEventType => {
@@ -34,8 +37,25 @@ program
     .requiredOption("--event <event>", "Review event", parseReviewEventType)
     .option("--provider <provider>", "Repository provider", "local")
     .option("--target <ref>", "Target branch or commit")
-    .action((options: ReviewCommandOptions) => {
-        console.log(JSON.stringify(options, null, 2));
+    .option("--config <path>", "Configuration file path")
+    .action(async (options: ReviewCommandOptions) => {
+        try {
+            const configuration = await resolveCliConfiguration({
+                ...(options.config === undefined
+                    ? {}
+                    : { configurationPath: options.config }),
+            });
+
+            console.log(JSON.stringify({
+                ...options,
+                configuration: redactReviewConfiguration(configuration),
+            }, null, 2));
+        } catch {
+            console.error(
+                "Configuration error. Check command options, environment variables, and configuration file.",
+            );
+            process.exitCode = 20;
+        }
     });
 
-program.parse();
+await program.parseAsync();
