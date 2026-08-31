@@ -4,7 +4,7 @@ AI-powered code review workflow for push, pull request, merge request, and CI pi
 
 ## 项目目的
 
-`ai-review-flow` 旨在提供一个可接入多种代码托管平台和流水线环境的 AI 代码评审工具，帮助团队在代码提交、合并请求、手动触发或定时任务中自动发现潜在问题，并通过企业内部通知渠道及时提醒相关人员。
+`ai-code-review` 旨在提供一个可接入多种代码托管平台和流水线环境的 AI 代码评审工具，帮助团队在代码提交、合并请求、手动触发或定时任务中自动发现潜在问题，并通过企业内部通知渠道及时提醒相关人员。
 
 项目重点不是替代人工 Code Review，而是在人工评审前完成第一轮自动化检查，提前暴露明显的逻辑风险、规范问题、潜在缺陷、安全隐患和可维护性问题，减少低价值重复评审成本。
 
@@ -57,9 +57,9 @@ AI-powered code review workflow for push, pull request, merge request, and CI pi
 ## 预期使用方式
 
 ```bash
-ai-review-flow review --event push
-ai-review-flow review --event merge-request
-ai-review-flow review --event manual
+ai-code-review review --event push
+ai-code-review review --event merge-request
+ai-code-review review --event manual
 ```
 
 企业微信通知通过环境变量配置：
@@ -125,5 +125,5 @@ notifiers:
 
 ## 项目定位
 
-`ai-review-flow` 是一个面向工程团队的 AI Review 自动化工具。它更关注流水线集成、评审结果分发和多平台适配，而不是提供单一平台专用机器人。
+`ai-code-review` 是一个面向工程团队的 AI Review 自动化工具。它更关注流水线集成、评审结果分发和多平台适配，而不是提供单一平台专用机器人。
 

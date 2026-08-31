@@ -1,4 +1,4 @@
-# ai-review-flow 设计规划文档
+# ai-code-review 设计规划文档
 
 ## 1. 背景
 
@@ -10,7 +10,7 @@
 - Push、Merge Request、手动检查等场景缺少统一的自动化评审入口。
 - 评审结果无法及时同步到企业微信、钉钉、飞书等团队协作工具。
 
-`ai-review-flow` 的目标是在 CI/CD 流水线中提供一层 AI 自动评审能力，让团队在人工 Review 前先完成基础风险筛查和问题通知。
+`ai-code-review` 的目标是在 CI/CD 流水线中提供一层 AI 自动评审能力，让团队在人工 Review 前先完成基础风险筛查和问题通知。
 
 ## 2. 项目目标
 
@@ -335,7 +335,7 @@ Fanout 模式允许一次评审结果同时发送到多个渠道。
 
 AI 适配：
 
-- `OpenAiReviewAdapter`
+- `DeepSeekReviewAdapter`
 - 后续可扩展其他模型提供方。
 
 ### 5.5 接口层
@@ -460,7 +460,7 @@ interface ReviewResult {
 默认配置文件名：
 
 ```text
-ai-review-flow.yml
+ai-code-review.yml
 ```
 
 示例：
@@ -609,7 +609,7 @@ CodeUp 代码事件
     ↓
 流水线拉取仓库代码
     ↓
-执行 ai-review-flow
+执行 ai-code-review
     ↓
 输出 CI 日志并发送企业微信通知
 ```
@@ -654,26 +654,26 @@ CodeUp 支持应优先完成 MR 摘要评论。
 计划提供统一命令入口：
 
 ```bash
-ai-review-flow review --event push
-ai-review-flow review --event merge-request
-ai-review-flow review --event manual
+ai-code-review review --event push
+ai-code-review review --event merge-request
+ai-code-review review --event manual
 ```
 
 常用参数：
 
 ```bash
-ai-review-flow review \
+ai-code-review review \
   --provider codeup \
   --event merge-request \
   --target main \
   --source feature/demo \
-  --config ai-review-flow.yml
+  --config ai-code-review.yml
 ```
 
 本地调试：
 
 ```bash
-ai-review-flow review \
+ai-code-review review \
   --provider local \
   --event manual \
   --target main
@@ -775,7 +775,7 @@ src/
 
 验收标准：
 
-- 执行 `ai-review-flow review --event manual --provider local --target main` 能完成评审。
+- 执行 `ai-code-review review --event manual --provider local --target main` 能完成评审。
 - 有问题时能在控制台输出 Markdown 摘要。
 - 达到通知阈值时企业微信能收到消息。
 - 达到失败阈值时进程以非 0 状态退出。
@@ -853,7 +853,70 @@ CodeUp、GitHub、GitLab 的事件变量和 diff 获取方式不同。平台差�
 
 企业微信 Webhook、AI API Key、平台 Token 必须通过环境变量或 CI Secret 注入，不允许写入仓库。
 
-## 15. 技术选型建议
+## 15. 架构决策
+
+### 15.1 名称与技术基线
+
+- 项目、CLI 命令和默认配置文件统一使用 `ai-code-review`。
+- 第一阶段采用 Node.js / TypeScript 实现 CLI，首期 AI 提供方为 DeepSeek。
+- DeepSeek 凭据必须通过环境变量或 CI Secret 注入，不得写入配置仓库、日志或评论。
+
+### 15.2 配置与变更范围
+
+- 配置优先级固定为：CLI 参数 > 环境变量 > `ai-code-review.yml` > 内置默认值。
+- 只评审已提交的 Git 变更：Push 使用 `beforeSha..afterSha`，MR/PR 使用 `target...source`，手动评审使用 `target...HEAD`。
+- 未提交工作区不纳入评审范围；发现未提交改动时，仅输出不包含敏感文件路径的提示。
+
+### 15.3 安全与投递失败
+
+- 敏感文件不进入模型上下文，敏感文件路径和内容不得出现在 CI 日志、评论或错误信息中。
+- 日志、评论和错误信息必须对 Token、API Key、Authorization、URL 查询参数等敏感值脱敏。
+- 通知失败时必须重试 2 次；最终的脱敏失败状态必须写入 CI 日志和 PR/MR 摘要评论。
+- 通知与评论失败默认不阻断流水线；仅在配置明确要求时才阻断。
+
+### 15.4 评论协议
+
+PR/MR 摘要评论必须使用固定的、可识别且可更新的协议：
+
+```md
+<!-- ai-code-review:review-id={provider}:{repository}:{change-id} -->
+
+## AI Code Review
+
+- 状态：通过 / 质量门禁未通过 / 执行失败
+- 评审范围：`baseSha...headSha`
+- 最高严重级别：high
+- 问题统计：critical 0 / high 1 / medium 2
+- 流水线：{url}
+
+### Findings
+1. `[high]` 标题 — 文件与行号（可定位时）
+
+### Delivery Status
+- CI 日志：成功
+- 企业微信：失败（已重试 2 次）
+```
+
+发布评论时必须先按隐藏标识查找已有评论，找到后更新，找不到时才创建。
+
+### 15.5 分层与职责
+
+- 采用 DDD 分层：领域层表达评审模型和策略；应用层编排用例；端口定义外部能力；基础设施层实现 Git、DeepSeek、通知和评论适配器。
+- `AiReviewPort` 只负责生成结构化评审结果；策略层只负责决定质量门禁、通知和评论；通知与评论适配器只负责投递；应用层负责汇总结果和退出码。
+
+### 15.6 退出码
+
+| 退出码 | 含义 |
+| --- | --- |
+| `0` | 评审完成，未触发质量门禁 |
+| `10` | 评审完成，但发现项触发 `fail_on` 质量门禁 |
+| `20` | 参数或配置非法 |
+| `21` | Git 仓库、提交范围或 diff 获取失败 |
+| `22` | DeepSeek 调用失败、超时或结构化结果校验失败 |
+| `23` | 评论发布失败且配置要求其阻断流水线 |
+| `24` | 通知发布失败且配置要求其阻断流水线 |
+
+## 16. 技术选型建议
 
 第一阶段建议使用 Node.js / TypeScript 实现。
 
@@ -867,7 +930,7 @@ CodeUp、GitHub、GitLab 的事件变量和 diff 获取方式不同。平台差�
 
 后续如需企业内部强类型服务化部署，可再考虑提供 Java / Spring Boot 服务端，但不建议作为第一阶段 MVP 起点。
 
-## 16. 当前推荐路线
+## 17. 当前推荐路线
 
 推荐按以下顺序推进：
 
