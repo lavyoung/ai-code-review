@@ -60,4 +60,18 @@ describe("resolveReviewConfiguration", () => {
             }),
         ).toThrow();
     });
+
+    it("accepts the API key only from the environment", () => {
+        expect(() =>
+            resolveReviewConfiguration({
+                file: { apiKey: "file-key" },
+            }),
+        ).toThrow();
+
+        expect(() =>
+            resolveReviewConfiguration({
+                cli: { apiKey: "cli-key" },
+            }),
+        ).toThrow();
+    });
 });

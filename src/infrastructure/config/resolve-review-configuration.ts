@@ -9,8 +9,7 @@ const configurationOverrideSchema = z.object({
     failOn: z.array(z.enum(SEVERITIES)).optional(),
     model: z.string().trim().min(1).optional(),
     timeoutMs: z.number().int().positive().optional(),
-    apiKey: z.string().trim().min(1).optional(),
-});
+}).strict();
 
 export interface ConfigurationSources {
     file?: unknown;
@@ -32,11 +31,11 @@ export const resolveReviewConfiguration = (
         timeoutMs: sources.environment?.DEEPSEEK_TIMEOUT_MS === undefined
             ? undefined
             : Number(sources.environment.DEEPSEEK_TIMEOUT_MS),
-        apiKey: sources.environment?.DEEPSEEK_API_KEY,
     });
     const cli = configurationOverrideSchema.parse(sources.cli ?? {});
-
-    const apiKey = cli.apiKey ?? environment.apiKey;
+    const apiKey = z.string().trim().min(1).optional().parse(
+        sources.environment?.DEEPSEEK_API_KEY,
+    );
 
     return {
         review: {

@@ -1,0 +1,9 @@
+review:
+  severity_threshold: low
+  fail_on:
+    - high
+
+ai:
+  provider: deepseek
+  model: deepseek-chat
+  timeout_ms: 10000
