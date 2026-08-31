@@ -6,6 +6,8 @@ import {
 } from "../../domain/review/review-event.js";
 import { redactReviewConfiguration } from "./redact-review-configuration.js";
 import { resolveCliConfiguration } from "../../infrastructure/config/resolve-cli-configuration.js";
+import { resolveManualCodeChange } from "../../application/resolve-manual-code-change.js";
+import { LocalGitDiffProvider } from "../../infrastructure/git/local-git-diff-provider.js";
 
 interface ReviewCommandOptions {
     event: ReviewEventType;
@@ -39,22 +41,46 @@ program
     .option("--target <ref>", "Target branch or commit")
     .option("--config <path>", "Configuration file path")
     .action(async (options: ReviewCommandOptions) => {
+        if (options.event !== "manual" || options.provider !== "local" || options.target === undefined) {
+            console.error(
+                "Only manual reviews with --provider local and --target <ref> are currently supported.",
+            );
+            process.exitCode = 20;
+            return;
+        }
+
+        let configuration;
         try {
-            const configuration = await resolveCliConfiguration({
+            configuration = await resolveCliConfiguration({
                 ...(options.config === undefined
                     ? {}
                     : { configurationPath: options.config }),
             });
-
-            console.log(JSON.stringify({
-                ...options,
-                configuration: redactReviewConfiguration(configuration),
-            }, null, 2));
         } catch {
             console.error(
                 "Configuration error. Check command options, environment variables, and configuration file.",
             );
             process.exitCode = 20;
+            return;
+        }
+
+        try {
+            const codeChange = await resolveManualCodeChange(
+                new LocalGitDiffProvider(process.cwd()),
+                options.target,
+            );
+
+            console.log(JSON.stringify({
+                ...options,
+                configuration: redactReviewConfiguration(configuration),
+                change: {
+                    hasChanges: codeChange.diff.length > 0,
+                    changedFileCount: codeChange.files.length,
+                },
+            }, null, 2));
+        } catch {
+            console.error("Git diff error. Check the repository and target reference.");
+            process.exitCode = 21;
         }
     });
 
