@@ -5,6 +5,7 @@ import {
     SEVERITIES,
     type Severity,
 } from "../../domain/review/severity.js";
+import { canonicalizeOutputLanguage } from "../../application/config/output-language.js";
 
 /**
  * 配置文件经校验后转换出的扁平覆盖项。
@@ -13,6 +14,7 @@ export interface ConfigurationFileOverride {
     severityThreshold?: Severity;
     failOn?: Severity[];
     model?: string;
+    outputLanguage?: string;
     timeoutMs?: number;
     wecomEnabled?: boolean;
     wecomFailOnError?: boolean;
@@ -30,6 +32,15 @@ const configurationFileSchema = z.object({
     ai: z.object({
         provider: z.literal("deepseek").optional(),
         model: z.string().trim().min(1).optional(),
+        output_language: z.string().trim().min(1).max(64)
+            .transform((value, context) => {
+                try {
+                    return canonicalizeOutputLanguage(value);
+                } catch {
+                    context.addIssue({ code: "custom", message: "Expected a BCP 47 language tag." });
+                    return z.NEVER;
+                }
+            }).optional(),
         timeout_ms: z.number().int().positive().optional(),
     }).strict().optional(),
     notifiers: z.object({
@@ -72,6 +83,9 @@ export const loadConfigurationFile = async (
         ...(configuration.ai?.model === undefined
             ? {}
             : { model: configuration.ai.model }),
+        ...(configuration.ai?.output_language === undefined
+            ? {}
+            : { outputLanguage: configuration.ai.output_language }),
         ...(configuration.ai?.timeout_ms === undefined
             ? {}
             : { timeoutMs: configuration.ai.timeout_ms }),

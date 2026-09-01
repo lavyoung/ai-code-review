@@ -18,6 +18,7 @@ describe("resolveCliConfiguration", () => {
             },
             ai: {
                 model: "deepseek-v4-flash",
+                outputLanguage: "en",
                 timeoutMs: 30_000,
             },
         });
@@ -29,6 +30,7 @@ describe("resolveCliConfiguration", () => {
             environment: {
                 REVIEW_SEVERITY_THRESHOLD: "high",
                 DEEPSEEK_MODEL: "environment-model",
+                REVIEW_OUTPUT_LANGUAGE: "zh-cn",
             },
             cli: {
                 severityThreshold: "critical",
@@ -40,6 +42,7 @@ describe("resolveCliConfiguration", () => {
             },
             ai: {
                 model: "environment-model",
+                outputLanguage: "zh-CN",
                 timeoutMs: 10_000,
             },
         });

@@ -4,6 +4,7 @@ import { DeepSeekReviewAdapter } from "../src/infrastructure/deepseek/deepseek-r
 const configuration = {
     provider: "deepseek" as const,
     model: "deepseek-v4-flash",
+    outputLanguage: "en",
     timeoutMs: 30_000,
     apiKey: "test-api-key",
 };
@@ -70,6 +71,8 @@ describe("DeepSeekReviewAdapter", () => {
             max_tokens: 4_096,
             stream: false,
         });
+        expect(JSON.parse(fetchImplementation.mock.calls[0][1].body).messages[0].content)
+            .toContain("Write the summary, title, description, category, and suggestion values in the language identified by BCP 47 tag en.");
     });
 
     it("rejects an incomplete response", async () => {

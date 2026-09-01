@@ -42,3 +42,4 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_COMMENT_ENABLED: "true"
           GITHUB_TOKEN: ${{ github.token }}
+          REVIEW_OUTPUT_LANGUAGE: zh-CN

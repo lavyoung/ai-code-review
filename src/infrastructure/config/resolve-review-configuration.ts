@@ -3,11 +3,26 @@ import type { ReviewConfiguration } from "../../application/config/review-config
 import {
     SEVERITIES,
 } from "../../domain/review/severity.js";
+import {
+    canonicalizeOutputLanguage,
+    DEFAULT_OUTPUT_LANGUAGE,
+} from "../../application/config/output-language.js";
+
+const outputLanguageSchema = z.string().trim().min(1).max(64)
+    .transform((value, context) => {
+        try {
+            return canonicalizeOutputLanguage(value);
+        } catch {
+            context.addIssue({ code: "custom", message: "Expected a BCP 47 language tag." });
+            return z.NEVER;
+        }
+    });
 
 const configurationOverrideSchema = z.object({
     severityThreshold: z.enum(SEVERITIES).optional(),
     failOn: z.array(z.enum(SEVERITIES)).optional(),
     model: z.string().trim().min(1).optional(),
+    outputLanguage: outputLanguageSchema.optional(),
     timeoutMs: z.number().int().positive().optional(),
     wecomEnabled: z.boolean().optional(),
     wecomFailOnError: z.boolean().optional(),
@@ -55,6 +70,7 @@ export const resolveReviewConfiguration = (
             .map((severity: string) => severity.trim())
             .filter(Boolean),
         model: sources.environment?.DEEPSEEK_MODEL,
+        outputLanguage: sources.environment?.REVIEW_OUTPUT_LANGUAGE,
         timeoutMs: sources.environment?.DEEPSEEK_TIMEOUT_MS === undefined
             ? undefined
             : Number(sources.environment.DEEPSEEK_TIMEOUT_MS),
@@ -129,6 +145,11 @@ export const resolveReviewConfiguration = (
         ai: {
             provider: "deepseek",
             model: cli.model ?? environment.model ?? file.model ?? "deepseek-v4-flash",
+            outputLanguage:
+                cli.outputLanguage
+                ?? environment.outputLanguage
+                ?? file.outputLanguage
+                ?? DEFAULT_OUTPUT_LANGUAGE,
             timeoutMs:
                 cli.timeoutMs ?? environment.timeoutMs ?? file.timeoutMs ?? 30_000,
             ...(apiKey === undefined ? {} : { apiKey }),

@@ -13,6 +13,8 @@ export interface ReviewConfiguration {
     ai: {
         provider: "deepseek";
         model: string;
+        /** AI 评审文本使用的自然语言；JSON 字段名与严重级别不受影响。 */
+        outputLanguage: string;
         timeoutMs: number;
         apiKey?: string;
     };
