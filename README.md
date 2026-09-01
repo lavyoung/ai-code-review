@@ -183,6 +183,7 @@ jobs:
         with:
           output-language: zh-CN
           comment-enabled: "true"
+          typescript-enabled: "true"
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 ```
@@ -190,6 +191,19 @@ jobs:
 将 `<trusted-commit-sha>` 替换为已审核的完整提交 SHA。发布不可变版本标签后也可以使用标签引用；完整 SHA 更适合生产环境。调用方在仓库 Secret 中配置 `DEEPSEEK_API_KEY`，`GITHUB_TOKEN` 由 Action 自动使用。
 
 若本仓库为私有仓库，还需在 `ai-code-review` 仓库的 **Settings → Actions → General → Access** 中允许同一用户或组织下的私有仓库访问。外部仓库协作者可查看运行日志，因此不要在日志、评论或模型输入中输出密钥。
+
+若工作流已在前一步生成 SARIF 报告，可将其作为本地输入交给 Action：
+
+```yaml
+      - uses: lavyoung/ai-code-review@<trusted-commit-sha>
+        with:
+          sarif-enabled: "true"
+          sarif-report: reports/review.sarif
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+```
+
+报告必须由此前步骤在当前工作区生成；Action 不会上传报告，也不会输出其中未映射到本次变更的路径、内容或结果。
 
 ## 作为 npm CLI 使用
 

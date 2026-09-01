@@ -95,7 +95,7 @@ export const resolveReviewConfiguration = (
             ? undefined
             : Number(sources.environment.TYPESCRIPT_ANALYZER_TIMEOUT_MS),
         sarifEnabled: parseBooleanEnvironmentValue(sources.environment?.SARIF_ANALYZER_ENABLED),
-        sarifReportPath: sources.environment?.SARIF_REPORT_PATH,
+        sarifReportPath: optionalEnvironmentSecret(sources.environment?.SARIF_REPORT_PATH),
         wecomEnabled: parseBooleanEnvironmentValue(sources.environment?.WECOM_ENABLED),
         wecomFailOnError: parseBooleanEnvironmentValue(
             sources.environment?.WECOM_FAIL_ON_ERROR,

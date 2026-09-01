@@ -160,6 +160,15 @@ describe("resolveReviewConfiguration", () => {
         expect(configuration.comments.codeup.accessToken).toBeUndefined();
     });
 
+    it("treats an empty optional SARIF path as absent when the analyzer is disabled", () => {
+        expect(resolveReviewConfiguration({
+            environment: {
+                SARIF_ANALYZER_ENABLED: "false",
+                SARIF_REPORT_PATH: "",
+            },
+        }).analyzers.sarif).toEqual({ enabled: false });
+    });
+
     it("accepts the API key only from the environment", () => {
         expect(() =>
             resolveReviewConfiguration({
