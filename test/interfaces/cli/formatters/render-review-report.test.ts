@@ -25,10 +25,13 @@ describe("renderReviewReport", () => {
                 codeChange: {
                     diff: "",
                     files: [],
+                    chunks: [],
                     excludedFileCount: 0,
                     redactedValueCount: 0,
                 },
                 analysis: { summary: "No issues.", findings: [] },
+                findings: [],
+                suppressedCandidateCounts: {},
                 policy: { shouldFail: false, highestSeverity: undefined },
             },
             includeDeliveryStatus: false,
@@ -44,6 +47,7 @@ describe("renderReviewReport", () => {
                 codeChange: {
                     diff: "",
                     files: [{ path: "src/example.ts", status: "modified" }],
+                    chunks: [],
                     excludedFileCount: 1,
                     redactedValueCount: 2,
                 },
@@ -58,6 +62,18 @@ describe("renderReviewReport", () => {
                         suggestion: "Move token: exposed-value to a secret store.",
                     }],
                 },
+                findings: [{
+                    severity: "high",
+                    title: "Authorization: Bearer exposed-value",
+                    description: "The .env.production file contains a value.",
+                    file: ".env.production",
+                    line: 3,
+                    suggestion: "Move token: exposed-value to a secret store.",
+                    chunkId: "chunk-1",
+                    evidence: "+token: [REDACTED]",
+                    verificationStatus: "verified",
+                }],
+                suppressedCandidateCounts: {},
                 policy: {
                     highestSeverity: "high",
                     shouldFail: true,
@@ -80,6 +96,7 @@ describe("renderReviewReport", () => {
                 codeChange: {
                     diff: "",
                     files: [],
+                    chunks: [],
                     excludedFileCount: 0,
                     redactedValueCount: 0,
                 },
@@ -87,6 +104,8 @@ describe("renderReviewReport", () => {
                     summary: "No actionable issues found.",
                     findings: [],
                 },
+                findings: [],
+                suppressedCandidateCounts: {},
                 policy: {
                     highestSeverity: null,
                     shouldFail: false,
@@ -104,8 +123,10 @@ describe("renderReviewReport", () => {
         const report = renderReviewReport({
             target: "main",
             result: {
-                codeChange: { diff: "", files: [], excludedFileCount: 0, redactedValueCount: 0 },
+                codeChange: { diff: "", files: [], chunks: [], excludedFileCount: 0, redactedValueCount: 0 },
                 analysis: { summary: "No issues.", findings: [] },
+                findings: [],
+                suppressedCandidateCounts: {},
                 policy: { highestSeverity: null, shouldFail: false },
             },
             wecomDelivery: { status: "failed", attempts: 3 },
@@ -118,8 +139,10 @@ describe("renderReviewReport", () => {
         const report = renderReviewReport({
             target: "main",
             result: {
-                codeChange: { diff: "", files: [], excludedFileCount: 0, redactedValueCount: 0 },
+                codeChange: { diff: "", files: [], chunks: [], excludedFileCount: 0, redactedValueCount: 0 },
                 analysis: { summary: "No issues.", findings: [] },
+                findings: [],
+                suppressedCandidateCounts: {},
                 policy: { highestSeverity: null, shouldFail: false },
             },
             githubCommentDelivery: { status: "failed" },
@@ -132,8 +155,10 @@ describe("renderReviewReport", () => {
         const report = renderReviewReport({
             target: "main",
             result: {
-                codeChange: { diff: "", files: [], excludedFileCount: 0, redactedValueCount: 0 },
+                codeChange: { diff: "", files: [], chunks: [], excludedFileCount: 0, redactedValueCount: 0 },
                 analysis: { summary: "No issues.", findings: [] },
+                findings: [],
+                suppressedCandidateCounts: {},
                 policy: { highestSeverity: null, shouldFail: false },
             },
             codeupCommentDelivery: { status: "delivered" },

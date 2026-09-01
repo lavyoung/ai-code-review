@@ -1,10 +1,13 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import type { DiffProvider, DiffRange } from "../../../application/review/ports/diff-provider.js";
 import type {
     ChangedFile,
     ChangeStatus,
     CodeChange,
+    DiffChunk,
+    SourceRange,
 } from "../../../domain/review/model/code-change.js";
 import {
     isSensitiveFile,
@@ -91,6 +94,107 @@ const parseChangedFiles = (output: string): ChangedFile[] => {
     return files;
 };
 
+const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+
+const toSourceRange = (start: string, count: string | undefined): SourceRange | undefined => {
+    const numericStart = Number(start);
+    const numericCount = count === undefined ? 1 : Number(count);
+
+    if (numericCount === 0) {
+        return undefined;
+    }
+
+    return {
+        startLine: numericStart,
+        endLine: numericStart + numericCount - 1,
+    };
+};
+
+const createChunkId = (
+    rangeNotation: string,
+    path: string,
+    oldRange: SourceRange | undefined,
+    newRange: SourceRange | undefined,
+    content: string,
+): string => createHash("sha256")
+    .update(JSON.stringify({ rangeNotation, path, oldRange, newRange, content }))
+    .digest("hex")
+    .slice(0, 24);
+
+/**
+ * 将已脱敏的 unified diff 切分为可被模型精确引用的 hunk。
+ *
+ * Git 的文件头只用于选择 hunk 所属安全路径；模型只会获得 hunk 内容和
+ * 稳定标识，不能借此取得被敏感策略排除的文件。
+ */
+const createDiffChunks = (diff: string, rangeNotation: string): DiffChunk[] => {
+    const chunks: DiffChunk[] = [];
+    let path: string | undefined;
+    let oldPath: string | undefined;
+    let oldRange: SourceRange | undefined;
+    let newRange: SourceRange | undefined;
+    let lines: string[] = [];
+
+    const flush = (): void => {
+        if (path === undefined || lines.length === 0) {
+            lines = [];
+            return;
+        }
+
+        const content = lines.join("\n");
+        chunks.push({
+            id: createChunkId(rangeNotation, path, oldRange, newRange, content),
+            path,
+            ...(newRange === undefined ? {} : { newRange }),
+            ...(oldRange === undefined ? {} : { oldRange }),
+            content,
+        });
+        lines = [];
+    };
+
+    for (const line of diff.split("\n")) {
+        if (line.startsWith("diff --git ")) {
+            flush();
+            path = undefined;
+            oldPath = undefined;
+            oldRange = undefined;
+            newRange = undefined;
+            continue;
+        }
+
+        if (line.startsWith("--- a/")) {
+            oldPath = line.slice("--- a/".length);
+            continue;
+        }
+
+        if (line.startsWith("+++ b/")) {
+            path = line.slice("+++ b/".length);
+            continue;
+        }
+
+        if (line === "+++ /dev/null") {
+            path = oldPath;
+            continue;
+        }
+
+        const hunk = HUNK_HEADER.exec(line);
+        if (hunk !== null) {
+            flush();
+            oldRange = toSourceRange(hunk[1] ?? "0", hunk[2]);
+            newRange = toSourceRange(hunk[3] ?? "0", hunk[4]);
+            lines = [line];
+            continue;
+        }
+
+        if (lines.length > 0) {
+            lines.push(line);
+        }
+    }
+
+    flush();
+    return chunks;
+};
+
 /**
  * 基于本地 Git 仓库生成安全代码变更的适配器。
  */
@@ -135,6 +239,7 @@ export class LocalGitDiffProvider implements DiffProvider {
         return {
             diff: redactedDiff.content,
             files,
+            chunks: createDiffChunks(redactedDiff.content, rangeNotation),
             excludedFileCount: allFiles.length - files.length,
             redactedValueCount: redactedDiff.redactedValueCount,
         };

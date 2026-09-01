@@ -15,11 +15,17 @@ describe("evaluateReviewPolicy", () => {
                 severity: "medium",
                 title: "Medium issue",
                 description: "Description.",
+                chunkId: "chunk-1",
+                evidence: "+const medium = true;",
+                verificationStatus: "grounded",
             },
             {
                 severity: "critical",
                 title: "Critical issue",
                 description: "Description.",
+                chunkId: "chunk-2",
+                evidence: "+throw new Error();",
+                verificationStatus: "verified",
             },
         ], ["critical"])).toEqual({
             highestSeverity: "critical",

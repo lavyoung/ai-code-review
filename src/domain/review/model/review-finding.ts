@@ -1,4 +1,5 @@
 import type { Severity } from "./severity.js";
+import type { ReviewCandidate } from "./review-candidate.js";
 
 /**
  * 一条可定位、可执行的代码评审发现项。
@@ -19,5 +20,5 @@ export interface ReviewFinding {
  */
 export interface ReviewAnalysis {
     summary: string;
-    findings: ReviewFinding[];
+    findings: ReviewCandidate[];
 }

@@ -12,6 +12,12 @@ const configuration = {
 const codeChange = {
     diff: "diff --git a/src/example.ts b/src/example.ts\n",
     files: [{ path: "src/example.ts", status: "modified" as const }],
+    chunks: [{
+        id: "chunk-1",
+        path: "src/example.ts",
+        newRange: { startLine: 10, endLine: 10 },
+        content: "+use(input);",
+    }],
     excludedFileCount: 0,
     redactedValueCount: 0,
 };
@@ -33,6 +39,8 @@ describe("DeepSeekReviewAdapter", () => {
                             category: "correctness",
                             suggestion: "Validate the input first.",
                             confidence: 0.9,
+                            chunkId: "chunk-1",
+                            evidence: "+use(input);",
                         }],
                     }),
                 },
@@ -51,6 +59,8 @@ describe("DeepSeekReviewAdapter", () => {
                 category: "correctness",
                 suggestion: "Validate the input first.",
                 confidence: 0.9,
+                chunkId: "chunk-1",
+                evidence: "+use(input);",
             }],
         });
 

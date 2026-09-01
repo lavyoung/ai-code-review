@@ -29,7 +29,7 @@ export const createReviewDependencies = (
     workingDirectory: string,
 ) => ({
     diffProvider: new LocalGitDiffProvider(workingDirectory),
-    aiReviewPort: new DeepSeekReviewAdapter(configuration.ai),
+    reviewAnalyzer: new DeepSeekReviewAdapter(configuration.ai),
 });
 
 /** 解析 CLI 的多来源配置。 */

@@ -1,6 +1,11 @@
-import type { AiReviewPort } from "../ports/ai-review-port.js";
+import type { ReviewAnalyzer } from "../ports/review-analyzer-port.js";
 import type { CodeChange } from "../../../domain/review/model/code-change.js";
 import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
+import type {
+    CandidateValidationResult,
+    ValidatedFinding,
+} from "../../../domain/review/model/review-candidate.js";
+import { validateReviewCandidates } from "../../../domain/review/policy/validate-review-candidates.js";
 import {
     evaluateReviewPolicy,
     type ReviewPolicyDecision,
@@ -13,7 +18,7 @@ import {
 
 /** 对已获取代码变更执行 AI 评审所需的外部能力。 */
 export interface ReviewCodeChangeDependencies {
-    aiReviewPort: AiReviewPort;
+    reviewAnalyzer: ReviewAnalyzer;
 }
 
 /** 对已过滤、已脱敏代码变更执行评审的输入。 */
@@ -26,6 +31,10 @@ export interface ReviewCodeChangeCommand {
 export interface ReviewExecutionResult {
     codeChange: CodeChange;
     analysis: ReviewAnalysis;
+    /** 已锚定到本次变更、可安全输出的发现项。 */
+    findings: ValidatedFinding[];
+    /** 因缺少安全证据而被过滤的候选项计数。 */
+    suppressedCandidateCounts: CandidateValidationResult["suppressedCounts"];
     policy: ReviewPolicyDecision;
 }
 
@@ -38,7 +47,7 @@ export const reviewCodeChangeUseCase = async (
 ): Promise<ReviewExecutionResult> => {
     let analysis: ReviewAnalysis;
     try {
-        analysis = await dependencies.aiReviewPort.review(command.codeChange);
+        analysis = await dependencies.reviewAnalyzer.analyze({ codeChange: command.codeChange });
     } catch (error) {
         const failureType = error instanceof AiReviewFailure
             ? error.failureType
@@ -46,9 +55,13 @@ export const reviewCodeChangeUseCase = async (
         throw new AiReviewExecutionError(failureType, error);
     }
 
+    const validation = validateReviewCandidates(analysis.findings, command.codeChange);
+
     return {
         codeChange: command.codeChange,
         analysis,
-        policy: evaluateReviewPolicy(analysis.findings, command.failOn),
+        findings: validation.findings,
+        suppressedCandidateCounts: validation.suppressedCounts,
+        policy: evaluateReviewPolicy(validation.findings, command.failOn),
     };
 };

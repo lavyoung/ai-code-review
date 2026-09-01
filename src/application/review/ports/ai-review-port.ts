@@ -1,5 +1,6 @@
 import type { CodeChange } from "../../../domain/review/model/code-change.js";
 import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
+import type { ReviewAnalyzer } from "./review-analyzer-port.js";
 
 /**
  * 已支持或已预留的 AI 评审服务提供方。
@@ -9,7 +10,10 @@ export type AiProvider = "deepseek" | "openai";
 /**
  * 调用 AI 服务生成结构化评审分析的应用端口。
  */
-export interface AiReviewPort {
+/**
+ * @deprecated 新用例应依赖 `ReviewAnalyzer`。保留此端口只为现有 AI 适配器兼容。
+ */
+export interface AiReviewPort extends ReviewAnalyzer {
     /**
      * 此端口实现所调用的 AI 服务提供方。
      */

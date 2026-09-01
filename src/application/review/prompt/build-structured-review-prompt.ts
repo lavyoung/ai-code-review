@@ -23,7 +23,8 @@ Report only concrete, actionable findings that are supported by the diff.
 Write the summary, title, description, category, and suggestion values in the language identified by BCP 47 tag ${outputLanguage}.
 Keep JSON property names and severity values exactly as shown below.
 Use this JSON shape:
-{"summary":"short summary","findings":[{"severity":"high","title":"short title","description":"why this is a problem","file":"safe/path.ts","line":42,"category":"correctness","suggestion":"specific fix","confidence":0.9}]}
+{"summary":"short summary","findings":[{"severity":"high","title":"short title","description":"why this is a problem","file":"safe/path.ts","line":42,"chunkId":"stable-chunk-id","evidence":"+exact changed line","category":"correctness","suggestion":"specific fix","confidence":0.9}]}
+For every finding, chunkId and evidence are required. chunkId must exactly match one provided chunk id. evidence must be a short literal excerpt copied exactly from that chunk, including the diff line prefix. Do not report a finding if you cannot provide both.
 When no actionable issue is found, return {"summary":"No actionable issues found.","findings":[]}.`,
-    user: `Review this committed code diff.\n\n<diff>\n${codeChange.diff}\n</diff>`,
+    user: `Review these committed, sanitized diff chunks.\n\n<chunks>\n${JSON.stringify(codeChange.chunks)}\n</chunks>`,
 });

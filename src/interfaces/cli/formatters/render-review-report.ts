@@ -4,7 +4,7 @@ import {
     redactSensitiveFilePaths,
     redactSensitiveValues,
 } from "../../../domain/review/policy/sensitive-content-policy.js";
-import type { ReviewFinding } from "../../../domain/review/model/review-finding.js";
+import type { ValidatedFinding } from "../../../domain/review/model/review-candidate.js";
 import type { NotificationDelivery } from "../../../application/delivery/use-cases/publish-notification-use-case.js";
 import type { ReviewCommentPublication } from "../../../application/delivery/use-cases/publish-review-comment-use-case.js";
 
@@ -64,7 +64,7 @@ export const renderReviewDeliveryStatus = (
 const redactText = (value: string): string =>
     redactSensitiveFilePaths(redactSensitiveValues(value).content);
 
-const formatLocation = (finding: ReviewFinding): string => {
+const formatLocation = (finding: ValidatedFinding): string => {
     if (finding.file === undefined || isSensitiveFile({
         path: finding.file,
         status: "modified",
@@ -76,7 +76,7 @@ const formatLocation = (finding: ReviewFinding): string => {
     return ` (${redactText(finding.file)}${line})`;
 };
 
-const formatFinding = (finding: ReviewFinding, index: number): string => {
+const formatFinding = (finding: ValidatedFinding, index: number): string => {
     const suggestion = finding.suggestion === undefined
         ? ""
         : `\n  Suggestion: ${redactText(finding.suggestion)}`;
@@ -90,11 +90,11 @@ const formatFinding = (finding: ReviewFinding, index: number): string => {
 export const renderReviewReport = (
     input: ManualReviewReportInput,
 ): string => {
-    const { codeChange, analysis, policy } = input.result;
+    const { codeChange, analysis, findings: validatedFindings, policy } = input.result;
     const status = policy.shouldFail ? "QUALITY GATE FAILED" : "PASSED";
-    const findings = analysis.findings.length === 0
+    const findings = validatedFindings.length === 0
         ? "No actionable findings."
-        : analysis.findings.map(formatFinding).join("\n\n");
+        : validatedFindings.map(formatFinding).join("\n\n");
 
     return [
         "## AI Code Review",
@@ -102,7 +102,9 @@ export const renderReviewReport = (
         `- Status: ${status}`,
         `- Target: ${redactText(input.target)}`,
         `- Highest severity: ${policy.highestSeverity ?? "none"}`,
-        `- Findings: ${analysis.findings.length}`,
+        `- Findings: ${validatedFindings.length}`,
+        `- Filtered candidates: ${Object.values(input.result.suppressedCandidateCounts)
+            .reduce((total, count) => total + count, 0)}`,
         `- Changed files: ${codeChange.files.length}`,
         `- Excluded sensitive files: ${codeChange.excludedFileCount}`,
         `- Redacted values: ${codeChange.redactedValueCount}`,

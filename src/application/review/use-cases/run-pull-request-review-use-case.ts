@@ -1,5 +1,5 @@
 import type { DiffProvider } from "../ports/diff-provider.js";
-import type { AiReviewPort } from "../ports/ai-review-port.js";
+import type { ReviewAnalyzer } from "../ports/review-analyzer-port.js";
 import type { Severity } from "../../../domain/review/model/severity.js";
 import { resolvePullRequestCodeChange } from "./resolve-pull-request-code-change.js";
 import {
@@ -14,7 +14,7 @@ import {
 /** GitHub 等 PR 触发评审需要的外部能力。 */
 export interface RunPullRequestReviewDependencies {
     diffProvider: DiffProvider;
-    aiReviewPort: AiReviewPort;
+    reviewAnalyzer: ReviewAnalyzer;
 }
 
 /** GitHub 等 PR 触发评审的已提交范围与质量门禁输入。 */

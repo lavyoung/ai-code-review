@@ -1,4 +1,4 @@
-import type { ReviewFinding } from "../model/review-finding.js";
+import type { ValidatedFinding } from "../model/review-candidate.js";
 import type { Severity } from "../model/severity.js";
 
 const severityRanks: Record<Severity, number> = {
@@ -20,12 +20,12 @@ export interface ReviewPolicyDecision {
 /**
  * 根据配置的 `fail_on` 严重级别计算质量门禁结果。
  *
- * @param findings AI 输出的结构化发现项。
+ * @param findings 已完成证据验证的发现项。
  * @param failOn 会使流水线失败的严重级别集合。
  * @returns 最高严重级别与是否阻断流水线。
  */
 export const evaluateReviewPolicy = (
-    findings: readonly ReviewFinding[],
+    findings: readonly ValidatedFinding[],
     failOn: readonly Severity[],
 ): ReviewPolicyDecision => {
     const highestSeverity = findings.reduce<Severity | null>(
@@ -37,6 +37,7 @@ export const evaluateReviewPolicy = (
 
     return {
         highestSeverity,
-        shouldFail: findings.some((finding) => failOn.includes(finding.severity)),
+        shouldFail: findings.some((finding) => finding.verificationStatus === "verified"
+            && failOn.includes(finding.severity)),
     };
 };

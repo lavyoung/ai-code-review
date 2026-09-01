@@ -12,18 +12,37 @@ describe("runPullRequestReviewUseCase", () => {
         const getCodeChange = vi.fn().mockResolvedValue({
             diff: "",
             files: [],
+            chunks: [{
+                id: "chunk-1",
+                path: "src/example.ts",
+                newRange: { startLine: 1, endLine: 1 },
+                content: "+throw new Error('failure');",
+            }],
             excludedFileCount: 0,
             redactedValueCount: 0,
         });
-        const review = vi.fn().mockResolvedValue({
+        const analyze = vi.fn().mockResolvedValue({
             summary: "Critical issue found.",
-            findings: [{ severity: "critical", title: "Issue", description: "Description." }],
+            findings: [{
+                severity: "critical",
+                title: "Issue",
+                description: "Description.",
+                file: "src/example.ts",
+                line: 1,
+                chunkId: "chunk-1",
+                evidence: "+throw new Error('failure');",
+            }],
         });
 
         await expect(runPullRequestReviewUseCase(command, {
             diffProvider: { getCodeChange },
-            aiReviewPort: { provider: "deepseek", review },
-        })).resolves.toMatchObject({ policy: { shouldFail: true } });
+            reviewAnalyzer: { identity: { kind: "ai", id: "deepseek" }, capabilities: {
+                inputAccess: "sanitized-model-input", supportsChangedOnly: true, supportsRepositoryScan: false,
+            }, analyze },
+        })).resolves.toMatchObject({
+            policy: { shouldFail: false },
+            findings: [{ verificationStatus: "grounded" }],
+        });
         expect(getCodeChange).toHaveBeenCalledWith({
             baseRef: "base-sha",
             headRef: "head-sha",
@@ -34,14 +53,18 @@ describe("runPullRequestReviewUseCase", () => {
     it("keeps AI failures distinct from Git diff failures", async () => {
         await expect(runPullRequestReviewUseCase(command, {
             diffProvider: { getCodeChange: vi.fn().mockResolvedValue({
-                diff: "", files: [], excludedFileCount: 0, redactedValueCount: 0,
+                diff: "", files: [], chunks: [], excludedFileCount: 0, redactedValueCount: 0,
             }) },
-            aiReviewPort: { provider: "deepseek", review: vi.fn().mockRejectedValue(new Error("AI failure")) },
+            reviewAnalyzer: { identity: { kind: "ai", id: "deepseek" }, capabilities: {
+                inputAccess: "sanitized-model-input", supportsChangedOnly: true, supportsRepositoryScan: false,
+            }, analyze: vi.fn().mockRejectedValue(new Error("AI failure")) },
         })).rejects.toBeInstanceOf(AiReviewExecutionError);
 
         await expect(runPullRequestReviewUseCase(command, {
             diffProvider: { getCodeChange: vi.fn().mockRejectedValue(new Error("Git failure")) },
-            aiReviewPort: { provider: "deepseek", review: vi.fn() },
+            reviewAnalyzer: { identity: { kind: "ai", id: "deepseek" }, capabilities: {
+                inputAccess: "sanitized-model-input", supportsChangedOnly: true, supportsRepositoryScan: false,
+            }, analyze: vi.fn() },
         })).rejects.toBeInstanceOf(DiffResolutionError);
     });
 });

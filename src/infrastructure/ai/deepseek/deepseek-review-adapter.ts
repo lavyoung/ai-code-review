@@ -2,12 +2,17 @@ import { z } from "zod";
 import type { ReviewConfiguration } from "../../../application/configuration/review-configuration.js";
 import { buildStructuredReviewPrompt } from "../../../application/review/prompt/build-structured-review-prompt.js";
 import type { AiReviewPort } from "../../../application/review/ports/ai-review-port.js";
+import type {
+    AnalysisRequest,
+    AnalyzerCapabilities,
+    AnalyzerIdentity,
+} from "../../../application/review/ports/review-analyzer-port.js";
 import { AiReviewFailure } from "../../../application/review/errors/review-execution-error.js";
 import type { CodeChange } from "../../../domain/review/model/code-change.js";
 import type {
     ReviewAnalysis,
-    ReviewFinding,
 } from "../../../domain/review/model/review-finding.js";
+import type { ReviewCandidate } from "../../../domain/review/model/review-candidate.js";
 import { SEVERITIES } from "../../../domain/review/model/severity.js";
 import {
     isSensitiveFile,
@@ -27,6 +32,8 @@ const reviewFindingSchema = z.object({
     category: z.string().trim().min(1).optional(),
     suggestion: z.string().trim().min(1).optional(),
     confidence: z.number().min(0).max(1).optional(),
+    chunkId: z.string().trim().min(1).optional(),
+    evidence: z.string().trim().min(1).max(500).optional(),
 });
 
 const reviewAnalysisSchema = z.object({
@@ -97,7 +104,7 @@ const isTimeoutError = (error: unknown): boolean => error instanceof Error
 
 const toReviewFinding = (
     finding: z.infer<typeof reviewFindingSchema>,
-): ReviewFinding => ({
+): ReviewCandidate => ({
     severity: finding.severity,
     title: finding.title,
     description: finding.description,
@@ -106,9 +113,11 @@ const toReviewFinding = (
     ...(finding.category === undefined ? {} : { category: finding.category }),
     ...(finding.suggestion === undefined ? {} : { suggestion: finding.suggestion }),
     ...(finding.confidence === undefined ? {} : { confidence: finding.confidence }),
+    ...(finding.chunkId === undefined ? {} : { chunkId: finding.chunkId }),
+    ...(finding.evidence === undefined ? {} : { evidence: finding.evidence }),
 });
 
-const removeSensitiveFindingPath = (finding: ReviewFinding): ReviewFinding => {
+const removeSensitiveFindingPath = (finding: ReviewCandidate): ReviewCandidate => {
     if (finding.file === undefined || !isSensitiveFile({
         path: finding.file,
         status: "modified",
@@ -116,14 +125,20 @@ const removeSensitiveFindingPath = (finding: ReviewFinding): ReviewFinding => {
         return finding;
     }
 
-    const { file: _file, line: _line, ...safeFinding } = finding;
+    const {
+        file: _file,
+        line: _line,
+        chunkId: _chunkId,
+        evidence: _evidence,
+        ...safeFinding
+    } = finding;
     return safeFinding;
 };
 
 const redactFindingText = (value: string): string =>
     redactSensitiveFilePaths(redactSensitiveValues(value).content);
 
-const redactSensitiveFindingValues = (finding: ReviewFinding): ReviewFinding => ({
+const redactSensitiveFindingValues = (finding: ReviewCandidate): ReviewCandidate => ({
     ...finding,
     title: redactFindingText(finding.title),
     description: redactFindingText(finding.description),
@@ -133,6 +148,9 @@ const redactSensitiveFindingValues = (finding: ReviewFinding): ReviewFinding => 
     ...(finding.suggestion === undefined
         ? {}
         : { suggestion: redactFindingText(finding.suggestion) }),
+    ...(finding.evidence === undefined
+        ? {}
+        : { evidence: redactFindingText(finding.evidence) }),
 });
 
 /**
@@ -140,6 +158,15 @@ const redactSensitiveFindingValues = (finding: ReviewFinding): ReviewFinding => 
  */
 export class DeepSeekReviewAdapter implements AiReviewPort {
     public readonly provider = "deepseek" as const;
+    public readonly identity: AnalyzerIdentity = {
+        kind: "ai",
+        id: "deepseek",
+    };
+    public readonly capabilities: AnalyzerCapabilities = {
+        inputAccess: "sanitized-model-input",
+        supportsChangedOnly: true,
+        supportsRepositoryScan: false,
+    };
 
     /**
      * @param configuration 已解析的 DeepSeek 配置；密钥不应输出到日志。
@@ -268,5 +295,10 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
                 .map(redactSensitiveFindingValues)
                 .map(removeSensitiveFindingPath),
         };
+    }
+
+    /** 将 DeepSeek 的兼容 review 调用适配为统一分析器端口。 */
+    public analyze(request: AnalysisRequest): Promise<ReviewAnalysis> {
+        return this.review(request.codeChange);
     }
 }
