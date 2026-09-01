@@ -18,6 +18,25 @@ describe("renderManualReviewReport", () => {
         ].join("\n"));
     });
 
+    it("can omit delivery status when the caller will log it later", () => {
+        const report = renderManualReviewReport({
+            target: "main",
+            result: {
+                codeChange: {
+                    diff: "",
+                    files: [],
+                    excludedFileCount: 0,
+                    redactedValueCount: 0,
+                },
+                analysis: { summary: "No issues.", findings: [] },
+                policy: { shouldFail: false, highestSeverity: undefined },
+            },
+            includeDeliveryStatus: false,
+        });
+
+        expect(report).not.toContain("### Delivery Status");
+    });
+
     it("renders a Markdown report without exposing sensitive values or paths", () => {
         const report = renderManualReviewReport({
             target: "main",

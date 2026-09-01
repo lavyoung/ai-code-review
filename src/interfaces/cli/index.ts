@@ -170,7 +170,11 @@ const reviewCommand = program
                     ? { wecomDelivery: { status: "pending" as const } }
                     : {}),
             });
-            console.log(report);
+            console.log(renderManualReviewReport({
+                target: reportTarget,
+                result,
+                includeDeliveryStatus: false,
+            }));
 
             const webhookUrl = configuration.notifications.wecom.webhookUrl;
             const wecomDelivery = configuration.notifications.wecom.enabled && webhookUrl !== undefined

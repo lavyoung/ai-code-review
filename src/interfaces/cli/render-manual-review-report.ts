@@ -14,6 +14,7 @@ import type { ReviewCommentPublication } from "../../application/publish-review-
 export interface ManualReviewReportInput {
     target: string;
     result: ManualReviewResult;
+    includeDeliveryStatus?: boolean;
     wecomDelivery?: NotificationDelivery | { status: "disabled" } | { status: "pending" };
     githubCommentDelivery?: ReviewCommentPublication | { status: "disabled" };
     codeupCommentDelivery?: ReviewCommentPublication | { status: "disabled" };
@@ -114,8 +115,12 @@ export const renderManualReviewReport = (
         "",
         findings,
         "",
-        "### Delivery Status",
-        "",
-        renderReviewDeliveryStatus(input).replace("## AI Code Review Delivery\n\n", ""),
+        ...(input.includeDeliveryStatus === false
+            ? []
+            : [
+                "### Delivery Status",
+                "",
+                renderReviewDeliveryStatus(input).replace("## AI Code Review Delivery\n\n", ""),
+            ]),
     ].filter((line): line is string => line !== undefined).join("\n");
 };

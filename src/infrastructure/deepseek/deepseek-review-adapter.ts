@@ -89,6 +89,21 @@ const describeResponseMetadata = (response: Response): string => {
         : contentType}, contentLength=${contentLength ?? "unknown"}`;
 };
 
+/** 响应解析日志只保留长度与 Unicode 边界信息，避免输出模型正文。 */
+const describeResponseText = (value: string): string => {
+    const firstCodePoint = value.codePointAt(0);
+    const lastCodePoint = value.codePointAt(value.length - 1);
+
+    return `length=${value.length}, firstCodePoint=${firstCodePoint === undefined
+        ? "none"
+        : `U+${firstCodePoint.toString(16).toUpperCase()}`}, lastCodePoint=${lastCodePoint === undefined
+        ? "none"
+        : `U+${lastCodePoint.toString(16).toUpperCase()}`}`;
+};
+
+const isTimeoutError = (error: unknown): boolean => error instanceof Error
+    && (error.name === "AbortError" || error.name === "TimeoutError");
+
 const toReviewFinding = (
     finding: z.infer<typeof reviewFindingSchema>,
 ): ReviewFinding => ({
@@ -165,6 +180,7 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
                 },
                 body: JSON.stringify({
                     model: this.configuration.model,
+                    thinking: { type: "disabled" },
                     messages: [
                         { role: "system", content: buildSystemPrompt() },
                         { role: "user", content: buildUserPrompt(codeChange) },
@@ -193,14 +209,23 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
             throw new AiReviewFailure(failureType, "DeepSeek review request failed.");
         }
 
+        let responseText: string;
+        try {
+            responseText = await response.text();
+        } catch (error) {
+            throw new AiReviewFailure(
+                isTimeoutError(error) ? "timeout" : "request",
+                `DeepSeek response body could not be read (${describeResponseMetadata(response)}).`,
+            );
+        }
+
         let responseBody: unknown;
         try {
-            const responseText = await response.text();
             responseBody = JSON.parse(responseText.replace(/^\uFEFF/, "").trim());
         } catch {
             throw new AiReviewFailure(
                 "invalid-json",
-                `DeepSeek response was not JSON (${describeResponseMetadata(response)}).`,
+                `DeepSeek response was not JSON (${describeResponseMetadata(response)}, ${describeResponseText(responseText)}).`,
             );
         }
 

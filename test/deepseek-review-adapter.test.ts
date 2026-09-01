@@ -65,6 +65,7 @@ describe("DeepSeekReviewAdapter", () => {
         );
         expect(JSON.parse(fetchImplementation.mock.calls[0][1].body)).toMatchObject({
             model: "deepseek-v4-flash",
+            thinking: { type: "disabled" },
             response_format: { type: "json_object" },
             max_tokens: 4_096,
             stream: false,
@@ -144,7 +145,7 @@ describe("DeepSeekReviewAdapter", () => {
 
         await expect(adapter.review(codeChange)).rejects.toMatchObject({
             failureType: "invalid-json",
-            message: "DeepSeek response was not JSON (status=200, contentType=text/plain, contentLength=unknown).",
+            message: "DeepSeek response was not JSON (status=200, contentType=text/plain, contentLength=unknown, length=8, firstCodePoint=U+6E, lastCodePoint=U+6E).",
         });
     });
 
