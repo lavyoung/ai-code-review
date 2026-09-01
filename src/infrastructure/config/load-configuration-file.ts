@@ -13,6 +13,7 @@ export interface ConfigurationFileOverride {
     severityThreshold?: Severity;
     failOn?: Severity[];
     model?: string;
+    outputLanguage?: string;
     timeoutMs?: number;
     wecomEnabled?: boolean;
     wecomFailOnError?: boolean;
@@ -30,6 +31,7 @@ const configurationFileSchema = z.object({
     ai: z.object({
         provider: z.literal("deepseek").optional(),
         model: z.string().trim().min(1).optional(),
+        output_language: z.string().trim().min(1).max(64).refine((value) => !/[\r\n]/u.test(value)).optional(),
         timeout_ms: z.number().int().positive().optional(),
     }).strict().optional(),
     notifiers: z.object({
@@ -72,6 +74,9 @@ export const loadConfigurationFile = async (
         ...(configuration.ai?.model === undefined
             ? {}
             : { model: configuration.ai.model }),
+        ...(configuration.ai?.output_language === undefined
+            ? {}
+            : { outputLanguage: configuration.ai.output_language }),
         ...(configuration.ai?.timeout_ms === undefined
             ? {}
             : { timeoutMs: configuration.ai.timeout_ms }),

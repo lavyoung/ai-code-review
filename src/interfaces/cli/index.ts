@@ -46,6 +46,7 @@ interface ReviewCommandOptions {
     provider: string;
     target?: string;
     config?: string;
+    outputLanguage?: string;
 }
 
 const parseReviewEventType = (value: string): ReviewEventType => {
@@ -72,6 +73,7 @@ const reviewCommand = program
     .option("--provider <provider>", "Repository provider", "local")
     .option("--target <ref>", "Target branch or commit")
     .option("--config <path>", "Configuration file path")
+    .option("--output-language <language>", "Language for AI review text")
     .action(async (options: ReviewCommandOptions) => {
         const isManualReview = options.event === "manual"
             && options.provider === "local"
@@ -95,6 +97,11 @@ const reviewCommand = program
                 ...(options.config === undefined
                     ? {}
                     : { configurationPath: options.config }),
+                cli: {
+                    ...(options.outputLanguage === undefined
+                        ? {}
+                        : { outputLanguage: options.outputLanguage }),
+                },
             });
         } catch {
             console.error(
