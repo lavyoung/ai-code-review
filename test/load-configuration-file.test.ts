@@ -16,6 +16,10 @@ describe("loadConfigurationFile", () => {
                 timeoutMs: 10_000,
                 wecomEnabled: false,
                 wecomFailOnError: false,
+                githubCommentEnabled: false,
+                githubCommentFailOnError: false,
+                codeUpCommentEnabled: false,
+                codeUpCommentFailOnError: false,
             });
     });
 

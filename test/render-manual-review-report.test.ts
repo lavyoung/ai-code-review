@@ -78,4 +78,32 @@ describe("renderManualReviewReport", () => {
 
         expect(report).toContain("WeCom: failed (attempts: 3)");
     });
+
+    it("renders the GitHub PR comment publication state only when provided", () => {
+        const report = renderManualReviewReport({
+            target: "main",
+            result: {
+                codeChange: { diff: "", files: [], excludedFileCount: 0, redactedValueCount: 0 },
+                analysis: { summary: "No issues.", findings: [] },
+                policy: { highestSeverity: null, shouldFail: false },
+            },
+            githubCommentDelivery: { status: "failed" },
+        });
+
+        expect(report).toContain("GitHub PR comment: failed");
+    });
+
+    it("renders the CodeUp MR comment publication state only when provided", () => {
+        const report = renderManualReviewReport({
+            target: "main",
+            result: {
+                codeChange: { diff: "", files: [], excludedFileCount: 0, redactedValueCount: 0 },
+                analysis: { summary: "No issues.", findings: [] },
+                policy: { highestSeverity: null, shouldFail: false },
+            },
+            codeupCommentDelivery: { status: "delivered" },
+        });
+
+        expect(report).toContain("CodeUp MR comment: delivered");
+    });
 });

@@ -505,12 +505,12 @@ notifiers:
     fail_on_error: false
 
 comments:
-  enabled: true
-  mode: summary
-  update_existing: true
-  comment_on:
-    - merge_request
-    - pull_request
+  github:
+    enabled: true
+    fail_on_error: false
+  codeup:
+    enabled: true
+    fail_on_error: false
 ```
 
 ## 8. PR / MR 评论设计
@@ -902,6 +902,8 @@ CodeUp 适配器通过其合并请求评论列表查找该标识；命中后更�
 
 GitHub 适配器使用 PR 的 Issue Comment 时间线接口，而不是行级 Review Comment 接口：查询 `/issues/{pull_number}/comments`，命中标识后 `PATCH /issues/comments/{comment_id}`，否则 `POST /issues/{pull_number}/comments`。它支持分页和 GitHub Enterprise 自定义 API 地址，Token 仅由 CI Secret 或环境变量注入。
 
+GitHub PR 摘要评论开关为 `comments.github.enabled`，可使用 `comments.github.fail_on_error` 明确要求评论失败时阻断流水线（退出码 `120`）。`GITHUB_TOKEN` 只能通过环境变量或 CI Secret 注入；评论在企业微信投递完成后发布，因此可记录企业微信的最终脱敏投递状态。
+
 GitHub Actions 的 PR 评审使用事件文件中的 `pull_request.base.sha...pull_request.head.sha`，不使用默认的合并引用。工作流须完整检出历史：
 
 ```yaml
@@ -921,7 +923,22 @@ steps:
   - run: npx ai-code-review review --provider github --event pull-request
     env:
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+CodeUp Flow 的官方内置变量仅保证当前代码源的分支和最新提交，不提供 MR 编号、源/目标提交或版本 ID。因此，CodeUp MR 模式使用以下自定义变量契约，命令为 `ai-code-review review --provider codeup --event merge-request`：
+
+| 变量 | 是否必填 | 含义 |
+| --- | --- | --- |
+| `AICR_CODEUP_BASE_SHA` | 是 | MR 目标侧已提交 SHA |
+| `AICR_CODEUP_HEAD_SHA` | 是 | MR 源侧已提交 SHA |
+| `AICR_CODEUP_TARGET_REF` | 是 | 用于报告展示的目标分支 |
+| `AICR_CODEUP_REPOSITORY_ID` | 评论开启时 | CodeUp 仓库 ID 或完整路径 |
+| `AICR_CODEUP_MR_ID` | 评论开启时 | MR 局部 ID |
+| `AICR_CODEUP_PATCHSET_BIZ_ID` | 评论开启时 | 当前源侧 patchSet 业务 ID |
+| `AICR_CODEUP_API_BASE_URL` | 评论开启时 | CodeUp OpenAPI 服务域名 |
+| `AICR_CODEUP_ORGANIZATION_ID` | 中心版评论时 | CodeUp 组织 ID |
+| `CODEUP_TOKEN` | 评论开启时 | 私密变量；绝不写入仓库 |
 
 ### 15.5 分层与职责
 

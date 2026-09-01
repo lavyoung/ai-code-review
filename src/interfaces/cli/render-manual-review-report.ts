@@ -6,6 +6,7 @@ import {
 } from "../../domain/review/sensitive-content-policy.js";
 import type { ReviewFinding } from "../../domain/review/review-finding.js";
 import type { NotificationDelivery } from "../../application/publish-notification-use-case.js";
+import type { ReviewCommentPublication } from "../../application/publish-review-comment-use-case.js";
 
 /**
  * 渲染手动评审 CI 报告所需的接口层输入。
@@ -14,6 +15,8 @@ export interface ManualReviewReportInput {
     target: string;
     result: ManualReviewResult;
     wecomDelivery?: NotificationDelivery | { status: "disabled" } | { status: "pending" };
+    githubCommentDelivery?: ReviewCommentPublication | { status: "disabled" };
+    codeupCommentDelivery?: ReviewCommentPublication | { status: "disabled" };
 }
 
 const formatWeComDelivery = (
@@ -29,6 +32,18 @@ const formatWeComDelivery = (
 
     return `- WeCom: ${delivery.status} (attempts: ${delivery.attempts})`;
 };
+
+const formatGitHubCommentDelivery = (
+    delivery: ManualReviewReportInput["githubCommentDelivery"],
+): string | undefined => delivery === undefined
+    ? undefined
+    : `- GitHub PR comment: ${delivery.status}`;
+
+const formatCodeUpCommentDelivery = (
+    delivery: ManualReviewReportInput["codeupCommentDelivery"],
+): string | undefined => delivery === undefined
+    ? undefined
+    : `- CodeUp MR comment: ${delivery.status}`;
 
 const redactText = (value: string): string =>
     redactSensitiveFilePaths(redactSensitiveValues(value).content);
@@ -88,5 +103,7 @@ export const renderManualReviewReport = (
         "",
         "- CI Log: delivered",
         formatWeComDelivery(input.wecomDelivery),
-    ].join("\n");
+        formatGitHubCommentDelivery(input.githubCommentDelivery),
+        formatCodeUpCommentDelivery(input.codeupCommentDelivery),
+    ].filter((line): line is string => line !== undefined).join("\n");
 };

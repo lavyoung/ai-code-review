@@ -26,6 +26,8 @@ describe("resolveGitHubActionsPullRequestContext", () => {
             .resolves.toEqual({
                 pullRequestNumber: "42",
                 repository: "octo-org/example-repository",
+                repositoryOwner: "octo-org",
+                repositoryName: "example-repository",
                 baseRef: "main",
                 baseSha: "base-sha",
                 headRef: "feature/review",

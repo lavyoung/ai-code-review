@@ -24,4 +24,18 @@ export interface ReviewConfiguration {
             webhookUrl?: string;
         };
     };
+    comments: {
+        github: {
+            enabled: boolean;
+            failOnError: boolean;
+            /** 仅由环境变量或 CI Secret 注入，禁止写入配置文件与日志。 */
+            accessToken?: string;
+        };
+        codeup: {
+            enabled: boolean;
+            failOnError: boolean;
+            /** 仅由环境变量或 CI Secret 注入，禁止写入配置文件与日志。 */
+            accessToken?: string;
+        };
+    };
 }

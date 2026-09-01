@@ -9,6 +9,9 @@ import { resolveCliConfiguration } from "../../infrastructure/config/resolve-cli
 import { runManualReviewUseCase } from "../../application/run-manual-review-use-case.js";
 import type { ManualReviewResult } from "../../application/run-manual-review-use-case.js";
 import { runPullRequestReviewUseCase } from "../../application/run-pull-request-review-use-case.js";
+import { createSummaryReviewComment } from "../../application/create-summary-review-comment.js";
+import { publishReviewCommentUseCase } from "../../application/publish-review-comment-use-case.js";
+import { createReviewCommentId } from "../../domain/review/review-comment.js";
 import {
     AiReviewExecutionError,
     DiffResolutionError,
@@ -18,7 +21,15 @@ import { LocalGitDiffProvider } from "../../infrastructure/git/local-git-diff-pr
 import {
     GitHubActionsContextError,
     resolveGitHubActionsPullRequestContext,
+    type GitHubActionsPullRequestContext,
 } from "../../infrastructure/github/resolve-github-actions-pull-request-context.js";
+import { GitHubReviewCommentAdapter } from "../../infrastructure/github/github-review-comment-adapter.js";
+import {
+    CodeUpMergeRequestContextError,
+    resolveCodeUpMergeRequestContext,
+    type CodeUpMergeRequestContext,
+} from "../../infrastructure/codeup/resolve-codeup-merge-request-context.js";
+import { CodeUpReviewCommentAdapter } from "../../infrastructure/codeup/codeup-review-comment-adapter.js";
 import { WeComNotifier } from "../../infrastructure/notifiers/wecom-notifier.js";
 import { publishNotificationUseCase } from "../../application/publish-notification-use-case.js";
 import {
@@ -63,10 +74,12 @@ const reviewCommand = program
             && options.target !== undefined;
         const isGitHubPullRequestReview = options.event === "pull-request"
             && options.provider === "github";
+        const isCodeUpMergeRequestReview = options.event === "merge-request"
+            && options.provider === "codeup";
 
-        if (!isManualReview && !isGitHubPullRequestReview) {
+        if (!isManualReview && !isGitHubPullRequestReview && !isCodeUpMergeRequestReview) {
             console.error(
-                "Supported modes: manual (--provider local --target <ref>) and GitHub pull-request (--provider github).",
+                "Supported modes: manual (--provider local --target <ref>), GitHub pull-request, and CodeUp merge-request.",
             );
             process.exitCode = CLI_EXIT_CODES.INVALID_ARGUMENT;
             return;
@@ -93,6 +106,22 @@ const reviewCommand = program
             return;
         }
 
+        if (isGitHubPullRequestReview
+            && configuration.comments.github.enabled
+            && configuration.comments.github.accessToken === undefined) {
+            console.error("Configuration error. GITHUB_TOKEN must be set for GitHub PR comments.");
+            process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
+            return;
+        }
+
+        if (isCodeUpMergeRequestReview
+            && configuration.comments.codeup.enabled
+            && configuration.comments.codeup.accessToken === undefined) {
+            console.error("Configuration error. CODEUP_TOKEN must be set for CodeUp MR comments.");
+            process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
+            return;
+        }
+
         try {
             const dependencies = {
                 diffProvider: new LocalGitDiffProvider(process.cwd()),
@@ -100,6 +129,8 @@ const reviewCommand = program
             };
             let result: ManualReviewResult;
             let reportTarget: string;
+            let githubContext: GitHubActionsPullRequestContext | undefined;
+            let codeUpContext: CodeUpMergeRequestContext | undefined;
 
             if (isManualReview) {
                 const target = options.target;
@@ -112,14 +143,31 @@ const reviewCommand = program
                     failOn: configuration.review.failOn,
                 }, dependencies);
                 reportTarget = target;
-            } else {
-                const githubContext = await resolveGitHubActionsPullRequestContext(process.env);
+            } else if (isGitHubPullRequestReview) {
+                githubContext = await resolveGitHubActionsPullRequestContext(process.env);
                 result = await runPullRequestReviewUseCase({
                     baseSha: githubContext.baseSha,
                     headSha: githubContext.headSha,
                     failOn: configuration.review.failOn,
                 }, dependencies);
                 reportTarget = githubContext.baseRef;
+            } else {
+                codeUpContext = resolveCodeUpMergeRequestContext(process.env);
+                if (configuration.comments.codeup.enabled
+                    && (codeUpContext.repositoryId === undefined
+                        || codeUpContext.changeRequestId === undefined
+                        || codeUpContext.patchSetBizId === undefined
+                        || codeUpContext.apiBaseUrl === undefined)) {
+                    throw new CodeUpMergeRequestContextError(
+                        "CodeUp comment context was incomplete.",
+                    );
+                }
+                result = await runPullRequestReviewUseCase({
+                    baseSha: codeUpContext.baseSha,
+                    headSha: codeUpContext.headSha,
+                    failOn: configuration.review.failOn,
+                }, dependencies);
+                reportTarget = codeUpContext.targetRef;
             }
 
             const report = renderManualReviewReport({
@@ -137,11 +185,85 @@ const reviewCommand = program
                 )
                 : undefined;
 
+            const githubCommentDelivery = isGitHubPullRequestReview
+                && configuration.comments.github.enabled
+                && githubContext !== undefined
+                && configuration.comments.github.accessToken !== undefined
+                ? await publishReviewCommentUseCase(
+                    createSummaryReviewComment(
+                        createReviewCommentId(
+                            "github",
+                            githubContext.repository,
+                            githubContext.pullRequestNumber,
+                        ),
+                        renderManualReviewReport({
+                            target: reportTarget,
+                            result,
+                            ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
+                        }),
+                    ),
+                    new GitHubReviewCommentAdapter({
+                        owner: githubContext.repositoryOwner,
+                        repository: githubContext.repositoryName,
+                        pullRequestNumber: githubContext.pullRequestNumber,
+                        accessToken: configuration.comments.github.accessToken,
+                        ...(process.env.GITHUB_API_URL === undefined
+                            ? {}
+                            : { apiBaseUrl: process.env.GITHUB_API_URL }),
+                    }),
+                )
+                : undefined;
+            const codeUpCommentDelivery = isCodeUpMergeRequestReview
+                && configuration.comments.codeup.enabled
+                && codeUpContext !== undefined
+                && configuration.comments.codeup.accessToken !== undefined
+                && codeUpContext.repositoryId !== undefined
+                && codeUpContext.changeRequestId !== undefined
+                && codeUpContext.patchSetBizId !== undefined
+                && codeUpContext.apiBaseUrl !== undefined
+                ? await publishReviewCommentUseCase(
+                    createSummaryReviewComment(
+                        createReviewCommentId(
+                            "codeup",
+                            codeUpContext.repositoryId,
+                            codeUpContext.changeRequestId,
+                        ),
+                        renderManualReviewReport({
+                            target: reportTarget,
+                            result,
+                            ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
+                        }),
+                    ),
+                    new CodeUpReviewCommentAdapter({
+                        apiBaseUrl: codeUpContext.apiBaseUrl,
+                        accessToken: configuration.comments.codeup.accessToken,
+                        repositoryId: codeUpContext.repositoryId,
+                        changeRequestId: codeUpContext.changeRequestId,
+                        patchSetBizId: codeUpContext.patchSetBizId,
+                        ...(codeUpContext.organizationId === undefined
+                            ? {}
+                            : { organizationId: codeUpContext.organizationId }),
+                    }),
+                )
+                : undefined;
+
             console.log(renderManualReviewReport({
                 target: reportTarget,
                 result,
                 ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
+                ...(githubCommentDelivery === undefined
+                    ? (isGitHubPullRequestReview ? { githubCommentDelivery: { status: "disabled" as const } } : {})
+                    : { githubCommentDelivery }),
+                ...(codeUpCommentDelivery === undefined
+                    ? (isCodeUpMergeRequestReview ? { codeupCommentDelivery: { status: "disabled" as const } } : {})
+                    : { codeupCommentDelivery: codeUpCommentDelivery }),
             }));
+
+            if ((githubCommentDelivery?.status === "failed" && configuration.comments.github.failOnError)
+                || (codeUpCommentDelivery?.status === "failed" && configuration.comments.codeup.failOnError)) {
+                process.exitCode = CLI_EXIT_CODES.COMMENT_PUBLICATION_FAILED;
+                return;
+            }
 
             if (wecomDelivery?.status === "failed" && configuration.notifications.wecom.failOnError) {
                 process.exitCode = CLI_EXIT_CODES.NOTIFICATION_PUBLICATION_FAILED;
@@ -154,6 +276,12 @@ const reviewCommand = program
         } catch (error) {
             if (error instanceof GitHubActionsContextError) {
                 console.error("GitHub Actions event error. Check the pull_request event context.");
+                process.exitCode = CLI_EXIT_CODES.INVALID_ARGUMENT;
+                return;
+            }
+
+            if (error instanceof CodeUpMergeRequestContextError) {
+                console.error("CodeUp Flow event error. Check the required AICR_CODEUP_* variables.");
                 process.exitCode = CLI_EXIT_CODES.INVALID_ARGUMENT;
                 return;
             }

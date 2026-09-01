@@ -11,6 +11,10 @@ const configurationOverrideSchema = z.object({
     timeoutMs: z.number().int().positive().optional(),
     wecomEnabled: z.boolean().optional(),
     wecomFailOnError: z.boolean().optional(),
+    githubCommentEnabled: z.boolean().optional(),
+    githubCommentFailOnError: z.boolean().optional(),
+    codeUpCommentEnabled: z.boolean().optional(),
+    codeUpCommentFailOnError: z.boolean().optional(),
 }).strict();
 
 const parseBooleanEnvironmentValue = (value: string | undefined): boolean | string | undefined => {
@@ -51,6 +55,18 @@ export const resolveReviewConfiguration = (
         wecomFailOnError: parseBooleanEnvironmentValue(
             sources.environment?.WECOM_FAIL_ON_ERROR,
         ),
+        githubCommentEnabled: parseBooleanEnvironmentValue(
+            sources.environment?.GITHUB_COMMENT_ENABLED,
+        ),
+        githubCommentFailOnError: parseBooleanEnvironmentValue(
+            sources.environment?.GITHUB_COMMENT_FAIL_ON_ERROR,
+        ),
+        codeUpCommentEnabled: parseBooleanEnvironmentValue(
+            sources.environment?.CODEUP_COMMENT_ENABLED,
+        ),
+        codeUpCommentFailOnError: parseBooleanEnvironmentValue(
+            sources.environment?.CODEUP_COMMENT_FAIL_ON_ERROR,
+        ),
     });
     const cli = configurationOverrideSchema.parse(sources.cli ?? {});
     const apiKey = z.string().trim().min(1).optional().parse(
@@ -59,6 +75,12 @@ export const resolveReviewConfiguration = (
     const webhookUrl = z.string().url().optional().parse(
         sources.environment?.WECOM_WEBHOOK_URL,
     );
+    const githubAccessToken = z.string().trim().min(1).optional().parse(
+        sources.environment?.GITHUB_TOKEN,
+    );
+    const codeUpAccessToken = z.string().trim().min(1).optional().parse(
+        sources.environment?.CODEUP_TOKEN,
+    );
     const wecomEnabled = cli.wecomEnabled
         ?? environment.wecomEnabled
         ?? file.wecomEnabled
@@ -66,6 +88,22 @@ export const resolveReviewConfiguration = (
     const wecomFailOnError = cli.wecomFailOnError
         ?? environment.wecomFailOnError
         ?? file.wecomFailOnError
+        ?? false;
+    const githubCommentEnabled = cli.githubCommentEnabled
+        ?? environment.githubCommentEnabled
+        ?? file.githubCommentEnabled
+        ?? false;
+    const githubCommentFailOnError = cli.githubCommentFailOnError
+        ?? environment.githubCommentFailOnError
+        ?? file.githubCommentFailOnError
+        ?? false;
+    const codeUpCommentEnabled = cli.codeUpCommentEnabled
+        ?? environment.codeUpCommentEnabled
+        ?? file.codeUpCommentEnabled
+        ?? false;
+    const codeUpCommentFailOnError = cli.codeUpCommentFailOnError
+        ?? environment.codeUpCommentFailOnError
+        ?? file.codeUpCommentFailOnError
         ?? false;
 
     if (wecomEnabled && webhookUrl === undefined) {
@@ -93,6 +131,18 @@ export const resolveReviewConfiguration = (
                 enabled: wecomEnabled,
                 failOnError: wecomFailOnError,
                 ...(webhookUrl === undefined ? {} : { webhookUrl }),
+            },
+        },
+        comments: {
+            github: {
+                enabled: githubCommentEnabled,
+                failOnError: githubCommentFailOnError,
+                ...(githubAccessToken === undefined ? {} : { accessToken: githubAccessToken }),
+            },
+            codeup: {
+                enabled: codeUpCommentEnabled,
+                failOnError: codeUpCommentFailOnError,
+                ...(codeUpAccessToken === undefined ? {} : { accessToken: codeUpAccessToken }),
             },
         },
     };

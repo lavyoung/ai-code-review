@@ -18,6 +18,14 @@ describe("resolveReviewConfiguration", () => {
             enabled: false,
             failOnError: false,
         });
+        expect(configuration.comments.github).toEqual({
+            enabled: false,
+            failOnError: false,
+        });
+        expect(configuration.comments.codeup).toEqual({
+            enabled: false,
+            failOnError: false,
+        });
     });
 
     it("applies CLI, environment, file, and default precedence", () => {
@@ -37,6 +45,12 @@ describe("resolveReviewConfiguration", () => {
                 WECOM_ENABLED: "true",
                 WECOM_FAIL_ON_ERROR: "true",
                 WECOM_WEBHOOK_URL: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test",
+                GITHUB_COMMENT_ENABLED: "true",
+                GITHUB_COMMENT_FAIL_ON_ERROR: "true",
+                GITHUB_TOKEN: "github-test-token",
+                CODEUP_COMMENT_ENABLED: "true",
+                CODEUP_COMMENT_FAIL_ON_ERROR: "true",
+                CODEUP_TOKEN: "codeup-test-token",
             },
             cli: {
                 severityThreshold: "critical",
@@ -62,6 +76,18 @@ describe("resolveReviewConfiguration", () => {
                     enabled: true,
                     failOnError: true,
                     webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test",
+                },
+            },
+            comments: {
+                github: {
+                    enabled: true,
+                    failOnError: true,
+                    accessToken: "github-test-token",
+                },
+                codeup: {
+                    enabled: true,
+                    failOnError: true,
+                    accessToken: "codeup-test-token",
                 },
             },
         });

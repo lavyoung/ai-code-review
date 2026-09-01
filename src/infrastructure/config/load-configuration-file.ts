@@ -16,6 +16,10 @@ export interface ConfigurationFileOverride {
     timeoutMs?: number;
     wecomEnabled?: boolean;
     wecomFailOnError?: boolean;
+    githubCommentEnabled?: boolean;
+    githubCommentFailOnError?: boolean;
+    codeUpCommentEnabled?: boolean;
+    codeUpCommentFailOnError?: boolean;
 }
 
 const configurationFileSchema = z.object({
@@ -30,6 +34,16 @@ const configurationFileSchema = z.object({
     }).strict().optional(),
     notifiers: z.object({
         wecom: z.object({
+            enabled: z.boolean().optional(),
+            fail_on_error: z.boolean().optional(),
+        }).strict().optional(),
+    }).strict().optional(),
+    comments: z.object({
+        github: z.object({
+            enabled: z.boolean().optional(),
+            fail_on_error: z.boolean().optional(),
+        }).strict().optional(),
+        codeup: z.object({
             enabled: z.boolean().optional(),
             fail_on_error: z.boolean().optional(),
         }).strict().optional(),
@@ -67,5 +81,17 @@ export const loadConfigurationFile = async (
         ...(configuration.notifiers?.wecom?.fail_on_error === undefined
             ? {}
             : { wecomFailOnError: configuration.notifiers.wecom.fail_on_error }),
+        ...(configuration.comments?.github?.enabled === undefined
+            ? {}
+            : { githubCommentEnabled: configuration.comments.github.enabled }),
+        ...(configuration.comments?.github?.fail_on_error === undefined
+            ? {}
+            : { githubCommentFailOnError: configuration.comments.github.fail_on_error }),
+        ...(configuration.comments?.codeup?.enabled === undefined
+            ? {}
+            : { codeUpCommentEnabled: configuration.comments.codeup.enabled }),
+        ...(configuration.comments?.codeup?.fail_on_error === undefined
+            ? {}
+            : { codeUpCommentFailOnError: configuration.comments.codeup.fail_on_error }),
     };
 };

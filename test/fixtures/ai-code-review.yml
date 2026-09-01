@@ -12,3 +12,11 @@ notifiers:
   wecom:
     enabled: false
     fail_on_error: false
+
+comments:
+  github:
+    enabled: false
+    fail_on_error: false
+  codeup:
+    enabled: false
+    fail_on_error: false

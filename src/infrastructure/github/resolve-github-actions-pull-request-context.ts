@@ -4,7 +4,7 @@ import { z } from "zod";
 const pullRequestEventSchema = z.object({
     number: z.number().int().positive(),
     repository: z.object({
-        full_name: z.string().trim().min(1),
+        full_name: z.string().trim().regex(/^[^/]+\/[^/]+$/),
     }).passthrough(),
     pull_request: z.object({
         base: z.object({
@@ -25,6 +25,8 @@ export type GitHubEventPayloadReader = (path: string) => Promise<string>;
 export interface GitHubActionsPullRequestContext {
     pullRequestNumber: string;
     repository: string;
+    repositoryOwner: string;
+    repositoryName: string;
     baseRef: string;
     baseSha: string;
     headRef: string;
@@ -70,9 +72,16 @@ export const resolveGitHubActionsPullRequestContext = async (
     } catch {
         throw new GitHubActionsContextError("GitHub Actions pull request payload was invalid.");
     }
+    const [repositoryOwner, repositoryName] = event.repository.full_name.split("/");
+    if (repositoryOwner === undefined || repositoryName === undefined) {
+        throw new GitHubActionsContextError("GitHub Actions repository payload was invalid.");
+    }
+
     return {
         pullRequestNumber: String(event.number),
         repository: event.repository.full_name,
+        repositoryOwner,
+        repositoryName,
         baseRef: event.pull_request.base.ref,
         baseSha: event.pull_request.base.sha,
         headRef: event.pull_request.head.ref,
