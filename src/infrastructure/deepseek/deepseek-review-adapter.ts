@@ -1,13 +1,17 @@
 import { z } from "zod";
 import type { ReviewConfiguration } from "../../application/config/review-configuration.js";
 import type { AiReviewPort } from "../../application/ports/ai-review-port.js";
+import { AiReviewFailure } from "../../application/review-execution-error.js";
 import type { CodeChange } from "../../domain/review/code-change.js";
 import type {
     ReviewAnalysis,
     ReviewFinding,
 } from "../../domain/review/review-finding.js";
 import { SEVERITIES } from "../../domain/review/severity.js";
-import { isSensitiveFile } from "../../domain/review/sensitive-content-policy.js";
+import {
+    isSensitiveFile,
+    redactSensitiveValues,
+} from "../../domain/review/sensitive-content-policy.js";
 
 const DEEPSEEK_CHAT_COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
 const MAX_OUTPUT_TOKENS = 4_096;
@@ -72,10 +76,24 @@ const removeSensitiveFindingPath = (finding: ReviewFinding): ReviewFinding => {
     return safeFinding;
 };
 
+const redactSensitiveFindingValues = (finding: ReviewFinding): ReviewFinding => ({
+    ...finding,
+    title: redactSensitiveValues(finding.title).content,
+    description: redactSensitiveValues(finding.description).content,
+    ...(finding.category === undefined
+        ? {}
+        : { category: redactSensitiveValues(finding.category).content }),
+    ...(finding.suggestion === undefined
+        ? {}
+        : { suggestion: redactSensitiveValues(finding.suggestion).content }),
+});
+
 /**
  * DeepSeek Chat Completions 的结构化代码评审适配器。
  */
 export class DeepSeekReviewAdapter implements AiReviewPort {
+    public readonly provider = "deepseek" as const;
+
     /**
      * @param configuration 已解析的 DeepSeek 配置；密钥不应输出到日志。
      * @param fetchImplementation 可替换的 HTTP 实现，用于测试。
@@ -92,43 +110,90 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
      */
     public async review(codeChange: CodeChange): Promise<ReviewAnalysis> {
         if (this.configuration.apiKey === undefined) {
-            throw new Error("DeepSeek API key is required.");
+            throw new AiReviewFailure("authentication", "DeepSeek API key is required.");
         }
 
-        const response = await this.fetchImplementation(DEEPSEEK_CHAT_COMPLETIONS_URL, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${this.configuration.apiKey}`,
-            },
-            body: JSON.stringify({
-                model: this.configuration.model,
-                messages: [
-                    { role: "system", content: buildSystemPrompt() },
-                    { role: "user", content: buildUserPrompt(codeChange) },
-                ],
-                response_format: { type: "json_object" },
-                max_tokens: MAX_OUTPUT_TOKENS,
-                stream: false,
-            }),
-            signal: AbortSignal.timeout(this.configuration.timeoutMs),
-        });
+        let response: Response;
+        try {
+            response = await this.fetchImplementation(DEEPSEEK_CHAT_COMPLETIONS_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${this.configuration.apiKey}`,
+                },
+                body: JSON.stringify({
+                    model: this.configuration.model,
+                    messages: [
+                        { role: "system", content: buildSystemPrompt() },
+                        { role: "user", content: buildUserPrompt(codeChange) },
+                    ],
+                    response_format: { type: "json_object" },
+                    max_tokens: MAX_OUTPUT_TOKENS,
+                    stream: false,
+                }),
+                signal: AbortSignal.timeout(this.configuration.timeoutMs),
+            });
+        } catch (error) {
+            const failureType = error instanceof Error
+                && (error.name === "AbortError" || error.name === "TimeoutError")
+                ? "timeout"
+                : "request";
+            throw new AiReviewFailure(failureType, "DeepSeek review request failed.", error);
+        }
         if (!response.ok) {
-            throw new Error("DeepSeek review request failed.");
+            const failureType = response.status === 401 || response.status === 403
+                ? "authentication"
+                : response.status === 413
+                    ? "context-limit"
+                    : response.status === 429
+                        ? "rate-limit"
+                        : "request";
+            throw new AiReviewFailure(failureType, "DeepSeek review request failed.");
         }
 
-        const completion = chatCompletionSchema.parse(await response.json());
+        let responseBody: unknown;
+        try {
+            responseBody = await response.json();
+        } catch (error) {
+            throw new AiReviewFailure("invalid-json", "DeepSeek response was not JSON.", error);
+        }
+
+        let completion: z.infer<typeof chatCompletionSchema>;
+        try {
+            completion = chatCompletionSchema.parse(responseBody);
+        } catch (error) {
+            throw new AiReviewFailure("invalid-schema", "DeepSeek response schema was invalid.", error);
+        }
         const choice = completion.choices[0];
-        if (choice === undefined || choice.finish_reason !== "stop" || choice.message.content === null) {
-            throw new Error("DeepSeek review response was incomplete.");
+        if (choice === undefined || choice.message.content === null) {
+            throw new AiReviewFailure("incomplete-response", "DeepSeek review response was incomplete.");
+        }
+        if (choice.finish_reason === "content_filter") {
+            throw new AiReviewFailure("content-filtered", "DeepSeek review response was filtered.");
+        }
+        if (choice.finish_reason !== "stop") {
+            throw new AiReviewFailure("incomplete-response", "DeepSeek review response was incomplete.");
         }
 
-        const analysis = reviewAnalysisSchema.parse(JSON.parse(choice.message.content));
+        let output: unknown;
+        try {
+            output = JSON.parse(choice.message.content);
+        } catch (error) {
+            throw new AiReviewFailure("invalid-json", "DeepSeek review output was not JSON.", error);
+        }
+
+        let analysis: z.infer<typeof reviewAnalysisSchema>;
+        try {
+            analysis = reviewAnalysisSchema.parse(output);
+        } catch (error) {
+            throw new AiReviewFailure("invalid-schema", "DeepSeek review output schema was invalid.", error);
+        }
 
         return {
             summary: analysis.summary,
             findings: analysis.findings
                 .map(toReviewFinding)
+                .map(redactSensitiveFindingValues)
                 .map(removeSensitiveFindingPath),
         };
     }

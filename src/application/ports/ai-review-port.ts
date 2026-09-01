@@ -2,9 +2,19 @@ import type { CodeChange } from "../../domain/review/code-change.js";
 import type { ReviewAnalysis } from "../../domain/review/review-finding.js";
 
 /**
+ * 已支持或已预留的 AI 评审服务提供方。
+ */
+export type AiProvider = "deepseek" | "openai";
+
+/**
  * 调用 AI 服务生成结构化评审分析的应用端口。
  */
 export interface AiReviewPort {
+    /**
+     * 此端口实现所调用的 AI 服务提供方。
+     */
+    readonly provider: AiProvider;
+
     /**
      * 对已完成敏感内容过滤的变更执行评审。
      *

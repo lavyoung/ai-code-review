@@ -76,9 +76,18 @@ describe("DeepSeekReviewAdapter", () => {
         }), { status: 200 }));
         const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
 
-        await expect(adapter.review(codeChange)).rejects.toThrow(
-            "DeepSeek review response was incomplete.",
-        );
+        await expect(adapter.review(codeChange)).rejects.toMatchObject({
+            failureType: "incomplete-response",
+        });
+    });
+
+    it("classifies an API rate limit without exposing provider details", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(null, { status: 429 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).rejects.toMatchObject({
+            failureType: "rate-limit",
+        });
     });
 
     it("removes sensitive paths from model findings", async () => {
@@ -107,6 +116,34 @@ describe("DeepSeekReviewAdapter", () => {
                 severity: "high",
                 title: "Sensitive finding",
                 description: "A sensitive file was mentioned.",
+            }],
+        });
+    });
+
+    it("redacts sensitive values returned in model findings", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{
+                finish_reason: "stop",
+                message: {
+                    content: JSON.stringify({
+                        summary: "One issue found.",
+                        findings: [{
+                            severity: "high",
+                            title: "Authorization: Bearer exposed-token",
+                            description: "token: exposed-token",
+                        }],
+                    }),
+                },
+            }],
+        }), { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).resolves.toEqual({
+            summary: "One issue found.",
+            findings: [{
+                severity: "high",
+                title: "Authorization: Bearer [REDACTED]",
+                description: "token: [REDACTED]",
             }],
         });
     });
