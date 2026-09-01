@@ -73,7 +73,7 @@ const reviewCommand = program
     .option("--provider <provider>", "Repository provider", "local")
     .option("--target <ref>", "Target branch or commit")
     .option("--config <path>", "Configuration file path")
-    .option("--output-language <language>", "Language for AI review text")
+    .option("--output-language <bcp47-tag>", "BCP 47 language tag for AI review text")
     .action(async (options: ReviewCommandOptions) => {
         const isManualReview = options.event === "manual"
             && options.provider === "local"

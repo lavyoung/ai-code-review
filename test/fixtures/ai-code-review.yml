@@ -6,7 +6,7 @@ review:
 ai:
   provider: deepseek
   model: deepseek-v4-flash
-  output_language: Japanese
+  output_language: ja
   timeout_ms: 10000
 
 notifiers:

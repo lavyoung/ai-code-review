@@ -13,7 +13,7 @@ describe("loadConfigurationFile", () => {
                 severityThreshold: "low",
                 failOn: ["high"],
                 model: "deepseek-v4-flash",
-                outputLanguage: "Japanese",
+                outputLanguage: "ja",
                 timeoutMs: 10_000,
                 wecomEnabled: false,
                 wecomFailOnError: false,

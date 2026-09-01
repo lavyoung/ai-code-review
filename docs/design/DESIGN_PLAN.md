@@ -861,7 +861,7 @@ CodeUp、GitHub、GitLab 的事件变量和 diff 获取方式不同。平台差�
 ### 15.2 配置与变更范围
 
 - 配置优先级固定为：CLI 参数 > 环境变量 > `ai-code-review.yml` > 内置默认值。
-- 评审文本语言通过 `--output-language`、`REVIEW_OUTPUT_LANGUAGE` 或 `ai.output_language` 配置，默认 `English`；它只影响摘要、标题、说明、分类和建议文本，固定 JSON 字段名、严重级别与 Markdown 评论协议保持不变。
+- 评审文本语言通过 `--output-language`、`REVIEW_OUTPUT_LANGUAGE` 或 `ai.output_language` 配置，必须使用 BCP 47 语言标签，默认 `en`；它只影响摘要、标题、说明、分类和建议文本，固定 JSON 字段名、严重级别与 Markdown 评论协议保持不变。
 - 只评审已提交的 Git 变更：Push 使用 `beforeSha..afterSha`，MR/PR 使用 `target...source`，手动评审使用 `target...HEAD`。
 - 未提交工作区不纳入评审范围；发现未提交改动时，仅输出不包含敏感文件路径的提示。
 
@@ -930,17 +930,17 @@ steps:
 例如，以下三种方式都可将最终评审文本设为中文，优先级依次递减：
 
 ```bash
-ai-code-review review --provider local --event manual --target main --output-language Chinese
+ai-code-review review --provider local --event manual --target main --output-language zh-CN
 ```
 
 ```yaml
 env:
-  REVIEW_OUTPUT_LANGUAGE: Chinese
+  REVIEW_OUTPUT_LANGUAGE: zh-CN
 ```
 
 ```yaml
 ai:
-  output_language: Chinese
+  output_language: zh-CN
 ```
 
 CodeUp Flow 的官方内置变量提供当前代码源的分支和最新提交，但不提供 MR 编号、目标提交或版本 ID。CodeUp MR 模式通过 API 自动定位唯一的打开 MR，再从其版本列表获取源/目标 SHA 与 `patchSetBizId`，命令为 `ai-code-review review --provider codeup --event merge-request`：

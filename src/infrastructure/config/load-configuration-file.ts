@@ -5,6 +5,7 @@ import {
     SEVERITIES,
     type Severity,
 } from "../../domain/review/severity.js";
+import { canonicalizeOutputLanguage } from "../../application/config/output-language.js";
 
 /**
  * 配置文件经校验后转换出的扁平覆盖项。
@@ -31,7 +32,15 @@ const configurationFileSchema = z.object({
     ai: z.object({
         provider: z.literal("deepseek").optional(),
         model: z.string().trim().min(1).optional(),
-        output_language: z.string().trim().min(1).max(64).refine((value) => !/[\r\n]/u.test(value)).optional(),
+        output_language: z.string().trim().min(1).max(64)
+            .transform((value, context) => {
+                try {
+                    return canonicalizeOutputLanguage(value);
+                } catch {
+                    context.addIssue({ code: "custom", message: "Expected a BCP 47 language tag." });
+                    return z.NEVER;
+                }
+            }).optional(),
         timeout_ms: z.number().int().positive().optional(),
     }).strict().optional(),
     notifiers: z.object({
