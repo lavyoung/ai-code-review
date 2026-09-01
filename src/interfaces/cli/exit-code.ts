@@ -1,4 +1,4 @@
-import type { AiReviewFailureType } from "../../application/review-execution-error.js";
+import type { AiReviewFailureType } from "../../application/review/errors/review-execution-error.js";
 
 /**
  * CLI 对 CI 与调用方公开的稳定进程退出码。
