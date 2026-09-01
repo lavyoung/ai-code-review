@@ -53,11 +53,27 @@ When no actionable issue is found, return {"summary":"No actionable issues found
 const buildUserPrompt = (codeChange: CodeChange): string => `Review this committed code diff.\n\n<diff>\n${codeChange.diff}\n</diff>`;
 
 /** 移除偶发的 Markdown JSON 包装，不记录模型原始输出。 */
-const unwrapJsonCodeFence = (content: string): string => {
+const unwrapJsonCodeFence = (content: string): { content: string; wasCodeFenced: boolean } => {
     const trimmed = content.trim();
-    const match = /^```json\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+    const match = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
 
-    return match?.[1] ?? trimmed;
+    return {
+        content: match?.[1] ?? trimmed,
+        wasCodeFenced: match !== null,
+    };
+};
+
+/** 仅输出 JSON 解析所需的安全元数据，不输出模型原文。 */
+const describeOutputShape = (content: string): string => {
+    if (content.startsWith("{")) {
+        return "object";
+    }
+
+    if (content.startsWith("[")) {
+        return "array";
+    }
+
+    return "other";
 };
 
 const toReviewFinding = (
@@ -187,7 +203,8 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
             throw new AiReviewFailure("incomplete-response", "DeepSeek review response was incomplete.");
         }
 
-        const content = unwrapJsonCodeFence(choice.message.content);
+        const normalizedOutput = unwrapJsonCodeFence(choice.message.content);
+        const { content } = normalizedOutput;
         if (content.length === 0) {
             throw new AiReviewFailure("incomplete-response", "DeepSeek review response was incomplete.");
         }
@@ -195,8 +212,11 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
         let output: unknown;
         try {
             output = JSON.parse(content);
-        } catch (error) {
-            throw new AiReviewFailure("invalid-json", "DeepSeek review output was not JSON.", error);
+        } catch {
+            throw new AiReviewFailure(
+                "invalid-json",
+                `DeepSeek review output was not valid JSON (length=${content.length}, shape=${describeOutputShape(content)}, codeFence=${normalizedOutput.wasCodeFenced}).`,
+            );
         }
 
         let analysis: z.infer<typeof reviewAnalysisSchema>;

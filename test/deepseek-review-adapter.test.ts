@@ -96,6 +96,21 @@ describe("DeepSeekReviewAdapter", () => {
         });
     });
 
+    it("accepts a JSON result wrapped in an unlabelled code fence", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{
+                finish_reason: "stop",
+                message: { content: "```\n{\"summary\":\"No issues.\",\"findings\":[]}\n```" },
+            }],
+        }), { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).resolves.toEqual({
+            summary: "No issues.",
+            findings: [],
+        });
+    });
+
     it("classifies an empty JSON-mode response as incomplete", async () => {
         const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
             choices: [{ finish_reason: "stop", message: { content: "   " } }],
@@ -104,6 +119,18 @@ describe("DeepSeekReviewAdapter", () => {
 
         await expect(adapter.review(codeChange)).rejects.toMatchObject({
             failureType: "incomplete-response",
+        });
+    });
+
+    it("reports only safe metadata for malformed JSON output", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{ finish_reason: "stop", message: { content: "not-json" } }],
+        }), { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).rejects.toMatchObject({
+            failureType: "invalid-json",
+            message: "DeepSeek review output was not valid JSON (length=8, shape=other, codeFence=false).",
         });
     });
 

@@ -13,6 +13,7 @@ import { createSummaryReviewComment } from "../../application/create-summary-rev
 import { publishReviewCommentUseCase } from "../../application/publish-review-comment-use-case.js";
 import { createReviewCommentId } from "../../domain/review/review-comment.js";
 import {
+    AiReviewFailure,
     AiReviewExecutionError,
     DiffResolutionError,
 } from "../../application/review-execution-error.js";
@@ -279,6 +280,9 @@ const reviewCommand = program
 
             if (error instanceof AiReviewExecutionError) {
                 console.error("AI review error. Check the DeepSeek configuration and service status.");
+                if (error.cause instanceof AiReviewFailure) {
+                    console.error(`AI diagnostic: ${error.cause.message}`);
+                }
                 process.exitCode = getAiReviewFailureExitCode(error.failureType);
                 return;
             }
