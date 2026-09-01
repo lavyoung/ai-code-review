@@ -178,6 +178,10 @@ on:
   pull_request:
     types: [opened, reopened, synchronize]
 
+concurrency:
+  group: ai-code-review-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   issues: write
@@ -201,6 +205,8 @@ jobs:
 ```
 
 将 `<trusted-commit-sha>` 替换为已审核的完整提交 SHA。发布不可变版本标签后也可以使用标签引用；完整 SHA 更适合生产环境。调用方在仓库 Secret 中配置 `DEEPSEEK_API_KEY`，`GITHUB_TOKEN` 由 Action 自动使用。
+
+建议保留上面的 `concurrency` 配置：同一 PR 新提交会取消旧评审。Action 发布评论前还会校验 PR 当前 `head SHA`；若运行已过期，会显示为 `skipped`，不会覆盖新版本的摘要评论。
 
 若本仓库为私有仓库，还需在 `ai-code-review` 仓库的 **Settings → Actions → General → Access** 中允许同一用户或组织下的私有仓库访问。外部仓库协作者可查看运行日志，因此不要在日志、评论或模型输入中输出密钥。
 

@@ -8,8 +8,18 @@ import type { SummaryReviewComment } from "../../../domain/review/model/review-c
 export const createSummaryReviewComment = (
     reviewId: string,
     markdown: string,
-): SummaryReviewComment => ({
-    type: "summary",
-    reviewId,
-    body: `<!-- ai-code-review:review-id=${reviewId} -->\n\n${markdown}`,
-});
+    revision?: string,
+): SummaryReviewComment => {
+    const normalizedRevision = revision?.trim();
+    if (normalizedRevision !== undefined
+        && (normalizedRevision.length === 0 || normalizedRevision.includes("\n") || normalizedRevision.includes("\r") || normalizedRevision.includes("-->"))) {
+        throw new Error("Review comment revision is invalid.");
+    }
+
+    return {
+        type: "summary",
+        reviewId,
+        ...(normalizedRevision === undefined ? {} : { revision: normalizedRevision }),
+        body: `<!-- ai-code-review:review-id=${reviewId} -->${normalizedRevision === undefined ? "" : `\n<!-- ai-code-review:revision=${normalizedRevision} -->`}\n\n${markdown}`,
+    };
+};

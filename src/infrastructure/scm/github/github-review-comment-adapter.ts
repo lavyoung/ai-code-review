@@ -19,6 +19,10 @@ interface GitHubIssueComment {
     body?: unknown;
 }
 
+interface GitHubPullRequest {
+    head?: { sha?: unknown };
+}
+
 const GITHUB_API_VERSION = "2026-03-10";
 const PAGE_SIZE = 100;
 
@@ -36,20 +40,29 @@ export class GitHubReviewCommentAdapter implements ReviewCommentPort {
      *
      * @throws GitHub 请求或响应无效时抛出不含 Token、地址或评论内容的错误。
      */
-    public async upsertSummary(comment: SummaryReviewComment): Promise<void> {
+    public async upsertSummary(comment: SummaryReviewComment): Promise<"delivered" | "skipped"> {
+        if (comment.revision !== undefined && !await this.isCurrentRevision(comment.revision)) {
+            return "skipped";
+        }
         const existingCommentId = await this.findCommentId(comment.reviewId);
 
         if (existingCommentId === undefined) {
             await this.createComment(comment.body);
-            return;
+            return "delivered";
         }
 
         await this.updateComment(existingCommentId, comment.body);
+        return "delivered";
     }
 
     private get pullRequestPath(): string {
         const { owner, repository, pullRequestNumber } = this.configuration;
         return `/repos/${toPathSegment(owner)}/${toPathSegment(repository)}/issues/${toPathSegment(pullRequestNumber)}`;
+    }
+
+    private get pullRequestApiPath(): string {
+        const { owner, repository, pullRequestNumber } = this.configuration;
+        return `/repos/${toPathSegment(owner)}/${toPathSegment(repository)}/pulls/${toPathSegment(pullRequestNumber)}`;
     }
 
     private async findCommentId(reviewId: string): Promise<string | undefined> {
@@ -88,6 +101,18 @@ export class GitHubReviewCommentAdapter implements ReviewCommentPort {
                 return undefined;
             }
         }
+    }
+
+    /** 发布前确认事件中的 head SHA 仍是 PR 当前版本，防止旧工作流覆盖新结果。 */
+    private async isCurrentRevision(revision: string): Promise<boolean> {
+        const response = await this.request(this.pullRequestApiPath, { method: "GET" });
+        const payload = await this.readJson(response);
+        if (typeof payload !== "object" || payload === null) {
+            throw new Error("GitHub pull request response was invalid.");
+        }
+
+        const pullRequest = payload as GitHubPullRequest;
+        return typeof pullRequest.head?.sha === "string" && pullRequest.head.sha === revision;
     }
 
     private async createComment(body: string): Promise<void> {

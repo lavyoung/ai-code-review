@@ -245,6 +245,7 @@ const reviewCommand = program
                             result,
                             ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
                         }),
+                        githubContext.headSha,
                     ),
                     createGitHubReviewCommentPort(
                         githubContext,
@@ -269,6 +270,7 @@ const reviewCommand = program
                             result,
                             ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
                         }),
+                        codeUpContext.headSha,
                     ),
                     createCodeUpReviewCommentPort(codeUpContext, configuration.comments.codeup.accessToken),
                 )

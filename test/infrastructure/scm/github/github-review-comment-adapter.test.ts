@@ -71,6 +71,21 @@ describe("GitHubReviewCommentAdapter", () => {
         );
     });
 
+    it("skips publication when the workflow revision is no longer the PR head", async () => {
+        const send = vi.fn<typeof fetch>().mockResolvedValue(
+            new Response(JSON.stringify({ head: { sha: "newer-sha" } }), { status: 200 }),
+        );
+        const adapter = new GitHubReviewCommentAdapter(configuration, send);
+
+        await expect(adapter.upsertSummary({ ...comment, revision: "older-sha" }))
+            .resolves.toBe("skipped");
+        expect(send).toHaveBeenCalledTimes(1);
+        expect(send).toHaveBeenCalledWith(
+            "https://github.example.test/api/v3/repos/octo-org/example-repository/pulls/42",
+            expect.objectContaining({ method: "GET" }),
+        );
+    });
+
     it("rejects a failed GitHub request without exposing sensitive configuration", async () => {
         const send = vi.fn<typeof fetch>().mockResolvedValue(new Response("failure", { status: 401 }));
         const adapter = new GitHubReviewCommentAdapter(configuration, send);

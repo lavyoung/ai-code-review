@@ -35,15 +35,16 @@ export class CodeUpReviewCommentAdapter implements ReviewCommentPort {
      *
      * @throws CodeUp 请求或响应无效时抛出不含 Token、地址或评论内容的错误。
      */
-    public async upsertSummary(comment: SummaryReviewComment): Promise<void> {
+    public async upsertSummary(comment: SummaryReviewComment): Promise<"delivered"> {
         const existingCommentId = await this.findCommentId(comment.reviewId);
 
         if (existingCommentId === undefined) {
             await this.createComment(comment.body);
-            return;
+            return "delivered";
         }
 
         await this.updateComment(existingCommentId, comment.body);
+        return "delivered";
     }
 
     private get changeRequestPath(): string {

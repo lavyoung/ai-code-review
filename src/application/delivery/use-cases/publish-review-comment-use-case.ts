@@ -3,7 +3,7 @@ import type { ReviewCommentPort } from "../ports/review-comment-port.js";
 
 /** 可安全出现在 CI 日志中的摘要评论发布结果。 */
 export interface ReviewCommentPublication {
-    status: "delivered" | "failed";
+    status: "delivered" | "failed" | "skipped";
 }
 
 /**
@@ -16,8 +16,8 @@ export const publishReviewCommentUseCase = async (
     publisher: ReviewCommentPort,
 ): Promise<ReviewCommentPublication> => {
     try {
-        await publisher.upsertSummary(comment);
-        return { status: "delivered" };
+        const result = await publisher.upsertSummary(comment);
+        return { status: result === "skipped" ? "skipped" : "delivered" };
     } catch {
         return { status: "failed" };
     }

@@ -6,5 +6,5 @@ import type { SummaryReviewComment } from "../../../domain/review/model/review-c
  * 适配器负责按 reviewId 查找既有评论并更新；不存在时才创建。
  */
 export interface ReviewCommentPort {
-    upsertSummary(comment: SummaryReviewComment): Promise<void>;
+    upsertSummary(comment: SummaryReviewComment): Promise<"delivered" | "skipped">;
 }

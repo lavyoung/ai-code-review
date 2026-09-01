@@ -4,6 +4,7 @@
 export interface SummaryReviewComment {
     type: "summary";
     reviewId: string;
+    revision?: string;
     body: string;
 }
 
