@@ -13,7 +13,13 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * 执行 Git 命令的基础设施协作者，便于隔离系统进程并进行单元测试。
+ */
 export interface GitCommandRunner {
+    /**
+     * 执行不经 Shell 解释的 Git 参数列表。
+     */
     run(arguments_: readonly string[]): Promise<string>;
 }
 
@@ -85,13 +91,23 @@ const parseChangedFiles = (output: string): ChangedFile[] => {
     return files;
 };
 
+/**
+ * 基于本地 Git 仓库生成安全代码变更的适配器。
+ */
 export class LocalGitDiffProvider implements DiffProvider {
     private readonly runner: GitCommandRunner;
 
+    /**
+     * @param cwd 本地 Git 仓库工作目录。
+     * @param runner Git 命令执行器；默认使用系统 Git。
+     */
     public constructor(cwd: string, runner: GitCommandRunner = createGitCommandRunner(cwd)) {
         this.runner = runner;
     }
 
+    /**
+     * 获取范围内的变更，并在返回前排除敏感文件和脱敏文本。
+     */
     public async getCodeChange(range: DiffRange): Promise<CodeChange> {
         const rangeNotation = toRangeNotation(range);
         const nameStatus = await this.runner.run([

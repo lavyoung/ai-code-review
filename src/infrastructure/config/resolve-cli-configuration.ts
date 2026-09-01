@@ -1,10 +1,13 @@
 import { resolve } from "node:path";
-import type { ReviewConfiguration } from "../../domain/review/review-configuration.js";
+import type { ReviewConfiguration } from "../../application/config/review-configuration.js";
 import { loadConfigurationFile } from "./load-configuration-file.js";
 import { resolveReviewConfiguration } from "./resolve-review-configuration.js";
 
 const DEFAULT_CONFIGURATION_FILE = "ai-code-review.yml";
 
+/**
+ * CLI 配置解析使用的外部输入源。
+ */
 export interface CliConfigurationSources {
     configurationPath?: string;
     cwd?: string;
@@ -18,6 +21,11 @@ const isMissingFileError = (error: unknown): boolean =>
     && "code" in error
     && error.code === "ENOENT";
 
+/**
+ * 按 CLI、环境变量、配置文件、默认值的优先级解析评审配置。
+ *
+ * 未显式指定配置文件时，默认文件不存在不会报错；显式路径则必须可读取且合法。
+ */
 export const resolveCliConfiguration = async (
     sources: CliConfigurationSources = {},
 ): Promise<ReviewConfiguration> => {

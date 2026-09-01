@@ -4,8 +4,11 @@ import { z } from "zod";
 import {
     SEVERITIES,
     type Severity,
-} from "../../domain/review/review-configuration.js";
+} from "../../domain/review/severity.js";
 
+/**
+ * 配置文件经校验后转换出的扁平覆盖项。
+ */
 export interface ConfigurationFileOverride {
     severityThreshold?: Severity;
     failOn?: Severity[];
@@ -25,6 +28,12 @@ const configurationFileSchema = z.object({
     }).strict().optional(),
 }).strict();
 
+/**
+ * 读取并校验 YAML 配置文件，再转换为内部覆盖项。
+ *
+ * @param path 配置文件路径。
+ * @returns 可参与配置优先级合并的覆盖项。
+ */
 export const loadConfigurationFile = async (
     path: string,
 ): Promise<ConfigurationFileOverride> => {

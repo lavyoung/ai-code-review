@@ -30,15 +30,24 @@ const isSensitivePath = (path: string): boolean => {
     return sensitivePathPatterns.some((pattern) => pattern.test(normalizedPath));
 };
 
+/**
+ * 判断文件路径（含重命名前的路径）是否应从评审上下文中排除。
+ */
 export const isSensitiveFile = (file: ChangedFile): boolean =>
     isSensitivePath(file.path)
     || (file.previousPath !== undefined && isSensitivePath(file.previousPath));
 
+/**
+ * 文本脱敏结果及本次替换次数。
+ */
 export interface RedactedContent {
     content: string;
     redactedValueCount: number;
 }
 
+/**
+ * 对可进入评审上下文的文本执行值级别脱敏。
+ */
 export const redactSensitiveValues = (content: string): RedactedContent => {
     let redactedValueCount = 0;
     let redactedContent = content;

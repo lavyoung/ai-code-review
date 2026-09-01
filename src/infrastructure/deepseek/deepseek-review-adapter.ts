@@ -1,7 +1,7 @@
 import { z } from "zod";
+import type { ReviewConfiguration } from "../../application/config/review-configuration.js";
 import type { AiReviewPort } from "../../application/ports/ai-review-port.js";
 import type { CodeChange } from "../../domain/review/code-change.js";
-import type { ReviewConfiguration } from "../../domain/review/review-configuration.js";
 import type {
     ReviewAnalysis,
     ReviewFinding,
@@ -72,12 +72,24 @@ const removeSensitiveFindingPath = (finding: ReviewFinding): ReviewFinding => {
     return safeFinding;
 };
 
+/**
+ * DeepSeek Chat Completions 的结构化代码评审适配器。
+ */
 export class DeepSeekReviewAdapter implements AiReviewPort {
+    /**
+     * @param configuration 已解析的 DeepSeek 配置；密钥不应输出到日志。
+     * @param fetchImplementation 可替换的 HTTP 实现，用于测试。
+     */
     public constructor(
         private readonly configuration: ReviewConfiguration["ai"],
         private readonly fetchImplementation: typeof fetch = fetch,
     ) {}
 
+    /**
+     * 调用 DeepSeek JSON Output，并验证、清理返回的评审发现项。
+     *
+     * @throws API Key 缺失、请求失败、响应不完整或结构不合法时抛出异常。
+     */
     public async review(codeChange: CodeChange): Promise<ReviewAnalysis> {
         if (this.configuration.apiKey === undefined) {
             throw new Error("DeepSeek API key is required.");
