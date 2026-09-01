@@ -28,6 +28,10 @@ export interface ReviewConfiguration {
             enabled: boolean;
             timeoutMs: number;
         };
+        sarif: {
+            enabled: boolean;
+            reportPath?: string;
+        };
     };
     notifications: {
         wecom: {

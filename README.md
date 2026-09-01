@@ -142,6 +142,19 @@ ai-code-review review --provider local --event manual --target main --typescript
 
 启用它的仓库必须提供可用的 `tsconfig.json`；配置不可读取或 TypeScript 无法生成文件诊断时，该必需分析器将以退出码 `104` 失败，避免错误地将检查失效视为“没有问题”。
 
+## SARIF 确定性检查
+
+已生成 SARIF 2.1.0 报告的工具（如 CodeQL、Semgrep 或 ESLint 的 SARIF 输出）可通过本地文件接入。报告中的结果同样只在其位置对应本次新增 diff 行时才发布，并会标记为 `verified`：
+
+```yaml
+analyzers:
+  sarif:
+    enabled: true
+    report_path: reports/review.sarif
+```
+
+也可使用 `SARIF_ANALYZER_ENABLED=true`、`SARIF_REPORT_PATH=reports/review.sarif`，或 `--sarif-enabled true --sarif-report reports/review.sarif`。启用时报告必须在评审命令之前生成；缺失或不符合 SARIF 2.1.0 的报告会使必需分析器以退出码 `104` 失败。
+
 ## 在其他 GitHub 仓库中使用
 
 本项目提供 GitHub Composite Action。调用方必须先 checkout PR 的完整 Git 历史，并为工作流授予最小必要权限：

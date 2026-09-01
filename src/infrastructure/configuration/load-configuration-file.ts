@@ -21,6 +21,8 @@ export interface ConfigurationFileOverride {
     maxAiRequestCount?: number;
     typeScriptEnabled?: boolean;
     typeScriptTimeoutMs?: number;
+    sarifEnabled?: boolean;
+    sarifReportPath?: string;
     wecomEnabled?: boolean;
     wecomFailOnError?: boolean;
     githubCommentEnabled?: boolean;
@@ -57,6 +59,10 @@ const configurationFileSchema = z.object({
         typescript: z.object({
             enabled: z.boolean().optional(),
             timeout_ms: z.number().int().positive().optional(),
+        }).strict().optional(),
+        sarif: z.object({
+            enabled: z.boolean().optional(),
+            report_path: z.string().trim().min(1).optional(),
         }).strict().optional(),
     }).strict().optional(),
     notifiers: z.object({
@@ -120,6 +126,12 @@ export const loadConfigurationFile = async (
         ...(configuration.analyzers?.typescript?.timeout_ms === undefined
             ? {}
             : { typeScriptTimeoutMs: configuration.analyzers.typescript.timeout_ms }),
+        ...(configuration.analyzers?.sarif?.enabled === undefined
+            ? {}
+            : { sarifEnabled: configuration.analyzers.sarif.enabled }),
+        ...(configuration.analyzers?.sarif?.report_path === undefined
+            ? {}
+            : { sarifReportPath: configuration.analyzers.sarif.report_path }),
         ...(configuration.notifiers?.wecom?.enabled === undefined
             ? {}
             : { wecomEnabled: configuration.notifiers.wecom.enabled }),

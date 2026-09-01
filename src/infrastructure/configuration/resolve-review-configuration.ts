@@ -29,6 +29,8 @@ const configurationOverrideSchema = z.object({
     maxAiRequestCount: z.number().int().positive().optional(),
     typeScriptEnabled: z.boolean().optional(),
     typeScriptTimeoutMs: z.number().int().positive().optional(),
+    sarifEnabled: z.boolean().optional(),
+    sarifReportPath: z.string().trim().min(1).optional(),
     wecomEnabled: z.boolean().optional(),
     wecomFailOnError: z.boolean().optional(),
     githubCommentEnabled: z.boolean().optional(),
@@ -92,6 +94,8 @@ export const resolveReviewConfiguration = (
         typeScriptTimeoutMs: sources.environment?.TYPESCRIPT_ANALYZER_TIMEOUT_MS === undefined
             ? undefined
             : Number(sources.environment.TYPESCRIPT_ANALYZER_TIMEOUT_MS),
+        sarifEnabled: parseBooleanEnvironmentValue(sources.environment?.SARIF_ANALYZER_ENABLED),
+        sarifReportPath: sources.environment?.SARIF_REPORT_PATH,
         wecomEnabled: parseBooleanEnvironmentValue(sources.environment?.WECOM_ENABLED),
         wecomFailOnError: parseBooleanEnvironmentValue(
             sources.environment?.WECOM_FAIL_ON_ERROR,
@@ -196,6 +200,12 @@ export const resolveReviewConfiguration = (
                     ?? environment.typeScriptTimeoutMs
                     ?? file.typeScriptTimeoutMs
                     ?? 120_000,
+            },
+            sarif: {
+                enabled: cli.sarifEnabled ?? environment.sarifEnabled ?? file.sarifEnabled ?? false,
+                ...(cli.sarifReportPath ?? environment.sarifReportPath ?? file.sarifReportPath === undefined
+                    ? {}
+                    : { reportPath: cli.sarifReportPath ?? environment.sarifReportPath ?? file.sarifReportPath }),
             },
         },
         notifications: {

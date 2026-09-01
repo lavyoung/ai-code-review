@@ -1,0 +1,26 @@
+{
+  "version": "2.1.0",
+  "runs": [{
+    "results": [{
+      "ruleId": "no-eval",
+      "level": "error",
+      "message": { "text": "Avoid eval with token: sk-example-secret" },
+      "locations": [{
+        "physicalLocation": {
+          "artifactLocation": { "uri": "src/example.ts" },
+          "region": { "startLine": 4 }
+        }
+      }]
+    }, {
+      "ruleId": "old-warning",
+      "level": "warning",
+      "message": { "text": "Historical warning" },
+      "locations": [{
+        "physicalLocation": {
+          "artifactLocation": { "uri": "src/example.ts" },
+          "region": { "startLine": 2 }
+        }
+      }]
+    }]
+  }]
+}

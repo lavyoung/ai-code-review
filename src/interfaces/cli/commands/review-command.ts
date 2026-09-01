@@ -46,6 +46,8 @@ interface ReviewCommandOptions {
     maxAnalyzerConcurrency?: number;
     maxAiRequestCount?: number;
     typescriptEnabled?: boolean;
+    sarifEnabled?: boolean;
+    sarifReport?: string;
 }
 
 const parseReviewEventType = (value: string): ReviewEventType => {
@@ -93,6 +95,9 @@ const reviewCommand = program
         parsePositiveInteger(value, "--max-ai-request-count"))
     .option("--typescript-enabled <true|false>", "Enable the local TypeScript analyzer", (value) =>
         parseBoolean(value, "--typescript-enabled"))
+    .option("--sarif-enabled <true|false>", "Enable the local SARIF analyzer", (value) =>
+        parseBoolean(value, "--sarif-enabled"))
+    .option("--sarif-report <path>", "Path to a SARIF 2.1.0 report")
     .action(async (options: ReviewCommandOptions) => {
         const isManualReview = options.event === "manual"
             && options.provider === "local"
@@ -132,6 +137,8 @@ const reviewCommand = program
                     ...(options.typescriptEnabled === undefined
                         ? {}
                         : { typeScriptEnabled: options.typescriptEnabled }),
+                    ...(options.sarifEnabled === undefined ? {} : { sarifEnabled: options.sarifEnabled }),
+                    ...(options.sarifReport === undefined ? {} : { sarifReportPath: options.sarifReport }),
                 },
             });
         } catch {

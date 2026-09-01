@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
 import type { ReviewCandidate } from "../../../domain/review/model/review-candidate.js";
+import { findAddedLineEvidence } from "../../../domain/review/policy/find-added-line-evidence.js";
 import {
     redactSensitiveFilePaths,
     redactSensitiveValues,
@@ -108,33 +109,6 @@ const parseDiagnostics = (output: string): ParsedDiagnostic[] => output.split(/\
         return [{ file, line: Number(lineNumber), code, message }];
     });
 
-const findAddedLineEvidence = (content: string, targetLine: number): string | undefined => {
-    let currentLine: number | undefined;
-
-    for (const line of content.split("\n")) {
-        const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-        if (hunk !== null) {
-            currentLine = Number(hunk[1]);
-            continue;
-        }
-
-        if (currentLine === undefined || line.startsWith("-")) {
-            continue;
-        }
-
-        const isAddedLine = line.startsWith("+");
-        if (isAddedLine && currentLine === targetLine) {
-            return line;
-        }
-
-        if (isAddedLine || line.startsWith(" ")) {
-            currentLine += 1;
-        }
-    }
-
-    return undefined;
-};
-
 /**
  * 将 TypeScript 编译器的本地诊断转换为当前变更中新增行的确定性发现项。
  *
@@ -164,11 +138,8 @@ export class TypeScriptReviewAnalyzer implements ReviewAnalyzer {
                 return [];
             }
 
-            const locatedEvidence = request.codeChange.chunks
-                .filter((candidate) => candidate.path === file)
-                .map((chunk) => ({ chunk, evidence: findAddedLineEvidence(chunk.content, diagnostic.line) }))
-                .find((candidate) => candidate.evidence !== undefined);
-            if (locatedEvidence === undefined || locatedEvidence.evidence === undefined) {
+            const locatedEvidence = findAddedLineEvidence(request.codeChange, file, diagnostic.line);
+            if (locatedEvidence === undefined) {
                 return [];
             }
 

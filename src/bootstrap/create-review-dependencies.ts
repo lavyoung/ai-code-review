@@ -1,6 +1,7 @@
 import type { ReviewConfiguration } from "../application/configuration/review-configuration.js";
 import { DeepSeekReviewAdapter } from "../infrastructure/ai/deepseek/deepseek-review-adapter.js";
 import { TypeScriptReviewAnalyzer } from "../infrastructure/analyzers/typescript/typescript-review-analyzer.js";
+import { SarifReviewAnalyzer } from "../infrastructure/analyzers/sarif/sarif-review-analyzer.js";
 import { StaticReviewAnalyzerRegistry } from "../application/review/orchestration/static-review-analyzer-registry.js";
 import { deterministicAnalyzerFindingVerifier } from "../application/review/verification/deterministic-analyzer-finding-verifier.js";
 import { resolveCliConfiguration } from "../infrastructure/configuration/resolve-cli-configuration.js";
@@ -33,9 +34,13 @@ export const createReviewDependencies = (
 ) => {
     const deepSeekAnalyzer = new DeepSeekReviewAdapter(configuration.ai);
     const typeScriptAnalyzer = new TypeScriptReviewAnalyzer(workingDirectory);
-    const analyzers = configuration.analyzers.typescript.enabled
-        ? [deepSeekAnalyzer, typeScriptAnalyzer]
-        : [deepSeekAnalyzer];
+    const sarifAnalyzer = configuration.analyzers.sarif.enabled && configuration.analyzers.sarif.reportPath !== undefined
+        ? new SarifReviewAnalyzer(workingDirectory, configuration.analyzers.sarif.reportPath)
+        : undefined;
+    if (configuration.analyzers.sarif.enabled && sarifAnalyzer === undefined) {
+        throw new Error("SARIF report path must be configured when the SARIF analyzer is enabled.");
+    }
+    const analyzers = [deepSeekAnalyzer, ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer])];
     const analyzerPlans = [{
         analyzerId: deepSeekAnalyzer.identity.id,
         required: true,
@@ -49,6 +54,9 @@ export const createReviewDependencies = (
             failureMode: "fail" as const,
         }]
         : [])];
+    if (sarifAnalyzer !== undefined) {
+        analyzerPlans.push({ analyzerId: sarifAnalyzer.identity.id, required: true, timeoutMs: 60_000, failureMode: "fail" });
+    }
 
     return {
         diffProvider: new LocalGitDiffProvider(workingDirectory),
