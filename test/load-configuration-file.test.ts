@@ -14,6 +14,8 @@ describe("loadConfigurationFile", () => {
                 failOn: ["high"],
                 model: "deepseek-v4-flash",
                 timeoutMs: 10_000,
+                wecomEnabled: false,
+                wecomFailOnError: false,
             });
     });
 

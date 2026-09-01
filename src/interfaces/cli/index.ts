@@ -4,7 +4,7 @@ import {
     isReviewEventType,
     type ReviewEventType,
 } from "../../domain/review/review-event.js";
-import { redactReviewConfiguration } from "./redact-review-configuration.js";
+import { renderManualReviewReport } from "./render-manual-review-report.js";
 import { resolveCliConfiguration } from "../../infrastructure/config/resolve-cli-configuration.js";
 import { runManualReviewUseCase } from "../../application/run-manual-review-use-case.js";
 import {
@@ -13,6 +13,8 @@ import {
 } from "../../application/review-execution-error.js";
 import { DeepSeekReviewAdapter } from "../../infrastructure/deepseek/deepseek-review-adapter.js";
 import { LocalGitDiffProvider } from "../../infrastructure/git/local-git-diff-provider.js";
+import { WeComNotifier } from "../../infrastructure/notifiers/wecom-notifier.js";
+import { publishNotificationUseCase } from "../../application/publish-notification-use-case.js";
 import {
     CLI_EXIT_CODES,
     getAiReviewFailureExitCode,
@@ -88,22 +90,32 @@ const reviewCommand = program
                 aiReviewPort: new DeepSeekReviewAdapter(configuration.ai),
             });
 
-            console.log(JSON.stringify({
-                ...options,
-                configuration: redactReviewConfiguration(configuration),
-                change: {
-                    hasChanges: result.codeChange.diff.length > 0,
-                    changedFileCount: result.codeChange.files.length,
-                    excludedFileCount: result.codeChange.excludedFileCount,
-                    redactedValueCount: result.codeChange.redactedValueCount,
-                },
-                review: {
-                    summary: result.analysis.summary,
-                    findings: result.analysis.findings,
-                    highestSeverity: result.policy.highestSeverity,
-                    shouldFail: result.policy.shouldFail,
-                },
-            }, null, 2));
+            const report = renderManualReviewReport({
+                target: options.target,
+                result,
+                ...(configuration.notifications.wecom.enabled
+                    ? { wecomDelivery: { status: "pending" as const } }
+                    : {}),
+            });
+            const webhookUrl = configuration.notifications.wecom.webhookUrl;
+            const wecomDelivery = configuration.notifications.wecom.enabled && webhookUrl !== undefined
+                ? await publishNotificationUseCase(
+                    { markdown: report },
+                    new WeComNotifier(webhookUrl),
+                )
+                : undefined;
+
+            console.log(renderManualReviewReport({
+                target: options.target,
+                result,
+                ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
+            }));
+
+            if (wecomDelivery?.status === "failed" && configuration.notifications.wecom.failOnError) {
+                process.exitCode = CLI_EXIT_CODES.NOTIFICATION_PUBLICATION_FAILED;
+                return;
+            }
+
             process.exitCode = result.policy.shouldFail
                 ? CLI_EXIT_CODES.QUALITY_GATE_FAILED
                 : CLI_EXIT_CODES.SUCCESS;

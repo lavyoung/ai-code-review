@@ -10,6 +10,7 @@ import type {
 import { SEVERITIES } from "../../domain/review/severity.js";
 import {
     isSensitiveFile,
+    redactSensitiveFilePaths,
     redactSensitiveValues,
 } from "../../domain/review/sensitive-content-policy.js";
 
@@ -76,16 +77,19 @@ const removeSensitiveFindingPath = (finding: ReviewFinding): ReviewFinding => {
     return safeFinding;
 };
 
+const redactFindingText = (value: string): string =>
+    redactSensitiveFilePaths(redactSensitiveValues(value).content);
+
 const redactSensitiveFindingValues = (finding: ReviewFinding): ReviewFinding => ({
     ...finding,
-    title: redactSensitiveValues(finding.title).content,
-    description: redactSensitiveValues(finding.description).content,
+    title: redactFindingText(finding.title),
+    description: redactFindingText(finding.description),
     ...(finding.category === undefined
         ? {}
-        : { category: redactSensitiveValues(finding.category).content }),
+        : { category: redactFindingText(finding.category) }),
     ...(finding.suggestion === undefined
         ? {}
-        : { suggestion: redactSensitiveValues(finding.suggestion).content }),
+        : { suggestion: redactFindingText(finding.suggestion) }),
 });
 
 /**

@@ -14,6 +14,10 @@ describe("resolveReviewConfiguration", () => {
             model: "deepseek-v4-flash",
             timeoutMs: 30_000,
         });
+        expect(configuration.notifications.wecom).toEqual({
+            enabled: false,
+            failOnError: false,
+        });
     });
 
     it("applies CLI, environment, file, and default precedence", () => {
@@ -30,6 +34,9 @@ describe("resolveReviewConfiguration", () => {
                 DEEPSEEK_MODEL: "environment-model",
                 DEEPSEEK_TIMEOUT_MS: "20000",
                 DEEPSEEK_API_KEY: "test-key",
+                WECOM_ENABLED: "true",
+                WECOM_FAIL_ON_ERROR: "true",
+                WECOM_WEBHOOK_URL: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test",
             },
             cli: {
                 severityThreshold: "critical",
@@ -49,6 +56,13 @@ describe("resolveReviewConfiguration", () => {
                 model: "cli-model",
                 timeoutMs: 30_000,
                 apiKey: "test-key",
+            },
+            notifications: {
+                wecom: {
+                    enabled: true,
+                    failOnError: true,
+                    webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test",
+                },
             },
         });
     });
@@ -73,5 +87,11 @@ describe("resolveReviewConfiguration", () => {
                 cli: { apiKey: "cli-key" },
             }),
         ).toThrow();
+    });
+
+    it("requires an environment webhook URL for enabled WeCom notifications", () => {
+        expect(() => resolveReviewConfiguration({
+            file: { wecomEnabled: true },
+        })).toThrow();
     });
 });

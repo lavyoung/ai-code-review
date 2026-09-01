@@ -16,4 +16,12 @@ export interface ReviewConfiguration {
         timeoutMs: number;
         apiKey?: string;
     };
+    notifications: {
+        wecom: {
+            enabled: boolean;
+            failOnError: boolean;
+            /** 仅由环境变量或 CI Secret 注入，禁止写入配置文件与日志。 */
+            webhookUrl?: string;
+        };
+    };
 }

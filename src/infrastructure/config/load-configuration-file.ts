@@ -14,6 +14,8 @@ export interface ConfigurationFileOverride {
     failOn?: Severity[];
     model?: string;
     timeoutMs?: number;
+    wecomEnabled?: boolean;
+    wecomFailOnError?: boolean;
 }
 
 const configurationFileSchema = z.object({
@@ -25,6 +27,12 @@ const configurationFileSchema = z.object({
         provider: z.literal("deepseek").optional(),
         model: z.string().trim().min(1).optional(),
         timeout_ms: z.number().int().positive().optional(),
+    }).strict().optional(),
+    notifiers: z.object({
+        wecom: z.object({
+            enabled: z.boolean().optional(),
+            fail_on_error: z.boolean().optional(),
+        }).strict().optional(),
     }).strict().optional(),
 }).strict();
 
@@ -53,5 +61,11 @@ export const loadConfigurationFile = async (
         ...(configuration.ai?.timeout_ms === undefined
             ? {}
             : { timeoutMs: configuration.ai.timeout_ms }),
+        ...(configuration.notifiers?.wecom?.enabled === undefined
+            ? {}
+            : { wecomEnabled: configuration.notifiers.wecom.enabled }),
+        ...(configuration.notifiers?.wecom?.fail_on_error === undefined
+            ? {}
+            : { wecomFailOnError: configuration.notifiers.wecom.fail_on_error }),
     };
 };

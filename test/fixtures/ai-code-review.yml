@@ -7,3 +7,8 @@ ai:
   provider: deepseek
   model: deepseek-v4-flash
   timeout_ms: 10000
+
+notifiers:
+  wecom:
+    enabled: false
+    fail_on_error: false

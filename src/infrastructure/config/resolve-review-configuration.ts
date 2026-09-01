@@ -9,7 +9,17 @@ const configurationOverrideSchema = z.object({
     failOn: z.array(z.enum(SEVERITIES)).optional(),
     model: z.string().trim().min(1).optional(),
     timeoutMs: z.number().int().positive().optional(),
+    wecomEnabled: z.boolean().optional(),
+    wecomFailOnError: z.boolean().optional(),
 }).strict();
+
+const parseBooleanEnvironmentValue = (value: string | undefined): boolean | string | undefined => {
+    if (value === undefined || value === "true" || value === "false") {
+        return value === undefined ? undefined : value === "true";
+    }
+
+    return value;
+};
 
 /**
  * 配置合并的候选来源，优先级由调用方固定为 CLI、环境变量、文件、默认值。
@@ -37,11 +47,30 @@ export const resolveReviewConfiguration = (
         timeoutMs: sources.environment?.DEEPSEEK_TIMEOUT_MS === undefined
             ? undefined
             : Number(sources.environment.DEEPSEEK_TIMEOUT_MS),
+        wecomEnabled: parseBooleanEnvironmentValue(sources.environment?.WECOM_ENABLED),
+        wecomFailOnError: parseBooleanEnvironmentValue(
+            sources.environment?.WECOM_FAIL_ON_ERROR,
+        ),
     });
     const cli = configurationOverrideSchema.parse(sources.cli ?? {});
     const apiKey = z.string().trim().min(1).optional().parse(
         sources.environment?.DEEPSEEK_API_KEY,
     );
+    const webhookUrl = z.string().url().optional().parse(
+        sources.environment?.WECOM_WEBHOOK_URL,
+    );
+    const wecomEnabled = cli.wecomEnabled
+        ?? environment.wecomEnabled
+        ?? file.wecomEnabled
+        ?? false;
+    const wecomFailOnError = cli.wecomFailOnError
+        ?? environment.wecomFailOnError
+        ?? file.wecomFailOnError
+        ?? false;
+
+    if (wecomEnabled && webhookUrl === undefined) {
+        throw new Error("WECOM_WEBHOOK_URL must be set when WeCom notifications are enabled.");
+    }
 
     return {
         review: {
@@ -58,6 +87,13 @@ export const resolveReviewConfiguration = (
             timeoutMs:
                 cli.timeoutMs ?? environment.timeoutMs ?? file.timeoutMs ?? 30_000,
             ...(apiKey === undefined ? {} : { apiKey }),
+        },
+        notifications: {
+            wecom: {
+                enabled: wecomEnabled,
+                failOnError: wecomFailOnError,
+                ...(webhookUrl === undefined ? {} : { webhookUrl }),
+            },
         },
     };
 };

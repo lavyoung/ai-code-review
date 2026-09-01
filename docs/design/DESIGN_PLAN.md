@@ -500,14 +500,9 @@ providers:
     token: ${GITLAB_TOKEN}
 
 notifiers:
-  ci_log:
-    enabled: true
   wecom:
     enabled: true
-    webhook_url: ${WECOM_WEBHOOK_URL}
-  generic_webhook:
-    enabled: false
-    url: ${REVIEW_WEBHOOK_URL}
+    fail_on_error: false
 
 comments:
   enabled: true
@@ -573,6 +568,8 @@ PR / MR 评论需要避免重复刷屏。
 ```bash
 WECOM_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"
 ```
+
+`WECOM_WEBHOOK_URL` 只能从环境变量或 CI Secret 注入，配置文件只保存 `notifiers.wecom.enabled` 与 `fail_on_error`。发送失败时会在首次请求后额外重试 2 次；默认不阻断流水线，最终投递状态仅以脱敏摘要写入 CI 日志和后续的 MR/PR 评论。
 
 ### 9.2 通知内容
 

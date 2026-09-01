@@ -61,3 +61,14 @@ export const redactSensitiveValues = (content: string): RedactedContent => {
 
     return { content: redactedContent, redactedValueCount };
 };
+
+/**
+ * 替换自由文本中出现的敏感文件路径，防止其进入日志、评论或通知正文。
+ */
+export const redactSensitiveFilePaths = (content: string): string =>
+    content.replace(/[a-z0-9_./\\-]+/gi, (token) =>
+        (token.includes(".") || token.includes("/") || token.includes("\\"))
+        && isSensitivePath(token)
+            ? "[REDACTED_FILE]"
+            : token,
+    );
