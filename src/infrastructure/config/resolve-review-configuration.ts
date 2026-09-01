@@ -25,6 +25,13 @@ const parseBooleanEnvironmentValue = (value: string | undefined): boolean | stri
     return value;
 };
 
+/** 将 CI 对未配置 Secret 注入的空字符串统一视为未提供。 */
+const optionalEnvironmentSecret = (value: string | undefined): string | undefined => {
+    const normalized = value?.trim();
+
+    return normalized === "" || normalized === undefined ? undefined : normalized;
+};
+
 /**
  * 配置合并的候选来源，优先级由调用方固定为 CLI、环境变量、文件、默认值。
  */
@@ -70,16 +77,16 @@ export const resolveReviewConfiguration = (
     });
     const cli = configurationOverrideSchema.parse(sources.cli ?? {});
     const apiKey = z.string().trim().min(1).optional().parse(
-        sources.environment?.DEEPSEEK_API_KEY,
+        optionalEnvironmentSecret(sources.environment?.DEEPSEEK_API_KEY),
     );
     const webhookUrl = z.string().url().optional().parse(
-        sources.environment?.WECOM_WEBHOOK_URL,
+        optionalEnvironmentSecret(sources.environment?.WECOM_WEBHOOK_URL),
     );
     const githubAccessToken = z.string().trim().min(1).optional().parse(
-        sources.environment?.GITHUB_TOKEN,
+        optionalEnvironmentSecret(sources.environment?.GITHUB_TOKEN),
     );
     const codeUpAccessToken = z.string().trim().min(1).optional().parse(
-        sources.environment?.CODEUP_TOKEN,
+        optionalEnvironmentSecret(sources.environment?.CODEUP_TOKEN),
     );
     const wecomEnabled = cli.wecomEnabled
         ?? environment.wecomEnabled

@@ -101,6 +101,20 @@ describe("resolveReviewConfiguration", () => {
         ).toThrow();
     });
 
+    it("treats blank CI secrets as absent", () => {
+        const configuration = resolveReviewConfiguration({
+            environment: {
+                DEEPSEEK_API_KEY: "   ",
+                GITHUB_TOKEN: "",
+                CODEUP_TOKEN: "\t",
+            },
+        });
+
+        expect(configuration.ai.apiKey).toBeUndefined();
+        expect(configuration.comments.github.accessToken).toBeUndefined();
+        expect(configuration.comments.codeup.accessToken).toBeUndefined();
+    });
+
     it("accepts the API key only from the environment", () => {
         expect(() =>
             resolveReviewConfiguration({

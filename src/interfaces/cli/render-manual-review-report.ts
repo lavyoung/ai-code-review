@@ -14,6 +14,7 @@ import type { ReviewCommentPublication } from "../../application/publish-review-
 export interface ManualReviewReportInput {
     target: string;
     result: ManualReviewResult;
+    includeDeliveryStatus?: boolean;
     wecomDelivery?: NotificationDelivery | { status: "disabled" } | { status: "pending" };
     githubCommentDelivery?: ReviewCommentPublication | { status: "disabled" };
     codeupCommentDelivery?: ReviewCommentPublication | { status: "disabled" };
@@ -44,6 +45,21 @@ const formatCodeUpCommentDelivery = (
 ): string | undefined => delivery === undefined
     ? undefined
     : `- CodeUp MR comment: ${delivery.status}`;
+
+/** 渲染不会重复包含评审发现项的最终投递状态。 */
+export const renderReviewDeliveryStatus = (
+    input: Pick<
+        ManualReviewReportInput,
+        "wecomDelivery" | "githubCommentDelivery" | "codeupCommentDelivery"
+    >,
+): string => [
+    "## AI Code Review Delivery",
+    "",
+    "- CI Log: delivered",
+    formatWeComDelivery(input.wecomDelivery),
+    formatGitHubCommentDelivery(input.githubCommentDelivery),
+    formatCodeUpCommentDelivery(input.codeupCommentDelivery),
+].filter((line): line is string => line !== undefined).join("\n");
 
 const redactText = (value: string): string =>
     redactSensitiveFilePaths(redactSensitiveValues(value).content);
@@ -99,11 +115,12 @@ export const renderManualReviewReport = (
         "",
         findings,
         "",
-        "### Delivery Status",
-        "",
-        "- CI Log: delivered",
-        formatWeComDelivery(input.wecomDelivery),
-        formatGitHubCommentDelivery(input.githubCommentDelivery),
-        formatCodeUpCommentDelivery(input.codeupCommentDelivery),
+        ...(input.includeDeliveryStatus === false
+            ? []
+            : [
+                "### Delivery Status",
+                "",
+                renderReviewDeliveryStatus(input).replace("## AI Code Review Delivery\n\n", ""),
+            ]),
     ].filter((line): line is string => line !== undefined).join("\n");
 };

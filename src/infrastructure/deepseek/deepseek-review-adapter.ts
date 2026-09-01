@@ -52,6 +52,58 @@ When no actionable issue is found, return {"summary":"No actionable issues found
 
 const buildUserPrompt = (codeChange: CodeChange): string => `Review this committed code diff.\n\n<diff>\n${codeChange.diff}\n</diff>`;
 
+/** 移除偶发的 Markdown JSON 包装，不记录模型原始输出。 */
+const unwrapJsonCodeFence = (content: string): { content: string; wasCodeFenced: boolean } => {
+    const trimmed = content.trim();
+    const match = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+
+    return {
+        content: match?.[1] ?? trimmed,
+        wasCodeFenced: match !== null,
+    };
+};
+
+/** 仅输出 JSON 解析所需的安全元数据，不输出模型原文。 */
+const describeOutputShape = (content: string): string => {
+    if (content.startsWith("{")) {
+        return "object";
+    }
+
+    if (content.startsWith("[")) {
+        return "array";
+    }
+
+    return "other";
+};
+
+/** 将 API 响应诊断限定为不含正文的协议元数据。 */
+const describeResponseMetadata = (response: Response): string => {
+    const contentType = response.headers.get("content-type")
+        ?.split(";", 1)[0]
+        ?.trim()
+        .toLowerCase();
+    const contentLength = response.headers.get("content-length");
+
+    return `status=${response.status}, contentType=${contentType === undefined || contentType === ""
+        ? "unknown"
+        : contentType}, contentLength=${contentLength ?? "unknown"}`;
+};
+
+/** 响应解析日志只保留长度与 Unicode 边界信息，避免输出模型正文。 */
+const describeResponseText = (value: string): string => {
+    const firstCodePoint = value.codePointAt(0);
+    const lastCodePoint = value.codePointAt(value.length - 1);
+
+    return `length=${value.length}, firstCodePoint=${firstCodePoint === undefined
+        ? "none"
+        : `U+${firstCodePoint.toString(16).toUpperCase()}`}, lastCodePoint=${lastCodePoint === undefined
+        ? "none"
+        : `U+${lastCodePoint.toString(16).toUpperCase()}`}`;
+};
+
+const isTimeoutError = (error: unknown): boolean => error instanceof Error
+    && (error.name === "AbortError" || error.name === "TimeoutError");
+
 const toReviewFinding = (
     finding: z.infer<typeof reviewFindingSchema>,
 ): ReviewFinding => ({
@@ -122,11 +174,13 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
             response = await this.fetchImplementation(DEEPSEEK_CHAT_COMPLETIONS_URL, {
                 method: "POST",
                 headers: {
+                    Accept: "application/json",
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${this.configuration.apiKey}`,
                 },
                 body: JSON.stringify({
                     model: this.configuration.model,
+                    thinking: { type: "disabled" },
                     messages: [
                         { role: "system", content: buildSystemPrompt() },
                         { role: "user", content: buildUserPrompt(codeChange) },
@@ -155,11 +209,24 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
             throw new AiReviewFailure(failureType, "DeepSeek review request failed.");
         }
 
+        let responseText: string;
+        try {
+            responseText = await response.text();
+        } catch (error) {
+            throw new AiReviewFailure(
+                isTimeoutError(error) ? "timeout" : "request",
+                `DeepSeek response body could not be read (${describeResponseMetadata(response)}).`,
+            );
+        }
+
         let responseBody: unknown;
         try {
-            responseBody = await response.json();
-        } catch (error) {
-            throw new AiReviewFailure("invalid-json", "DeepSeek response was not JSON.", error);
+            responseBody = JSON.parse(responseText.replace(/^\uFEFF/, "").trim());
+        } catch {
+            throw new AiReviewFailure(
+                "invalid-json",
+                `DeepSeek response was not JSON (${describeResponseMetadata(response)}, ${describeResponseText(responseText)}).`,
+            );
         }
 
         let completion: z.infer<typeof chatCompletionSchema>;
@@ -179,11 +246,20 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
             throw new AiReviewFailure("incomplete-response", "DeepSeek review response was incomplete.");
         }
 
+        const normalizedOutput = unwrapJsonCodeFence(choice.message.content);
+        const { content } = normalizedOutput;
+        if (content.length === 0) {
+            throw new AiReviewFailure("incomplete-response", "DeepSeek review response was incomplete.");
+        }
+
         let output: unknown;
         try {
-            output = JSON.parse(choice.message.content);
-        } catch (error) {
-            throw new AiReviewFailure("invalid-json", "DeepSeek review output was not JSON.", error);
+            output = JSON.parse(content);
+        } catch {
+            throw new AiReviewFailure(
+                "invalid-json",
+                `DeepSeek review output was not valid JSON (length=${content.length}, shape=${describeOutputShape(content)}, codeFence=${normalizedOutput.wasCodeFenced}).`,
+            );
         }
 
         let analysis: z.infer<typeof reviewAnalysisSchema>;

@@ -1,7 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { renderManualReviewReport } from "../src/interfaces/cli/render-manual-review-report.js";
+import {
+    renderManualReviewReport,
+    renderReviewDeliveryStatus,
+} from "../src/interfaces/cli/render-manual-review-report.js";
 
 describe("renderManualReviewReport", () => {
+    it("renders final delivery status without repeating review findings", () => {
+        expect(renderReviewDeliveryStatus({
+            wecomDelivery: { status: "failed", attempts: 3 },
+            githubCommentDelivery: { status: "delivered" },
+        })).toBe([
+            "## AI Code Review Delivery",
+            "",
+            "- CI Log: delivered",
+            "- WeCom: failed (attempts: 3)",
+            "- GitHub PR comment: delivered",
+        ].join("\n"));
+    });
+
+    it("can omit delivery status when the caller will log it later", () => {
+        const report = renderManualReviewReport({
+            target: "main",
+            result: {
+                codeChange: {
+                    diff: "",
+                    files: [],
+                    excludedFileCount: 0,
+                    redactedValueCount: 0,
+                },
+                analysis: { summary: "No issues.", findings: [] },
+                policy: { shouldFail: false, highestSeverity: undefined },
+            },
+            includeDeliveryStatus: false,
+        });
+
+        expect(report).not.toContain("### Delivery Status");
+    });
+
     it("renders a Markdown report without exposing sensitive values or paths", () => {
         const report = renderManualReviewReport({
             target: "main",

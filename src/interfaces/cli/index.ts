@@ -4,7 +4,10 @@ import {
     isReviewEventType,
     type ReviewEventType,
 } from "../../domain/review/review-event.js";
-import { renderManualReviewReport } from "./render-manual-review-report.js";
+import {
+    renderManualReviewReport,
+    renderReviewDeliveryStatus,
+} from "./render-manual-review-report.js";
 import { resolveCliConfiguration } from "../../infrastructure/config/resolve-cli-configuration.js";
 import { runManualReviewUseCase } from "../../application/run-manual-review-use-case.js";
 import type { ManualReviewResult } from "../../application/run-manual-review-use-case.js";
@@ -13,6 +16,7 @@ import { createSummaryReviewComment } from "../../application/create-summary-rev
 import { publishReviewCommentUseCase } from "../../application/publish-review-comment-use-case.js";
 import { createReviewCommentId } from "../../domain/review/review-comment.js";
 import {
+    AiReviewFailure,
     AiReviewExecutionError,
     DiffResolutionError,
 } from "../../application/review-execution-error.js";
@@ -166,6 +170,12 @@ const reviewCommand = program
                     ? { wecomDelivery: { status: "pending" as const } }
                     : {}),
             });
+            console.log(renderManualReviewReport({
+                target: reportTarget,
+                result,
+                includeDeliveryStatus: false,
+            }));
+
             const webhookUrl = configuration.notifications.wecom.webhookUrl;
             const wecomDelivery = configuration.notifications.wecom.enabled && webhookUrl !== undefined
                 ? await publishNotificationUseCase(
@@ -232,9 +242,7 @@ const reviewCommand = program
                 )
                 : undefined;
 
-            console.log(renderManualReviewReport({
-                target: reportTarget,
-                result,
+            console.log(renderReviewDeliveryStatus({
                 ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
                 ...(githubCommentDelivery === undefined
                     ? (isGitHubPullRequestReview ? { githubCommentDelivery: { status: "disabled" as const } } : {})
@@ -279,6 +287,9 @@ const reviewCommand = program
 
             if (error instanceof AiReviewExecutionError) {
                 console.error("AI review error. Check the DeepSeek configuration and service status.");
+                if (error.cause instanceof AiReviewFailure) {
+                    console.error(`AI diagnostic: ${error.cause.message}`);
+                }
                 process.exitCode = getAiReviewFailureExitCode(error.failureType);
                 return;
             }

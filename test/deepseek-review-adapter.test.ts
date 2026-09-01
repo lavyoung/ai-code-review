@@ -58,12 +58,14 @@ describe("DeepSeekReviewAdapter", () => {
             expect.objectContaining({
                 method: "POST",
                 headers: expect.objectContaining({
+                    Accept: "application/json",
                     Authorization: "Bearer test-api-key",
                 }),
             }),
         );
         expect(JSON.parse(fetchImplementation.mock.calls[0][1].body)).toMatchObject({
             model: "deepseek-v4-flash",
+            thinking: { type: "disabled" },
             response_format: { type: "json_object" },
             max_tokens: 4_096,
             stream: false,
@@ -78,6 +80,87 @@ describe("DeepSeekReviewAdapter", () => {
 
         await expect(adapter.review(codeChange)).rejects.toMatchObject({
             failureType: "incomplete-response",
+        });
+    });
+
+    it("accepts a JSON result wrapped in a Markdown code fence", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{
+                finish_reason: "stop",
+                message: { content: "```json\n{\"summary\":\"No issues.\",\"findings\":[]}\n```" },
+            }],
+        }), { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).resolves.toEqual({
+            summary: "No issues.",
+            findings: [],
+        });
+    });
+
+    it("accepts a JSON result wrapped in an unlabelled code fence", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{
+                finish_reason: "stop",
+                message: { content: "```\n{\"summary\":\"No issues.\",\"findings\":[]}\n```" },
+            }],
+        }), { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).resolves.toEqual({
+            summary: "No issues.",
+            findings: [],
+        });
+    });
+
+    it("classifies an empty JSON-mode response as incomplete", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{ finish_reason: "stop", message: { content: "   " } }],
+        }), { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).rejects.toMatchObject({
+            failureType: "incomplete-response",
+        });
+    });
+
+    it("reports only safe metadata for malformed JSON output", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{ finish_reason: "stop", message: { content: "not-json" } }],
+        }), { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).rejects.toMatchObject({
+            failureType: "invalid-json",
+            message: "DeepSeek review output was not valid JSON (length=8, shape=other, codeFence=false).",
+        });
+    });
+
+    it("reports safe metadata when the API response body is not JSON", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response("not-json", {
+            status: 200,
+            headers: { "content-type": "text/plain; charset=utf-8" },
+        }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).rejects.toMatchObject({
+            failureType: "invalid-json",
+            message: "DeepSeek response was not JSON (status=200, contentType=text/plain, contentLength=unknown, length=8, firstCodePoint=U+6E, lastCodePoint=U+6E).",
+        });
+    });
+
+    it("parses a standard DeepSeek response prefixed by a UTF-8 BOM", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(`\uFEFF${JSON.stringify({
+            choices: [{
+                finish_reason: "stop",
+                message: { content: "{\"summary\":\"No issues.\",\"findings\":[]}" },
+            }],
+        })}`, { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).resolves.toEqual({
+            summary: "No issues.",
+            findings: [],
         });
     });
 
