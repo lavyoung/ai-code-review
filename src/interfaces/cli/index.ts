@@ -76,6 +76,8 @@ program
                 change: {
                     hasChanges: codeChange.diff.length > 0,
                     changedFileCount: codeChange.files.length,
+                    excludedFileCount: codeChange.excludedFileCount,
+                    redactedValueCount: codeChange.redactedValueCount,
                 },
             }, null, 2));
         } catch {

@@ -3,7 +3,12 @@ import { resolveManualCodeChange } from "../src/application/resolve-manual-code-
 
 describe("resolveManualCodeChange", () => {
     it("requests committed changes from the target merge base to HEAD", async () => {
-        const expectedChange = { diff: "", files: [] };
+        const expectedChange = {
+            diff: "",
+            files: [],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        };
         const getCodeChange = vi.fn().mockResolvedValue(expectedChange);
 
         await expect(resolveManualCodeChange(

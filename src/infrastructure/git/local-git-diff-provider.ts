@@ -6,6 +6,10 @@ import type {
     ChangeStatus,
     CodeChange,
 } from "../../domain/review/code-change.js";
+import {
+    isSensitiveFile,
+    redactSensitiveValues,
+} from "../../domain/review/sensitive-content-policy.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -67,7 +71,11 @@ const parseChangedFiles = (output: string): ChangedFile[] => {
                 throw new Error("Malformed Git rename output.");
             }
 
-            files.push({ path: renamedPath, status });
+            files.push({
+                path: renamedPath,
+                status,
+                previousPath: firstPath,
+            });
             continue;
         }
 
@@ -86,13 +94,6 @@ export class LocalGitDiffProvider implements DiffProvider {
 
     public async getCodeChange(range: DiffRange): Promise<CodeChange> {
         const rangeNotation = toRangeNotation(range);
-        const diff = await this.runner.run([
-            "diff",
-            "--no-ext-diff",
-            "--binary",
-            rangeNotation,
-            "--",
-        ]);
         const nameStatus = await this.runner.run([
             "diff",
             "--name-status",
@@ -101,10 +102,25 @@ export class LocalGitDiffProvider implements DiffProvider {
             rangeNotation,
             "--",
         ]);
+        const allFiles = parseChangedFiles(nameStatus);
+        const files = allFiles.filter((file) => !isSensitiveFile(file));
+        const diff = files.length === 0
+            ? ""
+            : await this.runner.run([
+                "diff",
+                "--no-ext-diff",
+                "--binary",
+                rangeNotation,
+                "--",
+                ...files.map((file) => file.path),
+            ]);
+        const redactedDiff = redactSensitiveValues(diff);
 
         return {
-            diff,
-            files: parseChangedFiles(nameStatus),
+            diff: redactedDiff.content,
+            files,
+            excludedFileCount: allFiles.length - files.length,
+            redactedValueCount: redactedDiff.redactedValueCount,
         };
     }
 }
