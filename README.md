@@ -99,6 +99,42 @@ GitHub Actions 中使用环境变量配置，并将密钥保存在仓库 Secret�
     REVIEW_OUTPUT_LANGUAGE: zh-CN
 ```
 
+## 在其他 GitHub 仓库中使用
+
+本项目提供 GitHub Composite Action。调用方必须先 checkout PR 的完整 Git 历史，并为工作流授予最小必要权限：
+
+```yaml
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: lavyoung/ai-code-review@<trusted-commit-sha>
+        with:
+          output-language: zh-CN
+          comment-enabled: "true"
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+```
+
+将 `<trusted-commit-sha>` 替换为已审核的完整提交 SHA。发布不可变版本标签后也可以使用标签引用；完整 SHA 更适合生产环境。调用方在仓库 Secret 中配置 `DEEPSEEK_API_KEY`，`GITHUB_TOKEN` 由 Action 自动使用。
+
+若本仓库为私有仓库，还需在 `ai-code-review` 仓库的 **Settings → Actions → General → Access** 中允许同一用户或组织下的私有仓库访问。外部仓库协作者可查看运行日志，因此不要在日志、评论或模型输入中输出密钥。
+
 ## 配置示例
 
 ```yaml

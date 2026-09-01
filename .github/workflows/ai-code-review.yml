@@ -37,9 +37,9 @@ jobs:
         run: npm run test
 
       - name: Review pull request
-        run: npx tsx src/interfaces/cli/index.ts review --provider github --event pull-request
+        uses: ./
+        with:
+          output-language: zh-CN
+          comment-enabled: "true"
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          GITHUB_COMMENT_ENABLED: "true"
-          GITHUB_TOKEN: ${{ github.token }}
-          REVIEW_OUTPUT_LANGUAGE: zh-CN

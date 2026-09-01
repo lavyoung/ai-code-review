@@ -1,0 +1,37 @@
+name: AI Code Review
+description: Review a GitHub pull request with DeepSeek and publish an updatable summary comment.
+
+inputs:
+  output-language:
+    description: BCP 47 language tag for the generated review text.
+    required: false
+    default: en
+  comment-enabled:
+    description: Whether to publish or update the pull request summary comment.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Install action dependencies
+      shell: bash
+      run: npm ci --ignore-scripts --prefix "$GITHUB_ACTION_PATH"
+
+    - name: Build action
+      shell: bash
+      run: npm run build --prefix "$GITHUB_ACTION_PATH"
+
+    - name: Review pull request
+      shell: bash
+      env:
+        DEEPSEEK_API_KEY: ${{ env.DEEPSEEK_API_KEY }}
+        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_COMMENT_ENABLED: ${{ inputs.comment-enabled }}
+        REVIEW_OUTPUT_LANGUAGE: ${{ inputs.output-language }}
+      run: node "$GITHUB_ACTION_PATH/dist/interfaces/cli/index.js" review --provider github --event pull-request
