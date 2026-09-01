@@ -1,6 +1,6 @@
 {
   "name": "ai-code-review",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "AI-powered code review workflow for push, pull request, merge request, and CI pipelines.",
   "main": "index.js",
   "directories": {

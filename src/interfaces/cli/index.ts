@@ -1,4 +1,5 @@
 import { Command, CommanderError } from "commander";
+import packageMetadata from "../../../package.json" with { type: "json" };
 import { configureReviewCommand } from "./commands/review-command.js";
 import { CLI_EXIT_CODES } from "./exit-code.js";
 
@@ -7,7 +8,7 @@ const program = new Command();
 program
     .name("ai-code-review")
     .description("AI-powered code review CLI")
-    .version("0.1.0");
+    .version(packageMetadata.version);
 
 configureReviewCommand(program);
 program.exitOverride();
