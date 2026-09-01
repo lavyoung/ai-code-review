@@ -21,6 +21,8 @@ export interface AnalyzerCapabilities {
 /** 通用分析器的安全输入。当前阶段只暴露已脱敏的变更集。 */
 export interface AnalysisRequest {
     codeChange: CodeChange;
+    /** 调度器提供的截止信号；适配器应将其传递给可取消的底层调用。 */
+    signal: AbortSignal;
 }
 
 /**
@@ -33,4 +35,31 @@ export interface ReviewAnalyzer {
     readonly capabilities: AnalyzerCapabilities;
 
     analyze(request: AnalysisRequest): Promise<ReviewAnalysis>;
+}
+
+/** 单个分析器在本次评审中的执行计划。 */
+export interface AnalyzerExecutionPlan {
+    analyzerId: string;
+    required: boolean;
+    timeoutMs: number;
+    failureMode: "fail" | "degrade";
+}
+
+/** 一次评审运行的全局调度上限。 */
+export interface ReviewRunBudget {
+    totalTimeoutMs: number;
+    maxConcurrency: number;
+    maxAiRequestCount: number;
+}
+
+/** 分析器的安全运行摘要，不包含输入或供应商响应正文。 */
+export interface AnalyzerRun {
+    analyzer: AnalyzerIdentity;
+    status: "completed" | "degraded" | "failed";
+    durationMs: number;
+}
+
+/** 注册经过审核的分析器；配置只能选择已注册 ID。 */
+export interface ReviewAnalyzerRegistry {
+    resolve(analyzerId: string): ReviewAnalyzer | undefined;
 }

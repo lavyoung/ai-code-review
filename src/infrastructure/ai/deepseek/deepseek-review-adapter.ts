@@ -182,7 +182,7 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
      *
      * @throws API Key 缺失、请求失败、响应不完整或结构不合法时抛出异常。
      */
-    public async review(codeChange: CodeChange): Promise<ReviewAnalysis> {
+    public async review(codeChange: CodeChange, signal?: AbortSignal): Promise<ReviewAnalysis> {
         if (this.configuration.apiKey === undefined) {
             throw new AiReviewFailure("authentication", "DeepSeek API key is required.");
         }
@@ -208,7 +208,9 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
                     max_tokens: MAX_OUTPUT_TOKENS,
                     stream: false,
                 }),
-                signal: AbortSignal.timeout(this.configuration.timeoutMs),
+                signal: signal === undefined
+                    ? AbortSignal.timeout(this.configuration.timeoutMs)
+                    : AbortSignal.any([signal, AbortSignal.timeout(this.configuration.timeoutMs)]),
             });
         } catch (error) {
             const failureType = error instanceof Error
@@ -299,6 +301,6 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
 
     /** 将 DeepSeek 的兼容 review 调用适配为统一分析器端口。 */
     public analyze(request: AnalysisRequest): Promise<ReviewAnalysis> {
-        return this.review(request.codeChange);
+        return this.review(request.codeChange, request.signal);
     }
 }

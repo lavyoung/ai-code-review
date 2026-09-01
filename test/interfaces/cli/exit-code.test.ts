@@ -22,4 +22,10 @@ describe("CLI exit codes", () => {
         expect(getAiReviewFailureExitCode("unknown"))
             .toBe(CLI_EXIT_CODES.AI_UNKNOWN_FAILED);
     });
+
+    it("reserves generic exit codes for required analyzers and verification", () => {
+        expect(CLI_EXIT_CODES.REQUIRED_ANALYZER_FAILED).toBe(104);
+        expect(CLI_EXIT_CODES.REQUIRED_VERIFIER_FAILED).toBe(105);
+        expect(CLI_EXIT_CODES.REVIEW_CONTRACT_FAILED).toBe(106);
+    });
 });

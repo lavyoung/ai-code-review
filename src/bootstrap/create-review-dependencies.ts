@@ -1,5 +1,6 @@
 import type { ReviewConfiguration } from "../application/configuration/review-configuration.js";
 import { DeepSeekReviewAdapter } from "../infrastructure/ai/deepseek/deepseek-review-adapter.js";
+import { StaticReviewAnalyzerRegistry } from "../application/review/orchestration/static-review-analyzer-registry.js";
 import { resolveCliConfiguration } from "../infrastructure/configuration/resolve-cli-configuration.js";
 import { CodeUpReviewCommentAdapter } from "../infrastructure/scm/codeup/codeup-review-comment-adapter.js";
 import {
@@ -27,10 +28,25 @@ export class ReviewPlatformContextError extends Error {
 export const createReviewDependencies = (
     configuration: ReviewConfiguration,
     workingDirectory: string,
-) => ({
-    diffProvider: new LocalGitDiffProvider(workingDirectory),
-    reviewAnalyzer: new DeepSeekReviewAdapter(configuration.ai),
-});
+) => {
+    const deepSeekAnalyzer = new DeepSeekReviewAdapter(configuration.ai);
+
+    return {
+        diffProvider: new LocalGitDiffProvider(workingDirectory),
+        reviewAnalyzerRegistry: new StaticReviewAnalyzerRegistry([deepSeekAnalyzer]),
+        analyzerPlans: [{
+            analyzerId: deepSeekAnalyzer.identity.id,
+            required: true,
+            timeoutMs: configuration.ai.timeoutMs,
+            failureMode: "fail" as const,
+        }],
+        analyzerBudget: {
+            totalTimeoutMs: configuration.execution.totalTimeoutMs,
+            maxConcurrency: configuration.execution.maxAnalyzerConcurrency,
+            maxAiRequestCount: configuration.execution.maxAiRequestCount,
+        },
+    };
+};
 
 /** 解析 CLI 的多来源配置。 */
 export const resolveCliReviewConfiguration = resolveCliConfiguration;

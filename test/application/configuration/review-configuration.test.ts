@@ -14,6 +14,11 @@ describe("resolveReviewConfiguration", () => {
             model: "deepseek-v4-flash",
             timeoutMs: 30_000,
         });
+        expect(configuration.execution).toEqual({
+            totalTimeoutMs: 300_000,
+            maxAnalyzerConcurrency: 3,
+            maxAiRequestCount: 8,
+        });
         expect(configuration.notifications.wecom).toEqual({
             enabled: false,
             failOnError: false,
@@ -36,6 +41,9 @@ describe("resolveReviewConfiguration", () => {
                 model: "file-model",
                 outputLanguage: "ja",
                 timeoutMs: 10_000,
+                totalTimeoutMs: 60_000,
+                maxAnalyzerConcurrency: 1,
+                maxAiRequestCount: 2,
             },
             environment: {
                 REVIEW_SEVERITY_THRESHOLD: "high",
@@ -43,6 +51,9 @@ describe("resolveReviewConfiguration", () => {
                 DEEPSEEK_MODEL: "environment-model",
                 REVIEW_OUTPUT_LANGUAGE: "zh-CN",
                 DEEPSEEK_TIMEOUT_MS: "20000",
+                REVIEW_TOTAL_ANALYZER_TIMEOUT_MS: "90000",
+                REVIEW_MAX_ANALYZER_CONCURRENCY: "2",
+                REVIEW_MAX_AI_REQUEST_COUNT: "4",
                 DEEPSEEK_API_KEY: "test-key",
                 WECOM_ENABLED: "true",
                 WECOM_FAIL_ON_ERROR: "true",
@@ -60,6 +71,9 @@ describe("resolveReviewConfiguration", () => {
                 model: "cli-model",
                 outputLanguage: "ko",
                 timeoutMs: 30_000,
+                totalTimeoutMs: 120_000,
+                maxAnalyzerConcurrency: 3,
+                maxAiRequestCount: 6,
             },
         });
 
@@ -81,6 +95,11 @@ describe("resolveReviewConfiguration", () => {
                     failOnError: true,
                     webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test",
                 },
+            },
+            execution: {
+                totalTimeoutMs: 120_000,
+                maxAnalyzerConcurrency: 3,
+                maxAiRequestCount: 6,
             },
             comments: {
                 github: {

@@ -28,6 +28,7 @@ import {
     AiReviewFailure,
     AiReviewExecutionError,
     DiffResolutionError,
+    ReviewAnalyzerExecutionError,
 } from "../../../application/review/errors/review-execution-error.js";
 import { publishNotificationUseCase } from "../../../application/delivery/use-cases/publish-notification-use-case.js";
 import {
@@ -41,6 +42,9 @@ interface ReviewCommandOptions {
     target?: string;
     config?: string;
     outputLanguage?: string;
+    totalAnalyzerTimeoutMs?: number;
+    maxAnalyzerConcurrency?: number;
+    maxAiRequestCount?: number;
 }
 
 const parseReviewEventType = (value: string): ReviewEventType => {
@@ -53,6 +57,15 @@ const parseReviewEventType = (value: string): ReviewEventType => {
     return value;
 };
 
+const parsePositiveInteger = (value: string, optionName: string): number => {
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+        throw new InvalidArgumentError(`${optionName} must be a positive integer.`);
+    }
+
+    return parsed;
+};
+
 /** 注册评审命令；命令层仅处理输入、输出和应用用例的调用。 */
 export const configureReviewCommand = (program: Command): void => {
 const reviewCommand = program
@@ -63,6 +76,12 @@ const reviewCommand = program
     .option("--target <ref>", "Target branch or commit")
     .option("--config <path>", "Configuration file path")
     .option("--output-language <bcp47-tag>", "BCP 47 language tag for AI review text")
+    .option("--total-analyzer-timeout-ms <milliseconds>", "Total analyzer execution timeout", (value) =>
+        parsePositiveInteger(value, "--total-analyzer-timeout-ms"))
+    .option("--max-analyzer-concurrency <count>", "Maximum concurrent analyzers", (value) =>
+        parsePositiveInteger(value, "--max-analyzer-concurrency"))
+    .option("--max-ai-request-count <count>", "Maximum AI analyzer requests", (value) =>
+        parsePositiveInteger(value, "--max-ai-request-count"))
     .action(async (options: ReviewCommandOptions) => {
         const isManualReview = options.event === "manual"
             && options.provider === "local"
@@ -90,6 +109,15 @@ const reviewCommand = program
                     ...(options.outputLanguage === undefined
                         ? {}
                         : { outputLanguage: options.outputLanguage }),
+                    ...(options.totalAnalyzerTimeoutMs === undefined
+                        ? {}
+                        : { totalTimeoutMs: options.totalAnalyzerTimeoutMs }),
+                    ...(options.maxAnalyzerConcurrency === undefined
+                        ? {}
+                        : { maxAnalyzerConcurrency: options.maxAnalyzerConcurrency }),
+                    ...(options.maxAiRequestCount === undefined
+                        ? {}
+                        : { maxAiRequestCount: options.maxAiRequestCount }),
                 },
             });
         } catch {
@@ -264,6 +292,12 @@ const reviewCommand = program
                     console.error(`AI diagnostic: ${error.cause.message}`);
                 }
                 process.exitCode = getAiReviewFailureExitCode(error.failureType);
+                return;
+            }
+
+            if (error instanceof ReviewAnalyzerExecutionError) {
+                console.error("Required review analyzer error. Check the enabled analyzer configuration.");
+                process.exitCode = CLI_EXIT_CODES.REQUIRED_ANALYZER_FAILED;
                 return;
             }
 

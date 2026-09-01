@@ -18,6 +18,27 @@ describe("renderReviewReport", () => {
         ].join("\n"));
     });
 
+    it("renders only safe analyzer run statuses", () => {
+        const report = renderReviewReport({
+            target: "main",
+            result: {
+                codeChange: { diff: "", files: [], chunks: [], excludedFileCount: 0, redactedValueCount: 0 },
+                analysis: { summary: "No issues.", findings: [] },
+                findings: [],
+                suppressedCandidateCounts: {},
+                analyzerRuns: [{
+                    analyzer: { kind: "ai", id: "deepseek" },
+                    status: "completed",
+                    durationMs: 20,
+                }],
+                policy: { highestSeverity: null, shouldFail: false },
+            },
+        });
+
+        expect(report).toContain("Analyzer status: deepseek=completed");
+        expect(report).not.toContain("durationMs");
+    });
+
     it("can omit delivery status when the caller will log it later", () => {
         const report = renderReviewReport({
             target: "main",

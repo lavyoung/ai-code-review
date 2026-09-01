@@ -16,6 +16,9 @@ export interface ConfigurationFileOverride {
     model?: string;
     outputLanguage?: string;
     timeoutMs?: number;
+    totalTimeoutMs?: number;
+    maxAnalyzerConcurrency?: number;
+    maxAiRequestCount?: number;
     wecomEnabled?: boolean;
     wecomFailOnError?: boolean;
     githubCommentEnabled?: boolean;
@@ -42,6 +45,11 @@ const configurationFileSchema = z.object({
                 }
             }).optional(),
         timeout_ms: z.number().int().positive().optional(),
+    }).strict().optional(),
+    execution: z.object({
+        total_timeout_ms: z.number().int().positive().optional(),
+        max_analyzer_concurrency: z.number().int().positive().optional(),
+        max_ai_request_count: z.number().int().positive().optional(),
     }).strict().optional(),
     notifiers: z.object({
         wecom: z.object({
@@ -89,6 +97,15 @@ export const loadConfigurationFile = async (
         ...(configuration.ai?.timeout_ms === undefined
             ? {}
             : { timeoutMs: configuration.ai.timeout_ms }),
+        ...(configuration.execution?.total_timeout_ms === undefined
+            ? {}
+            : { totalTimeoutMs: configuration.execution.total_timeout_ms }),
+        ...(configuration.execution?.max_analyzer_concurrency === undefined
+            ? {}
+            : { maxAnalyzerConcurrency: configuration.execution.max_analyzer_concurrency }),
+        ...(configuration.execution?.max_ai_request_count === undefined
+            ? {}
+            : { maxAiRequestCount: configuration.execution.max_ai_request_count }),
         ...(configuration.notifiers?.wecom?.enabled === undefined
             ? {}
             : { wecomEnabled: configuration.notifiers.wecom.enabled }),

@@ -24,6 +24,9 @@ const configurationOverrideSchema = z.object({
     model: z.string().trim().min(1).optional(),
     outputLanguage: outputLanguageSchema.optional(),
     timeoutMs: z.number().int().positive().optional(),
+    totalTimeoutMs: z.number().int().positive().optional(),
+    maxAnalyzerConcurrency: z.number().int().positive().optional(),
+    maxAiRequestCount: z.number().int().positive().optional(),
     wecomEnabled: z.boolean().optional(),
     wecomFailOnError: z.boolean().optional(),
     githubCommentEnabled: z.boolean().optional(),
@@ -74,6 +77,15 @@ export const resolveReviewConfiguration = (
         timeoutMs: sources.environment?.DEEPSEEK_TIMEOUT_MS === undefined
             ? undefined
             : Number(sources.environment.DEEPSEEK_TIMEOUT_MS),
+        totalTimeoutMs: sources.environment?.REVIEW_TOTAL_ANALYZER_TIMEOUT_MS === undefined
+            ? undefined
+            : Number(sources.environment.REVIEW_TOTAL_ANALYZER_TIMEOUT_MS),
+        maxAnalyzerConcurrency: sources.environment?.REVIEW_MAX_ANALYZER_CONCURRENCY === undefined
+            ? undefined
+            : Number(sources.environment.REVIEW_MAX_ANALYZER_CONCURRENCY),
+        maxAiRequestCount: sources.environment?.REVIEW_MAX_AI_REQUEST_COUNT === undefined
+            ? undefined
+            : Number(sources.environment.REVIEW_MAX_AI_REQUEST_COUNT),
         wecomEnabled: parseBooleanEnvironmentValue(sources.environment?.WECOM_ENABLED),
         wecomFailOnError: parseBooleanEnvironmentValue(
             sources.environment?.WECOM_FAIL_ON_ERROR,
@@ -153,6 +165,20 @@ export const resolveReviewConfiguration = (
             timeoutMs:
                 cli.timeoutMs ?? environment.timeoutMs ?? file.timeoutMs ?? 30_000,
             ...(apiKey === undefined ? {} : { apiKey }),
+        },
+        execution: {
+            totalTimeoutMs: cli.totalTimeoutMs
+                ?? environment.totalTimeoutMs
+                ?? file.totalTimeoutMs
+                ?? 300_000,
+            maxAnalyzerConcurrency: cli.maxAnalyzerConcurrency
+                ?? environment.maxAnalyzerConcurrency
+                ?? file.maxAnalyzerConcurrency
+                ?? 3,
+            maxAiRequestCount: cli.maxAiRequestCount
+                ?? environment.maxAiRequestCount
+                ?? file.maxAiRequestCount
+                ?? 8,
         },
         notifications: {
             wecom: {

@@ -99,6 +99,28 @@ GitHub Actions 中使用环境变量配置，并将密钥保存在仓库 Secret�
     REVIEW_OUTPUT_LANGUAGE: zh-CN
 ```
 
+## 分析器执行预算
+
+评审执行器会隔离建议性分析器失败，并为所有分析器实施总时限、并发数和 AI 请求数上限。配置优先级仍为 CLI 参数、环境变量、`ai-code-review.yml`、默认值；当前可通过环境变量或配置文件设置执行预算：
+
+```yaml
+execution:
+  total_timeout_ms: 300000
+  max_analyzer_concurrency: 3
+  max_ai_request_count: 8
+```
+
+对应环境变量为 `REVIEW_TOTAL_ANALYZER_TIMEOUT_MS`、`REVIEW_MAX_ANALYZER_CONCURRENCY` 和 `REVIEW_MAX_AI_REQUEST_COUNT`。超出 AI 请求预算或必需分析器不可用时，流水线会以非零退出码结束；建议性分析器失败只会进入脱敏运行摘要。
+
+临时覆盖时可使用：
+
+```bash
+ai-code-review review --provider local --event manual --target main \
+  --total-analyzer-timeout-ms 300000 \
+  --max-analyzer-concurrency 3 \
+  --max-ai-request-count 8
+```
+
 ## 在其他 GitHub 仓库中使用
 
 本项目提供 GitHub Composite Action。调用方必须先 checkout PR 的完整 Git 历史，并为工作流授予最小必要权限：

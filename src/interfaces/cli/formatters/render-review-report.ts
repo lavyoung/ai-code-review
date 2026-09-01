@@ -84,13 +84,24 @@ const formatFinding = (finding: ValidatedFinding, index: number): string => {
     return `${index + 1}. [${finding.severity}] ${redactText(finding.title)}${formatLocation(finding)}\n   ${redactText(finding.description)}${suggestion}`;
 };
 
+const formatAnalyzerRuns = (
+    runs: ManualReviewResult["analyzerRuns"] | undefined,
+): string | undefined => runs === undefined || runs.length === 0
+    ? undefined
+    : runs.map((run) => `${run.analyzer.id}=${run.status}`).join(", ");
+
 /**
  * 将安全的手动评审结果渲染为 CI 与通知渠道可复用的 Markdown。
  */
 export const renderReviewReport = (
     input: ManualReviewReportInput,
 ): string => {
-    const { codeChange, analysis, findings: validatedFindings, policy } = input.result;
+    const {
+        codeChange,
+        analysis,
+        findings: validatedFindings,
+        policy,
+    } = input.result;
     const status = policy.shouldFail ? "QUALITY GATE FAILED" : "PASSED";
     const findings = validatedFindings.length === 0
         ? "No actionable findings."
@@ -105,6 +116,9 @@ export const renderReviewReport = (
         `- Findings: ${validatedFindings.length}`,
         `- Filtered candidates: ${Object.values(input.result.suppressedCandidateCounts)
             .reduce((total, count) => total + count, 0)}`,
+        ...(formatAnalyzerRuns(input.result.analyzerRuns) === undefined
+            ? []
+            : [`- Analyzer status: ${formatAnalyzerRuns(input.result.analyzerRuns)}`]),
         `- Changed files: ${codeChange.files.length}`,
         `- Excluded sensitive files: ${codeChange.excludedFileCount}`,
         `- Redacted values: ${codeChange.redactedValueCount}`,

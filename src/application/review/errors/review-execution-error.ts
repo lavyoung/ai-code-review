@@ -49,3 +49,14 @@ export class AiReviewExecutionError extends Error {
         this.name = "AiReviewExecutionError";
     }
 }
+
+/** 必需的非 AI 分析器无法执行时抛出的应用错误。 */
+export class ReviewAnalyzerExecutionError extends Error {
+    public constructor(
+        public readonly analyzerId: string,
+        cause: unknown,
+    ) {
+        super("Unable to complete required review analyzer.", { cause });
+        this.name = "ReviewAnalyzerExecutionError";
+    }
+}

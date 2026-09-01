@@ -18,6 +18,11 @@ export interface ReviewConfiguration {
         timeoutMs: number;
         apiKey?: string;
     };
+    execution: {
+        totalTimeoutMs: number;
+        maxAnalyzerConcurrency: number;
+        maxAiRequestCount: number;
+    };
     notifications: {
         wecom: {
             enabled: boolean;
