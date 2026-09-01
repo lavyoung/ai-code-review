@@ -68,6 +68,37 @@ ai-code-review review --event manual
 WECOM_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"
 ```
 
+## 评审输出语言
+
+摘要、发现项标题、说明、分类和建议使用 BCP 47 语言标签配置；固定 JSON 字段名、严重级别与 Markdown 评论协议不受影响。配置优先级为：CLI 参数 > 环境变量 > `ai-code-review.yml` > 默认值 `en`。
+
+常用标签：`zh-CN`（简体中文）、`zh-TW`（繁体中文）、`en`（英语）、`ja`（日语）、`ko`（韩语）。
+
+临时指定语言：
+
+```bash
+ai-code-review review --provider local --event manual --target main --output-language zh-CN
+```
+
+在 `ai-code-review.yml` 中长期配置：
+
+```yaml
+ai:
+  output_language: zh-CN
+```
+
+GitHub Actions 中使用环境变量配置，并将密钥保存在仓库 Secret：
+
+```yaml
+- name: Review pull request
+  run: npx tsx src/interfaces/cli/index.ts review --provider github --event pull-request
+  env:
+    DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    GITHUB_COMMENT_ENABLED: "true"
+    GITHUB_TOKEN: ${{ github.token }}
+    REVIEW_OUTPUT_LANGUAGE: zh-CN
+```
+
 ## 配置示例
 
 ```yaml
