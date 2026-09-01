@@ -76,6 +76,19 @@ const describeOutputShape = (content: string): string => {
     return "other";
 };
 
+/** 将 API 响应诊断限定为不含正文的协议元数据。 */
+const describeResponseMetadata = (response: Response): string => {
+    const contentType = response.headers.get("content-type")
+        ?.split(";", 1)[0]
+        ?.trim()
+        .toLowerCase();
+    const contentLength = response.headers.get("content-length");
+
+    return `status=${response.status}, contentType=${contentType === undefined || contentType === ""
+        ? "unknown"
+        : contentType}, contentLength=${contentLength ?? "unknown"}`;
+};
+
 const toReviewFinding = (
     finding: z.infer<typeof reviewFindingSchema>,
 ): ReviewFinding => ({
@@ -182,8 +195,11 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
         let responseBody: unknown;
         try {
             responseBody = await response.json();
-        } catch (error) {
-            throw new AiReviewFailure("invalid-json", "DeepSeek response was not JSON.", error);
+        } catch {
+            throw new AiReviewFailure(
+                "invalid-json",
+                `DeepSeek response was not JSON (${describeResponseMetadata(response)}).`,
+            );
         }
 
         let completion: z.infer<typeof chatCompletionSchema>;

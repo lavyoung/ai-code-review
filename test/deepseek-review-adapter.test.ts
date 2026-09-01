@@ -134,6 +134,19 @@ describe("DeepSeekReviewAdapter", () => {
         });
     });
 
+    it("reports safe metadata when the API response body is not JSON", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response("not-json", {
+            status: 200,
+            headers: { "content-type": "text/plain; charset=utf-8" },
+        }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).rejects.toMatchObject({
+            failureType: "invalid-json",
+            message: "DeepSeek response was not JSON (status=200, contentType=text/plain, contentLength=unknown).",
+        });
+    });
+
     it("classifies an API rate limit without exposing provider details", async () => {
         const fetchImplementation = vi.fn().mockResolvedValue(new Response(null, { status: 429 }));
         const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
