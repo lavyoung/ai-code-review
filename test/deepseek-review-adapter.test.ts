@@ -81,6 +81,32 @@ describe("DeepSeekReviewAdapter", () => {
         });
     });
 
+    it("accepts a JSON result wrapped in a Markdown code fence", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{
+                finish_reason: "stop",
+                message: { content: "```json\n{\"summary\":\"No issues.\",\"findings\":[]}\n```" },
+            }],
+        }), { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).resolves.toEqual({
+            summary: "No issues.",
+            findings: [],
+        });
+    });
+
+    it("classifies an empty JSON-mode response as incomplete", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{ finish_reason: "stop", message: { content: "   " } }],
+        }), { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).rejects.toMatchObject({
+            failureType: "incomplete-response",
+        });
+    });
+
     it("classifies an API rate limit without exposing provider details", async () => {
         const fetchImplementation = vi.fn().mockResolvedValue(new Response(null, { status: 429 }));
         const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);

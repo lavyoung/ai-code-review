@@ -52,6 +52,14 @@ When no actionable issue is found, return {"summary":"No actionable issues found
 
 const buildUserPrompt = (codeChange: CodeChange): string => `Review this committed code diff.\n\n<diff>\n${codeChange.diff}\n</diff>`;
 
+/** 移除偶发的 Markdown JSON 包装，不记录模型原始输出。 */
+const unwrapJsonCodeFence = (content: string): string => {
+    const trimmed = content.trim();
+    const match = /^```json\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+
+    return match?.[1] ?? trimmed;
+};
+
 const toReviewFinding = (
     finding: z.infer<typeof reviewFindingSchema>,
 ): ReviewFinding => ({
@@ -179,9 +187,14 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
             throw new AiReviewFailure("incomplete-response", "DeepSeek review response was incomplete.");
         }
 
+        const content = unwrapJsonCodeFence(choice.message.content);
+        if (content.length === 0) {
+            throw new AiReviewFailure("incomplete-response", "DeepSeek review response was incomplete.");
+        }
+
         let output: unknown;
         try {
-            output = JSON.parse(choice.message.content);
+            output = JSON.parse(content);
         } catch (error) {
             throw new AiReviewFailure("invalid-json", "DeepSeek review output was not JSON.", error);
         }
