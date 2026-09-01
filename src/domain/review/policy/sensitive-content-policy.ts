@@ -9,10 +9,18 @@ const sensitivePathPatterns = [
     /\.(?:pem|key|p12|pfx|jks|keystore)$/i,
 ];
 
-const redactPatterns: readonly [RegExp, (match: string, prefix?: string) => string][] = [
+type RedactionReplacement = (match: string, prefix?: string, value?: string) => string;
+
+const redactAssignmentValue: RedactionReplacement = (_match, prefix = "", value = "") => {
+    const quote = value.startsWith('"') ? '"' : value.startsWith("'") ? "'" : "";
+
+    return `${prefix}${quote}[REDACTED]${quote}`;
+};
+
+const redactPatterns: readonly [RegExp, RedactionReplacement][] = [
     [
-        /((?:api[_-]?key|access[_-]?token|token|secret|password)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,}]+)/gi,
-        (_match, prefix = "") => `${prefix}[REDACTED]`,
+        /((?:api[_-]?key|access[_-]?token|token|secret|password)\s*(?::|=(?!=))\s*)("[^"]*"|'[^']*'|[^\s,;}\])"']+)/gi,
+        redactAssignmentValue,
     ],
     [
         /(authorization\s*:\s*(?:bearer|basic)\s+)[^\s"']+/gi,
@@ -55,7 +63,7 @@ export const redactSensitiveValues = (content: string): RedactedContent => {
     for (const [pattern, replace] of redactPatterns) {
         redactedContent = redactedContent.replace(pattern, (...arguments_) => {
             redactedValueCount += 1;
-            return replace(arguments_[0], arguments_[1]);
+            return replace(arguments_[0], arguments_[1], arguments_[2]);
         });
     }
 
