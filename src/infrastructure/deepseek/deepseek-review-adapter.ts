@@ -159,6 +159,7 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
             response = await this.fetchImplementation(DEEPSEEK_CHAT_COMPLETIONS_URL, {
                 method: "POST",
                 headers: {
+                    Accept: "application/json",
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${this.configuration.apiKey}`,
                 },
@@ -194,7 +195,8 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
 
         let responseBody: unknown;
         try {
-            responseBody = await response.json();
+            const responseText = await response.text();
+            responseBody = JSON.parse(responseText.replace(/^\uFEFF/, "").trim());
         } catch {
             throw new AiReviewFailure(
                 "invalid-json",

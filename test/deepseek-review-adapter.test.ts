@@ -58,6 +58,7 @@ describe("DeepSeekReviewAdapter", () => {
             expect.objectContaining({
                 method: "POST",
                 headers: expect.objectContaining({
+                    Accept: "application/json",
                     Authorization: "Bearer test-api-key",
                 }),
             }),
@@ -144,6 +145,21 @@ describe("DeepSeekReviewAdapter", () => {
         await expect(adapter.review(codeChange)).rejects.toMatchObject({
             failureType: "invalid-json",
             message: "DeepSeek response was not JSON (status=200, contentType=text/plain, contentLength=unknown).",
+        });
+    });
+
+    it("parses a standard DeepSeek response prefixed by a UTF-8 BOM", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(`\uFEFF${JSON.stringify({
+            choices: [{
+                finish_reason: "stop",
+                message: { content: "{\"summary\":\"No issues.\",\"findings\":[]}" },
+            }],
+        })}`, { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).resolves.toEqual({
+            summary: "No issues.",
+            findings: [],
         });
     });
 
