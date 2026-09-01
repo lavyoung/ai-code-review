@@ -1,4 +1,5 @@
 import type { CodeChange } from "../../../domain/review/model/code-change.js";
+import type { AnalyzerIdentity } from "../../../domain/review/model/analyzer-identity.js";
 import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
 import {
     AiReviewFailure,
@@ -18,13 +19,22 @@ export interface ReviewAnalyzerExecutionResult {
     runs: AnalyzerRun[];
 }
 
-const mergeAnalyses = (analyses: readonly ReviewAnalysis[]): ReviewAnalysis => ({
+interface CompletedAnalysis {
+    analysis: ReviewAnalysis;
+    analyzer: AnalyzerIdentity;
+}
+
+const mergeAnalyses = (analyses: readonly CompletedAnalysis[]): ReviewAnalysis => ({
     summary: analyses.length === 1
-        ? analyses[0]?.summary ?? "No analyzer completed."
+        ? analyses[0]?.analysis.summary ?? "No analyzer completed."
         : analyses.length === 0
             ? "No analyzer completed."
-            : analyses.map((analysis) => analysis.summary).join("\n\n"),
-    findings: analyses.flatMap((analysis) => analysis.findings),
+            : analyses.map(({ analysis }) => analysis.summary).join("\n\n"),
+    // 来源只由受控执行器标记，外部分析器输出不能伪造确定性身份。
+    findings: analyses.flatMap(({ analysis, analyzer }) => analysis.findings.map((finding) => ({
+        ...finding,
+        analyzer,
+    }))),
 });
 
 /**
@@ -38,7 +48,7 @@ export const executeReviewAnalyzers = async (
     registry: ReviewAnalyzerRegistry,
     budget: ReviewRunBudget,
 ): Promise<ReviewAnalyzerExecutionResult> => {
-    const analyses: ReviewAnalysis[] = [];
+    const analyses: CompletedAnalysis[] = [];
     const runs: AnalyzerRun[] = [];
     const globalTimeout = AbortSignal.timeout(budget.totalTimeoutMs);
     const executablePlans = plans;
@@ -76,7 +86,7 @@ export const executeReviewAnalyzers = async (
                     codeChange,
                     signal: AbortSignal.any([globalTimeout, AbortSignal.timeout(plan.timeoutMs)]),
                 });
-                analyses.push(analysis);
+                analyses.push({ analysis, analyzer: analyzer.identity });
                 runs.push({
                     analyzer: analyzer.identity,
                     status: "completed",

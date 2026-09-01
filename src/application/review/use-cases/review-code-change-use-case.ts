@@ -17,12 +17,15 @@ import type {
     ReviewAnalyzerRegistry,
 } from "../ports/review-analyzer-port.js";
 import { executeReviewAnalyzers } from "../orchestration/execute-review-analyzers.js";
+import { verifyReviewFindings } from "../orchestration/verify-review-findings.js";
+import type { FindingVerifier } from "../ports/finding-verifier-port.js";
 
 /** 对已获取代码变更执行统一分析器集合所需的外部能力。 */
 export interface ReviewCodeChangeDependencies {
     reviewAnalyzerRegistry: ReviewAnalyzerRegistry;
     analyzerPlans: readonly AnalyzerExecutionPlan[];
     analyzerBudget: ReviewRunBudget;
+    findingVerifiers: readonly FindingVerifier[];
 }
 
 /** 对已过滤、已脱敏代码变更执行评审的输入。 */
@@ -60,13 +63,18 @@ export const reviewCodeChangeUseCase = async (
     const analysis: ReviewAnalysis = execution.analysis;
 
     const validation = validateReviewCandidates(analysis.findings, command.codeChange);
+    const findings = verifyReviewFindings(
+        validation.findings,
+        command.codeChange,
+        dependencies.findingVerifiers,
+    );
 
     return {
         codeChange: command.codeChange,
         analysis,
-        findings: validation.findings,
+        findings,
         suppressedCandidateCounts: validation.suppressedCounts,
         analyzerRuns: execution.runs,
-        policy: evaluateReviewPolicy(validation.findings, command.failOn),
+        policy: evaluateReviewPolicy(findings, command.failOn),
     };
 };

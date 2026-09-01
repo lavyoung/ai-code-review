@@ -26,6 +26,7 @@ const createAnalyzerDependencies = (analyze: ReturnType<typeof vi.fn>) => ({
         failureMode: "fail" as const,
     }],
     analyzerBudget: { totalTimeoutMs: 1_000, maxConcurrency: 1, maxAiRequestCount: 1 },
+    findingVerifiers: [],
 });
 
 describe("runManualReviewUseCase", () => {

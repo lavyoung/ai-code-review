@@ -38,6 +38,7 @@ describe("validateReviewCandidates", () => {
             chunkId: "chunk-1",
             evidence: "+run(enabled);",
             verificationStatus: "grounded",
+            verificationMethods: ["diff-anchor", "evidence-match"],
         })]);
         expect(result.suppressedCounts).toEqual({ "location-mismatch": 1 });
     });

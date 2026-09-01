@@ -513,6 +513,8 @@ analyzer_plans:
 
 迁移必须保持已有 CLI、GitHub Action、DeepSeek 配置和摘要评论协议可用。
 
+当前实现已经完成原始/安全输入分级、候选项的 diff 锚定与证据一致性校验、分析器注册与预算调度，以及来源受控的确定性验证接线。`DeepSeek` 仍只会产生 `grounded` 发现；只有已注册的确定性分析器（例如未来的 TypeScript、ESLint、SARIF 或密钥扫描适配器）产生的、已锚定发现才会经验证器升级为 `verified` 并参与质量门禁。首个具体确定性分析器将在下一阶段接入，不能通过伪造 AI 输出或配置开关绕过该边界。
+
 1. 引入 `RawCommittedInput`、`SanitizedModelInput`、`SanitizedOutput`、`ChangeSet` 与 `DiffChunk`，为现有 `CodeChange` 提供兼容映射。
 2. 引入 `ReviewCandidate`、`VerificationEvidence`、`ValidatedFinding` 与状态聚合器，为现有 `ReviewFinding` 提供兼容映射。
 3. 将公共提示词与 JSON Schema 收敛为 `StructuredReviewContract`；DeepSeek 成为首个仅接收安全输入的 `ReviewAnalyzer`。

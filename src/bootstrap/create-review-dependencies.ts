@@ -1,6 +1,7 @@
 import type { ReviewConfiguration } from "../application/configuration/review-configuration.js";
 import { DeepSeekReviewAdapter } from "../infrastructure/ai/deepseek/deepseek-review-adapter.js";
 import { StaticReviewAnalyzerRegistry } from "../application/review/orchestration/static-review-analyzer-registry.js";
+import { deterministicAnalyzerFindingVerifier } from "../application/review/verification/deterministic-analyzer-finding-verifier.js";
 import { resolveCliConfiguration } from "../infrastructure/configuration/resolve-cli-configuration.js";
 import { CodeUpReviewCommentAdapter } from "../infrastructure/scm/codeup/codeup-review-comment-adapter.js";
 import {
@@ -45,6 +46,7 @@ export const createReviewDependencies = (
             maxConcurrency: configuration.execution.maxAnalyzerConcurrency,
             maxAiRequestCount: configuration.execution.maxAiRequestCount,
         },
+        findingVerifiers: [deterministicAnalyzerFindingVerifier],
     };
 };
 

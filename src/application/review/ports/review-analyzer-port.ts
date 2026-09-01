@@ -1,12 +1,9 @@
 import type { CodeChange } from "../../../domain/review/model/code-change.js";
 import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
+import type { AnalyzerIdentity } from "../../../domain/review/model/analyzer-identity.js";
 
 /** 分析器的规范化身份；具体供应商名称不进入领域策略。 */
-export interface AnalyzerIdentity {
-    kind: "ai" | "sast" | "linter" | "typecheck" | "test" | "secret-scan";
-    id: string;
-    version?: string;
-}
+export type { AnalyzerIdentity } from "../../../domain/review/model/analyzer-identity.js";
 
 /** 分析器可请求的安全输入等级。 */
 export type AnalyzerInputAccess = "sanitized-model-input" | "trusted-raw-local";
