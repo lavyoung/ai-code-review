@@ -13,6 +13,7 @@ import type { ReviewCommentPublication } from "../../../application/delivery/use
  */
 export interface ManualReviewReportInput {
     target: string;
+    runId?: string;
     result: ManualReviewResult;
     includeDeliveryStatus?: boolean;
     wecomDelivery?: NotificationDelivery | { status: "disabled" } | { status: "pending" };
@@ -119,6 +120,7 @@ export const renderReviewReport = (
         "## AI Code Review",
         "",
         `- Status: ${status}`,
+        ...(input.runId === undefined ? [] : [`- Run ID: ${input.runId}`]),
         `- Target: ${redactText(input.target)}`,
         `- Highest severity: ${policy.highestSeverity ?? "none"}`,
         `- Findings: ${validatedFindings.length}`,

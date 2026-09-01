@@ -9,17 +9,24 @@ export const createSummaryReviewComment = (
     reviewId: string,
     markdown: string,
     revision?: string,
+    runId?: string,
 ): SummaryReviewComment => {
     const normalizedRevision = revision?.trim();
+    const normalizedRunId = runId?.trim();
     if (normalizedRevision !== undefined
         && (normalizedRevision.length === 0 || normalizedRevision.includes("\n") || normalizedRevision.includes("\r") || normalizedRevision.includes("-->"))) {
         throw new Error("Review comment revision is invalid.");
+    }
+    if (normalizedRunId !== undefined
+        && (normalizedRunId.length === 0 || normalizedRunId.includes("\n") || normalizedRunId.includes("\r") || normalizedRunId.includes("-->"))) {
+        throw new Error("Review comment run identifier is invalid.");
     }
 
     return {
         type: "summary",
         reviewId,
         ...(normalizedRevision === undefined ? {} : { revision: normalizedRevision }),
-        body: `<!-- ai-code-review:review-id=${reviewId} -->${normalizedRevision === undefined ? "" : `\n<!-- ai-code-review:revision=${normalizedRevision} -->`}\n\n${markdown}`,
+        ...(normalizedRunId === undefined ? {} : { runId: normalizedRunId }),
+        body: `<!-- ai-code-review:review-id=${reviewId} -->${normalizedRevision === undefined ? "" : `\n<!-- ai-code-review:revision=${normalizedRevision} -->`}${normalizedRunId === undefined ? "" : `\n<!-- ai-code-review:run=${normalizedRunId} -->`}\n\n${markdown}`,
     };
 };

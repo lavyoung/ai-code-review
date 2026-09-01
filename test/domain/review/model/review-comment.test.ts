@@ -18,4 +18,14 @@ describe("summary review comment protocol", () => {
         expect(() => createReviewCommentId("codeup", "repository", "42-->"))
             .toThrow("Review comment identifier is invalid.");
     });
+
+    it("adds revision and run markers without changing the stable review marker", () => {
+        const reviewId = createReviewCommentId("codeup", "group/repository", "42");
+
+        expect(createSummaryReviewComment(reviewId, "report", "head-sha", "run-123")).toMatchObject({
+            revision: "head-sha",
+            runId: "run-123",
+            body: "<!-- ai-code-review:review-id=codeup:group/repository:42 -->\n<!-- ai-code-review:revision=head-sha -->\n<!-- ai-code-review:run=run-123 -->\n\nreport",
+        });
+    });
 });

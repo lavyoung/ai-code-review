@@ -39,6 +39,20 @@ describe("renderReviewReport", () => {
         expect(report).not.toContain("durationMs");
     });
 
+    it("renders a generated run identifier when supplied", () => {
+        const report = renderReviewReport({
+            target: "main",
+            runId: "run-123",
+            result: {
+                codeChange: { diff: "", files: [], chunks: [], excludedFileCount: 0, redactedValueCount: 0 },
+                analysis: { summary: "No issues.", findings: [] },
+                findings: [], suppressedCandidateCounts: {}, policy: { highestSeverity: null, shouldFail: false },
+            },
+        });
+
+        expect(report).toContain("Run ID: run-123");
+    });
+
     it("can omit delivery status when the caller will log it later", () => {
         const report = renderReviewReport({
             target: "main",

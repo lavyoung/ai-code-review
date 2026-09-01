@@ -1,4 +1,5 @@
 import { Command, InvalidArgumentError } from "commander";
+import { randomUUID } from "node:crypto";
 import {
     REVIEW_EVENT_TYPES,
     isReviewEventType,
@@ -177,6 +178,7 @@ const reviewCommand = program
 
         try {
             const dependencies = createReviewDependencies(configuration, process.cwd());
+            const runId = randomUUID();
             let result: ManualReviewResult;
             let reportTarget: string;
             let githubContext;
@@ -213,6 +215,7 @@ const reviewCommand = program
 
             const report = renderReviewReport({
                 target: reportTarget,
+                runId,
                 result,
                 ...(configuration.notifications.wecom.enabled
                     ? { wecomDelivery: { status: "pending" as const } }
@@ -220,6 +223,7 @@ const reviewCommand = program
             });
             console.log(renderReviewReport({
                 target: reportTarget,
+                runId,
                 result,
                 includeDeliveryStatus: false,
             }));
@@ -242,10 +246,12 @@ const reviewCommand = program
                         ),
                         renderReviewReport({
                             target: reportTarget,
+                            runId,
                             result,
                             ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
                         }),
                         githubContext.headSha,
+                        runId,
                     ),
                     createGitHubReviewCommentPort(
                         githubContext,
@@ -267,10 +273,12 @@ const reviewCommand = program
                         ),
                         renderReviewReport({
                             target: reportTarget,
+                            runId,
                             result,
                             ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
                         }),
                         codeUpContext.headSha,
+                        runId,
                     ),
                     createCodeUpReviewCommentPort(codeUpContext, configuration.comments.codeup.accessToken),
                 )
