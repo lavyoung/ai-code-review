@@ -926,19 +926,18 @@ steps:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-CodeUp Flow 的官方内置变量仅保证当前代码源的分支和最新提交，不提供 MR 编号、源/目标提交或版本 ID。因此，CodeUp MR 模式使用以下自定义变量契约，命令为 `ai-code-review review --provider codeup --event merge-request`：
+CodeUp Flow 的官方内置变量提供当前代码源的分支和最新提交，但不提供 MR 编号、目标提交或版本 ID。CodeUp MR 模式通过 API 自动定位唯一的打开 MR，再从其版本列表获取源/目标 SHA 与 `patchSetBizId`，命令为 `ai-code-review review --provider codeup --event merge-request`：
 
 | 变量 | 是否必填 | 含义 |
 | --- | --- | --- |
-| `AICR_CODEUP_BASE_SHA` | 是 | MR 目标侧已提交 SHA |
-| `AICR_CODEUP_HEAD_SHA` | 是 | MR 源侧已提交 SHA |
-| `AICR_CODEUP_TARGET_REF` | 是 | 用于报告展示的目标分支 |
-| `AICR_CODEUP_REPOSITORY_ID` | 评论开启时 | CodeUp 仓库 ID 或完整路径 |
-| `AICR_CODEUP_MR_ID` | 评论开启时 | MR 局部 ID |
-| `AICR_CODEUP_PATCHSET_BIZ_ID` | 评论开启时 | 当前源侧 patchSet 业务 ID |
-| `AICR_CODEUP_API_BASE_URL` | 评论开启时 | CodeUp OpenAPI 服务域名 |
-| `AICR_CODEUP_ORGANIZATION_ID` | 中心版评论时 | CodeUp 组织 ID |
-| `CODEUP_TOKEN` | 评论开启时 | 私密变量；绝不写入仓库 |
+| `CI_COMMIT_REF_NAME` | Flow 内置 | 当前代码源分支，用于定位候选 MR |
+| `CI_COMMIT_SHA` | Flow 内置 | 当前代码源最新提交，必须匹配 MR 源版本 |
+| `AICR_CODEUP_REPOSITORY_ID` | 是 | 流水线静态配置的 CodeUp 仓库 ID 或完整路径 |
+| `AICR_CODEUP_API_BASE_URL` | 是 | CodeUp OpenAPI 服务域名 |
+| `AICR_CODEUP_ORGANIZATION_ID` | 中心版 | CodeUp 组织 ID |
+| `CODEUP_TOKEN` | 是 | 私密变量；用于查询 MR/版本并发布评论，绝不写入仓库 |
+
+若同一源分支匹配多个打开 MR，或 `CI_COMMIT_SHA` 不等于该 MR 源版本，工具将以事件上下文错误退出，不会猜测目标分支或评审范围。
 
 ### 15.5 分层与职责
 

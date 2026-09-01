@@ -114,10 +114,8 @@ const reviewCommand = program
             return;
         }
 
-        if (isCodeUpMergeRequestReview
-            && configuration.comments.codeup.enabled
-            && configuration.comments.codeup.accessToken === undefined) {
-            console.error("Configuration error. CODEUP_TOKEN must be set for CodeUp MR comments.");
+        if (isCodeUpMergeRequestReview && configuration.comments.codeup.accessToken === undefined) {
+            console.error("Configuration error. CODEUP_TOKEN must be set for CodeUp MR lookup.");
             process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
             return;
         }
@@ -152,16 +150,7 @@ const reviewCommand = program
                 }, dependencies);
                 reportTarget = githubContext.baseRef;
             } else {
-                codeUpContext = resolveCodeUpMergeRequestContext(process.env);
-                if (configuration.comments.codeup.enabled
-                    && (codeUpContext.repositoryId === undefined
-                        || codeUpContext.changeRequestId === undefined
-                        || codeUpContext.patchSetBizId === undefined
-                        || codeUpContext.apiBaseUrl === undefined)) {
-                    throw new CodeUpMergeRequestContextError(
-                        "CodeUp comment context was incomplete.",
-                    );
-                }
+                codeUpContext = await resolveCodeUpMergeRequestContext(process.env);
                 result = await runPullRequestReviewUseCase({
                     baseSha: codeUpContext.baseSha,
                     headSha: codeUpContext.headSha,
@@ -217,10 +206,6 @@ const reviewCommand = program
                 && configuration.comments.codeup.enabled
                 && codeUpContext !== undefined
                 && configuration.comments.codeup.accessToken !== undefined
-                && codeUpContext.repositoryId !== undefined
-                && codeUpContext.changeRequestId !== undefined
-                && codeUpContext.patchSetBizId !== undefined
-                && codeUpContext.apiBaseUrl !== undefined
                 ? await publishReviewCommentUseCase(
                     createSummaryReviewComment(
                         createReviewCommentId(
