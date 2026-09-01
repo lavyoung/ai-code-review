@@ -1,12 +1,7 @@
-export const SEVERITIES = [
-    "info",
-    "low",
-    "medium",
-    "high",
-    "critical",
-] as const;
+import type { Severity } from "./severity.js";
 
-export type Severity = (typeof SEVERITIES)[number];
+export { SEVERITIES } from "./severity.js";
+export type { Severity } from "./severity.js";
 
 export interface ReviewConfiguration {
     review: {

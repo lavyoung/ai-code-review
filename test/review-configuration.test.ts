@@ -11,7 +11,7 @@ describe("resolveReviewConfiguration", () => {
         });
         expect(configuration.ai).toMatchObject({
             provider: "deepseek",
-            model: "deepseek-chat",
+            model: "deepseek-v4-flash",
             timeoutMs: 30_000,
         });
     });

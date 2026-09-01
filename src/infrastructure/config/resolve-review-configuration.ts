@@ -48,7 +48,7 @@ export const resolveReviewConfiguration = (
         },
         ai: {
             provider: "deepseek",
-            model: cli.model ?? environment.model ?? file.model ?? "deepseek-chat",
+            model: cli.model ?? environment.model ?? file.model ?? "deepseek-v4-flash",
             timeoutMs:
                 cli.timeoutMs ?? environment.timeoutMs ?? file.timeoutMs ?? 30_000,
             ...(apiKey === undefined ? {} : { apiKey }),

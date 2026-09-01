@@ -12,7 +12,7 @@ describe("loadConfigurationFile", () => {
             .resolves.toEqual({
                 severityThreshold: "low",
                 failOn: ["high"],
-                model: "deepseek-chat",
+                model: "deepseek-v4-flash",
                 timeoutMs: 10_000,
             });
     });

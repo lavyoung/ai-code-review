@@ -858,7 +858,7 @@ CodeUp、GitHub、GitLab 的事件变量和 diff 获取方式不同。平台差�
 ### 15.1 名称与技术基线
 
 - 项目、CLI 命令和默认配置文件统一使用 `ai-code-review`。
-- 第一阶段采用 Node.js / TypeScript 实现 CLI，首期 AI 提供方为 DeepSeek。
+- 第一阶段采用 Node.js / TypeScript 实现 CLI，首期 AI 提供方为 DeepSeek，默认模型为 `deepseek-v4-flash`。
 - DeepSeek 凭据必须通过环境变量或 CI Secret 注入，不得写入配置仓库、日志或评论。
 
 ### 15.2 配置与变更范围

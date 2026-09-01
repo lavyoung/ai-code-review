@@ -17,7 +17,7 @@ describe("resolveCliConfiguration", () => {
                 failOn: ["critical"],
             },
             ai: {
-                model: "deepseek-chat",
+                model: "deepseek-v4-flash",
                 timeoutMs: 30_000,
             },
         });

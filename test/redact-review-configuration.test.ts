@@ -10,7 +10,7 @@ describe("redactReviewConfiguration", () => {
             },
             ai: {
                 provider: "deepseek",
-                model: "deepseek-chat",
+                model: "deepseek-v4-flash",
                 timeoutMs: 30_000,
                 apiKey: "secret-value",
             },

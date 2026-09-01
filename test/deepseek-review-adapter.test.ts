@@ -1,0 +1,113 @@
+import { describe, expect, it, vi } from "vitest";
+import { DeepSeekReviewAdapter } from "../src/infrastructure/deepseek/deepseek-review-adapter.js";
+
+const configuration = {
+    provider: "deepseek" as const,
+    model: "deepseek-v4-flash",
+    timeoutMs: 30_000,
+    apiKey: "test-api-key",
+};
+
+const codeChange = {
+    diff: "diff --git a/src/example.ts b/src/example.ts\n",
+    files: [{ path: "src/example.ts", status: "modified" as const }],
+    excludedFileCount: 0,
+    redactedValueCount: 0,
+};
+
+describe("DeepSeekReviewAdapter", () => {
+    it("requests JSON output and parses a structured review result", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{
+                finish_reason: "stop",
+                message: {
+                    content: JSON.stringify({
+                        summary: "One issue found.",
+                        findings: [{
+                            severity: "high",
+                            title: "Missing validation",
+                            description: "The input is used without validation.",
+                            file: "src/example.ts",
+                            line: 10,
+                            category: "correctness",
+                            suggestion: "Validate the input first.",
+                            confidence: 0.9,
+                        }],
+                    }),
+                },
+            }],
+        }), { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).resolves.toEqual({
+            summary: "One issue found.",
+            findings: [{
+                severity: "high",
+                title: "Missing validation",
+                description: "The input is used without validation.",
+                file: "src/example.ts",
+                line: 10,
+                category: "correctness",
+                suggestion: "Validate the input first.",
+                confidence: 0.9,
+            }],
+        });
+
+        expect(fetchImplementation).toHaveBeenCalledWith(
+            "https://api.deepseek.com/chat/completions",
+            expect.objectContaining({
+                method: "POST",
+                headers: expect.objectContaining({
+                    Authorization: "Bearer test-api-key",
+                }),
+            }),
+        );
+        expect(JSON.parse(fetchImplementation.mock.calls[0][1].body)).toMatchObject({
+            model: "deepseek-v4-flash",
+            response_format: { type: "json_object" },
+            max_tokens: 4_096,
+            stream: false,
+        });
+    });
+
+    it("rejects an incomplete response", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{ finish_reason: "length", message: { content: "{}" } }],
+        }), { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).rejects.toThrow(
+            "DeepSeek review response was incomplete.",
+        );
+    });
+
+    it("removes sensitive paths from model findings", async () => {
+        const fetchImplementation = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            choices: [{
+                finish_reason: "stop",
+                message: {
+                    content: JSON.stringify({
+                        summary: "One issue found.",
+                        findings: [{
+                            severity: "high",
+                            title: "Sensitive finding",
+                            description: "A sensitive file was mentioned.",
+                            file: ".env.production",
+                            line: 1,
+                        }],
+                    }),
+                },
+            }],
+        }), { status: 200 }));
+        const adapter = new DeepSeekReviewAdapter(configuration, fetchImplementation);
+
+        await expect(adapter.review(codeChange)).resolves.toEqual({
+            summary: "One issue found.",
+            findings: [{
+                severity: "high",
+                title: "Sensitive finding",
+                description: "A sensitive file was mentioned.",
+            }],
+        });
+    });
+});

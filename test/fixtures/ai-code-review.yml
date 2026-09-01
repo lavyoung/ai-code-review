@@ -5,5 +5,5 @@ review:
 
 ai:
   provider: deepseek
-  model: deepseek-chat
+  model: deepseek-v4-flash
   timeout_ms: 10000
