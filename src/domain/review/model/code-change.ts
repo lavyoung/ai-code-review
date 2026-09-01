@@ -33,8 +33,24 @@ export interface SourceRange {
     endLine: number;
 }
 
+/** 仅可在受信任本地评审边界内使用的原始单文件 Git 变更。 */
+export interface RawFileChange {
+    file: ChangedFile;
+    /** 未脱敏的 Git diff；不得发送到外部服务或写入日志。 */
+    diff: string;
+}
+
 /**
- * 已过滤敏感文件并脱敏文本后的代码变更。
+ * 仅可在受信任本地进程内使用的已提交变更。
+ *
+ * 该类型禁止进入 AI、日志、评论、通知和反馈存储边界。
+ */
+export interface RawCodeChange {
+    fileChanges: RawFileChange[];
+}
+
+/**
+ * 可发送给远程分析器、日志和投递渠道的安全代码变更。
  */
 export interface CodeChange {
     diff: string;

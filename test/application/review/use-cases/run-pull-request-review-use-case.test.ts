@@ -9,19 +9,13 @@ describe("runPullRequestReviewUseCase", () => {
     const command = { baseSha: "base-sha", headSha: "head-sha", failOn: ["critical" as const] };
 
     it("reviews the PR committed range and applies the quality gate", async () => {
-        const getCodeChange = vi.fn().mockResolvedValue({
-            diff: "",
-            files: [],
-            chunks: [{
-                id: "chunk-1",
-                path: "src/example.ts",
-                newRange: { startLine: 1, endLine: 1 },
-                content: "+throw new Error('failure');",
+        const getRawCodeChange = vi.fn().mockResolvedValue({
+            fileChanges: [{
+                file: { path: "src/example.ts", status: "modified" as const },
+                diff: "diff --git a/src/example.ts b/src/example.ts\n--- a/src/example.ts\n+++ b/src/example.ts\n@@ -0,0 +1 @@\n+throw new Error('failure');\n",
             }],
-            excludedFileCount: 0,
-            redactedValueCount: 0,
         });
-        const analyze = vi.fn().mockResolvedValue({
+        const analyze = vi.fn().mockImplementation(({ codeChange }) => ({
             summary: "Critical issue found.",
             findings: [{
                 severity: "critical",
@@ -29,13 +23,13 @@ describe("runPullRequestReviewUseCase", () => {
                 description: "Description.",
                 file: "src/example.ts",
                 line: 1,
-                chunkId: "chunk-1",
+                chunkId: codeChange.chunks[0]?.id,
                 evidence: "+throw new Error('failure');",
             }],
-        });
+        }));
 
         await expect(runPullRequestReviewUseCase(command, {
-            diffProvider: { getCodeChange },
+            diffProvider: { getRawCodeChange },
             reviewAnalyzer: { identity: { kind: "ai", id: "deepseek" }, capabilities: {
                 inputAccess: "sanitized-model-input", supportsChangedOnly: true, supportsRepositoryScan: false,
             }, analyze },
@@ -43,7 +37,7 @@ describe("runPullRequestReviewUseCase", () => {
             policy: { shouldFail: false },
             findings: [{ verificationStatus: "grounded" }],
         });
-        expect(getCodeChange).toHaveBeenCalledWith({
+        expect(getRawCodeChange).toHaveBeenCalledWith({
             baseRef: "base-sha",
             headRef: "head-sha",
             comparison: "three-dot",
@@ -52,16 +46,14 @@ describe("runPullRequestReviewUseCase", () => {
 
     it("keeps AI failures distinct from Git diff failures", async () => {
         await expect(runPullRequestReviewUseCase(command, {
-            diffProvider: { getCodeChange: vi.fn().mockResolvedValue({
-                diff: "", files: [], chunks: [], excludedFileCount: 0, redactedValueCount: 0,
-            }) },
+            diffProvider: { getRawCodeChange: vi.fn().mockResolvedValue({ fileChanges: [] }) },
             reviewAnalyzer: { identity: { kind: "ai", id: "deepseek" }, capabilities: {
                 inputAccess: "sanitized-model-input", supportsChangedOnly: true, supportsRepositoryScan: false,
             }, analyze: vi.fn().mockRejectedValue(new Error("AI failure")) },
         })).rejects.toBeInstanceOf(AiReviewExecutionError);
 
         await expect(runPullRequestReviewUseCase(command, {
-            diffProvider: { getCodeChange: vi.fn().mockRejectedValue(new Error("Git failure")) },
+            diffProvider: { getRawCodeChange: vi.fn().mockRejectedValue(new Error("Git failure")) },
             reviewAnalyzer: { identity: { kind: "ai", id: "deepseek" }, capabilities: {
                 inputAccess: "sanitized-model-input", supportsChangedOnly: true, supportsRepositoryScan: false,
             }, analyze: vi.fn() },

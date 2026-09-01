@@ -3,20 +3,23 @@ import { resolvePullRequestCodeChange } from "../../../../src/application/review
 
 describe("resolvePullRequestCodeChange", () => {
     it("requests the committed base-to-head three-dot range", async () => {
-        const codeChange = {
-            diff: "",
-            files: [],
-            excludedFileCount: 0,
-            redactedValueCount: 0,
+        const rawCodeChange = {
+            fileChanges: [],
         };
-        const getCodeChange = vi.fn().mockResolvedValue(codeChange);
+        const getRawCodeChange = vi.fn().mockResolvedValue(rawCodeChange);
 
-        await expect(resolvePullRequestCodeChange({ getCodeChange }, {
+        await expect(resolvePullRequestCodeChange({ getRawCodeChange }, {
             baseSha: "base-sha",
             headSha: "head-sha",
-        })).resolves.toBe(codeChange);
+        })).resolves.toEqual({
+            diff: "",
+            files: [],
+            chunks: [],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        });
 
-        expect(getCodeChange).toHaveBeenCalledWith({
+        expect(getRawCodeChange).toHaveBeenCalledWith({
             baseRef: "base-sha",
             headRef: "head-sha",
             comparison: "three-dot",

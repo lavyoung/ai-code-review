@@ -1,4 +1,4 @@
-import type { CodeChange } from "../../../domain/review/model/code-change.js";
+import type { RawCodeChange } from "../../../domain/review/model/code-change.js";
 
 export type DiffComparison = "two-dot" | "three-dot";
 
@@ -12,14 +12,14 @@ export interface DiffRange {
 }
 
 /**
- * 提供已提交代码变更的应用端口。
+ * 提供仅限受信任本地边界使用的已提交原始变更的应用端口。
  */
 export interface DiffProvider {
     /**
-     * 获取指定范围内已过滤、已脱敏的代码变更。
+     * 获取指定范围内的原始已提交变更。
      *
      * @param range Git 比较范围。
-     * @returns 可安全用于后续评审的代码变更。
+     * @returns 仅可交给安全投影步骤的原始变更。
      */
-    getCodeChange(range: DiffRange): Promise<CodeChange>;
+    getRawCodeChange(range: DiffRange): Promise<RawCodeChange>;
 }

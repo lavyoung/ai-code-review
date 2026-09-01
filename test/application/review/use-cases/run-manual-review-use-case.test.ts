@@ -7,20 +7,14 @@ import { runManualReviewUseCase } from "../../../../src/application/review/use-c
 
 describe("runManualReviewUseCase", () => {
     it("orchestrates diff loading, AI review, and the quality gate", async () => {
-        const codeChange = {
-            diff: "diff --git a/src/example.ts b/src/example.ts\n",
-            files: [{ path: "src/example.ts", status: "modified" as const }],
-            chunks: [{
-                id: "chunk-1",
-                path: "src/example.ts",
-                newRange: { startLine: 1, endLine: 1 },
-                content: "+throw new Error('failure');",
+        const rawCodeChange = {
+            fileChanges: [{
+                file: { path: "src/example.ts", status: "modified" as const },
+                diff: "diff --git a/src/example.ts b/src/example.ts\n--- a/src/example.ts\n+++ b/src/example.ts\n@@ -0,0 +1 @@\n+throw new Error('failure');\n",
             }],
-            excludedFileCount: 0,
-            redactedValueCount: 0,
         };
-        const getCodeChange = vi.fn().mockResolvedValue(codeChange);
-        const analyze = vi.fn().mockResolvedValue({
+        const getRawCodeChange = vi.fn().mockResolvedValue(rawCodeChange);
+        const analyze = vi.fn().mockImplementation(({ codeChange }) => ({
             summary: "One critical issue found.",
             findings: [{
                 severity: "critical",
@@ -28,16 +22,16 @@ describe("runManualReviewUseCase", () => {
                 description: "Description.",
                 file: "src/example.ts",
                 line: 1,
-                chunkId: "chunk-1",
+                chunkId: codeChange.chunks[0]?.id,
                 evidence: "+throw new Error('failure');",
             }],
-        });
+        }));
 
         await expect(runManualReviewUseCase({
             target: "main",
             failOn: ["critical"],
         }, {
-            diffProvider: { getCodeChange },
+            diffProvider: { getRawCodeChange },
             reviewAnalyzer: { identity: { kind: "ai", id: "deepseek" }, capabilities: {
                 inputAccess: "sanitized-model-input", supportsChangedOnly: true, supportsRepositoryScan: false,
             }, analyze },
@@ -51,12 +45,14 @@ describe("runManualReviewUseCase", () => {
             },
         });
 
-        expect(getCodeChange).toHaveBeenCalledWith({
+        expect(getRawCodeChange).toHaveBeenCalledWith({
             baseRef: "main",
             headRef: "HEAD",
             comparison: "three-dot",
         });
-        expect(analyze).toHaveBeenCalledWith({ codeChange });
+        expect(analyze).toHaveBeenCalledWith(expect.objectContaining({
+            codeChange: expect.objectContaining({ files: [{ path: "src/example.ts", status: "modified" }] }),
+        }));
     });
 
     it("maps a diff provider failure to a diff resolution error", async () => {
@@ -64,7 +60,7 @@ describe("runManualReviewUseCase", () => {
             target: "main",
             failOn: ["critical"],
         }, {
-            diffProvider: { getCodeChange: vi.fn().mockRejectedValue(new Error("Git failure")) },
+            diffProvider: { getRawCodeChange: vi.fn().mockRejectedValue(new Error("Git failure")) },
             reviewAnalyzer: { identity: { kind: "ai", id: "deepseek" }, capabilities: {
                 inputAccess: "sanitized-model-input", supportsChangedOnly: true, supportsRepositoryScan: false,
             }, analyze: vi.fn() },
@@ -77,13 +73,7 @@ describe("runManualReviewUseCase", () => {
             failOn: ["critical"],
         }, {
             diffProvider: {
-                getCodeChange: vi.fn().mockResolvedValue({
-                    diff: "",
-                    files: [],
-                    chunks: [],
-                    excludedFileCount: 0,
-                    redactedValueCount: 0,
-                }),
+                getRawCodeChange: vi.fn().mockResolvedValue({ fileChanges: [] }),
             },
             reviewAnalyzer: {
                 identity: { kind: "ai", id: "deepseek" },

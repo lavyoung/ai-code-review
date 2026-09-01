@@ -3,20 +3,23 @@ import { resolveManualCodeChange } from "../../../../src/application/review/use-
 
 describe("resolveManualCodeChange", () => {
     it("requests committed changes from the target merge base to HEAD", async () => {
-        const expectedChange = {
-            diff: "",
-            files: [],
-            excludedFileCount: 0,
-            redactedValueCount: 0,
+        const rawChange = {
+            fileChanges: [],
         };
-        const getCodeChange = vi.fn().mockResolvedValue(expectedChange);
+        const getRawCodeChange = vi.fn().mockResolvedValue(rawChange);
 
         await expect(resolveManualCodeChange(
-            { getCodeChange },
+            { getRawCodeChange },
             "main",
-        )).resolves.toBe(expectedChange);
+        )).resolves.toEqual({
+            diff: "",
+            files: [],
+            chunks: [],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        });
 
-        expect(getCodeChange).toHaveBeenCalledWith({
+        expect(getRawCodeChange).toHaveBeenCalledWith({
             baseRef: "main",
             headRef: "HEAD",
             comparison: "three-dot",
