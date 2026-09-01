@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { Command, CommanderError } from "commander";
 import packageMetadata from "../../../package.json" with { type: "json" };
 import { configureReviewCommand } from "./commands/review-command.js";

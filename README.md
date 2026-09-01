@@ -135,6 +135,29 @@ jobs:
 
 若本仓库为私有仓库，还需在 `ai-code-review` 仓库的 **Settings → Actions → General → Access** 中允许同一用户或组织下的私有仓库访问。外部仓库协作者可查看运行日志，因此不要在日志、评论或模型输入中输出密钥。
 
+## 作为 npm CLI 使用
+
+发布后，包名为 `@lavyoung/ai-code-review`，发布 Registry 固定为 GitHub Packages。使用该包的项目先在 `.npmrc` 中配置 scope：
+
+```ini
+@lavyoung:registry=https://npm.pkg.github.com
+```
+
+本地安装 GitHub Packages 时，使用具有 `read:packages` 权限的 GitHub Personal Access Token（classic）登录：
+
+```bash
+npm login --scope=@lavyoung --auth-type=legacy --registry=https://npm.pkg.github.com
+npm install --save-dev @lavyoung/ai-code-review@0.1.0
+```
+
+安装后可在本地、CodeUp Flow 或 GitLab CI 中统一调用：
+
+```bash
+npx ai-code-review review --provider local --event manual --target main
+```
+
+在 CI 中，将 Registry 凭据保存为 Secret，并通过 `NODE_AUTH_TOKEN` 注入；不要将 Token 写入 `.npmrc` 或日志。
+
 ## 配置示例
 
 ```yaml
