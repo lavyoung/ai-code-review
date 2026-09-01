@@ -7,12 +7,18 @@ import {
 import { renderManualReviewReport } from "./render-manual-review-report.js";
 import { resolveCliConfiguration } from "../../infrastructure/config/resolve-cli-configuration.js";
 import { runManualReviewUseCase } from "../../application/run-manual-review-use-case.js";
+import type { ManualReviewResult } from "../../application/run-manual-review-use-case.js";
+import { runPullRequestReviewUseCase } from "../../application/run-pull-request-review-use-case.js";
 import {
     AiReviewExecutionError,
     DiffResolutionError,
 } from "../../application/review-execution-error.js";
 import { DeepSeekReviewAdapter } from "../../infrastructure/deepseek/deepseek-review-adapter.js";
 import { LocalGitDiffProvider } from "../../infrastructure/git/local-git-diff-provider.js";
+import {
+    GitHubActionsContextError,
+    resolveGitHubActionsPullRequestContext,
+} from "../../infrastructure/github/resolve-github-actions-pull-request-context.js";
 import { WeComNotifier } from "../../infrastructure/notifiers/wecom-notifier.js";
 import { publishNotificationUseCase } from "../../application/publish-notification-use-case.js";
 import {
@@ -52,9 +58,15 @@ const reviewCommand = program
     .option("--target <ref>", "Target branch or commit")
     .option("--config <path>", "Configuration file path")
     .action(async (options: ReviewCommandOptions) => {
-        if (options.event !== "manual" || options.provider !== "local" || options.target === undefined) {
+        const isManualReview = options.event === "manual"
+            && options.provider === "local"
+            && options.target !== undefined;
+        const isGitHubPullRequestReview = options.event === "pull-request"
+            && options.provider === "github";
+
+        if (!isManualReview && !isGitHubPullRequestReview) {
             console.error(
-                "Only manual reviews with --provider local and --target <ref> are currently supported.",
+                "Supported modes: manual (--provider local --target <ref>) and GitHub pull-request (--provider github).",
             );
             process.exitCode = CLI_EXIT_CODES.INVALID_ARGUMENT;
             return;
@@ -82,16 +94,36 @@ const reviewCommand = program
         }
 
         try {
-            const result = await runManualReviewUseCase({
-                target: options.target,
-                failOn: configuration.review.failOn,
-            }, {
+            const dependencies = {
                 diffProvider: new LocalGitDiffProvider(process.cwd()),
                 aiReviewPort: new DeepSeekReviewAdapter(configuration.ai),
-            });
+            };
+            let result: ManualReviewResult;
+            let reportTarget: string;
+
+            if (isManualReview) {
+                const target = options.target;
+                if (target === undefined) {
+                    throw new Error("Manual review target was unavailable.");
+                }
+
+                result = await runManualReviewUseCase({
+                    target,
+                    failOn: configuration.review.failOn,
+                }, dependencies);
+                reportTarget = target;
+            } else {
+                const githubContext = await resolveGitHubActionsPullRequestContext(process.env);
+                result = await runPullRequestReviewUseCase({
+                    baseSha: githubContext.baseSha,
+                    headSha: githubContext.headSha,
+                    failOn: configuration.review.failOn,
+                }, dependencies);
+                reportTarget = githubContext.baseRef;
+            }
 
             const report = renderManualReviewReport({
-                target: options.target,
+                target: reportTarget,
                 result,
                 ...(configuration.notifications.wecom.enabled
                     ? { wecomDelivery: { status: "pending" as const } }
@@ -106,7 +138,7 @@ const reviewCommand = program
                 : undefined;
 
             console.log(renderManualReviewReport({
-                target: options.target,
+                target: reportTarget,
                 result,
                 ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
             }));
@@ -120,6 +152,12 @@ const reviewCommand = program
                 ? CLI_EXIT_CODES.QUALITY_GATE_FAILED
                 : CLI_EXIT_CODES.SUCCESS;
         } catch (error) {
+            if (error instanceof GitHubActionsContextError) {
+                console.error("GitHub Actions event error. Check the pull_request event context.");
+                process.exitCode = CLI_EXIT_CODES.INVALID_ARGUMENT;
+                return;
+            }
+
             if (error instanceof DiffResolutionError) {
                 console.error("Git diff error. Check the repository and target reference.");
                 process.exitCode = CLI_EXIT_CODES.GIT_DIFF_FAILED;

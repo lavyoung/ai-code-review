@@ -898,6 +898,31 @@ PR/MR 摘要评论必须使用固定的、可识别且可更新的协议：
 
 当前实现已固化该协议：`reviewId` 由 `{provider}:{repository}:{change-id}` 组成，评论端口仅提供 `upsertSummary`。CodeUp 的查询、创建和更新 API 将在平台适配器中实现，不能泄漏到应用层。
 
+CodeUp 适配器通过其合并请求评论列表查找该标识；命中后更新 `commentBizId`，未命中时以 `GLOBAL_COMMENT` 创建。创建全局评论必须显式传入当前 MR 的 `patchSetBizId`，Token 仅由 CI Secret 或环境变量注入。
+
+GitHub 适配器使用 PR 的 Issue Comment 时间线接口，而不是行级 Review Comment 接口：查询 `/issues/{pull_number}/comments`，命中标识后 `PATCH /issues/comments/{comment_id}`，否则 `POST /issues/{pull_number}/comments`。它支持分页和 GitHub Enterprise 自定义 API 地址，Token 仅由 CI Secret 或环境变量注入。
+
+GitHub Actions 的 PR 评审使用事件文件中的 `pull_request.base.sha...pull_request.head.sha`，不使用默认的合并引用。工作流须完整检出历史：
+
+```yaml
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+steps:
+  - uses: actions/checkout@v4
+    with:
+      fetch-depth: 0
+      ref: ${{ github.event.pull_request.head.sha }}
+  - run: npx ai-code-review review --provider github --event pull-request
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+```
+
 ### 15.5 分层与职责
 
 - 采用 DDD 分层：领域层表达评审模型和策略；应用层编排用例；端口定义外部能力；基础设施层实现 Git、DeepSeek、通知和评论适配器。
