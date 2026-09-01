@@ -23,6 +23,12 @@ export interface ReviewConfiguration {
         maxAnalyzerConcurrency: number;
         maxAiRequestCount: number;
     };
+    analyzers: {
+        typescript: {
+            enabled: boolean;
+            timeoutMs: number;
+        };
+    };
     notifications: {
         wecom: {
             enabled: boolean;

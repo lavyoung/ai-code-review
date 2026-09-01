@@ -15,6 +15,8 @@ describe("loadConfigurationFile", () => {
                 model: "deepseek-v4-flash",
                 outputLanguage: "ja",
                 timeoutMs: 10_000,
+                typeScriptEnabled: true,
+                typeScriptTimeoutMs: 30_000,
                 wecomEnabled: false,
                 wecomFailOnError: false,
                 githubCommentEnabled: false,

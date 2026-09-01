@@ -27,6 +27,8 @@ const configurationOverrideSchema = z.object({
     totalTimeoutMs: z.number().int().positive().optional(),
     maxAnalyzerConcurrency: z.number().int().positive().optional(),
     maxAiRequestCount: z.number().int().positive().optional(),
+    typeScriptEnabled: z.boolean().optional(),
+    typeScriptTimeoutMs: z.number().int().positive().optional(),
     wecomEnabled: z.boolean().optional(),
     wecomFailOnError: z.boolean().optional(),
     githubCommentEnabled: z.boolean().optional(),
@@ -86,6 +88,10 @@ export const resolveReviewConfiguration = (
         maxAiRequestCount: sources.environment?.REVIEW_MAX_AI_REQUEST_COUNT === undefined
             ? undefined
             : Number(sources.environment.REVIEW_MAX_AI_REQUEST_COUNT),
+        typeScriptEnabled: parseBooleanEnvironmentValue(sources.environment?.TYPESCRIPT_ANALYZER_ENABLED),
+        typeScriptTimeoutMs: sources.environment?.TYPESCRIPT_ANALYZER_TIMEOUT_MS === undefined
+            ? undefined
+            : Number(sources.environment.TYPESCRIPT_ANALYZER_TIMEOUT_MS),
         wecomEnabled: parseBooleanEnvironmentValue(sources.environment?.WECOM_ENABLED),
         wecomFailOnError: parseBooleanEnvironmentValue(
             sources.environment?.WECOM_FAIL_ON_ERROR,
@@ -179,6 +185,18 @@ export const resolveReviewConfiguration = (
                 ?? environment.maxAiRequestCount
                 ?? file.maxAiRequestCount
                 ?? 8,
+        },
+        analyzers: {
+            typescript: {
+                enabled: cli.typeScriptEnabled
+                    ?? environment.typeScriptEnabled
+                    ?? file.typeScriptEnabled
+                    ?? false,
+                timeoutMs: cli.typeScriptTimeoutMs
+                    ?? environment.typeScriptTimeoutMs
+                    ?? file.typeScriptTimeoutMs
+                    ?? 120_000,
+            },
         },
         notifications: {
             wecom: {

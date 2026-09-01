@@ -1,5 +1,6 @@
 import type { ReviewConfiguration } from "../application/configuration/review-configuration.js";
 import { DeepSeekReviewAdapter } from "../infrastructure/ai/deepseek/deepseek-review-adapter.js";
+import { TypeScriptReviewAnalyzer } from "../infrastructure/analyzers/typescript/typescript-review-analyzer.js";
 import { StaticReviewAnalyzerRegistry } from "../application/review/orchestration/static-review-analyzer-registry.js";
 import { deterministicAnalyzerFindingVerifier } from "../application/review/verification/deterministic-analyzer-finding-verifier.js";
 import { resolveCliConfiguration } from "../infrastructure/configuration/resolve-cli-configuration.js";
@@ -31,16 +32,28 @@ export const createReviewDependencies = (
     workingDirectory: string,
 ) => {
     const deepSeekAnalyzer = new DeepSeekReviewAdapter(configuration.ai);
+    const typeScriptAnalyzer = new TypeScriptReviewAnalyzer(workingDirectory);
+    const analyzers = configuration.analyzers.typescript.enabled
+        ? [deepSeekAnalyzer, typeScriptAnalyzer]
+        : [deepSeekAnalyzer];
+    const analyzerPlans = [{
+        analyzerId: deepSeekAnalyzer.identity.id,
+        required: true,
+        timeoutMs: configuration.ai.timeoutMs,
+        failureMode: "fail" as const,
+    }, ...(configuration.analyzers.typescript.enabled
+        ? [{
+            analyzerId: typeScriptAnalyzer.identity.id,
+            required: true,
+            timeoutMs: configuration.analyzers.typescript.timeoutMs,
+            failureMode: "fail" as const,
+        }]
+        : [])];
 
     return {
         diffProvider: new LocalGitDiffProvider(workingDirectory),
-        reviewAnalyzerRegistry: new StaticReviewAnalyzerRegistry([deepSeekAnalyzer]),
-        analyzerPlans: [{
-            analyzerId: deepSeekAnalyzer.identity.id,
-            required: true,
-            timeoutMs: configuration.ai.timeoutMs,
-            failureMode: "fail" as const,
-        }],
+        reviewAnalyzerRegistry: new StaticReviewAnalyzerRegistry(analyzers),
+        analyzerPlans,
         analyzerBudget: {
             totalTimeoutMs: configuration.execution.totalTimeoutMs,
             maxConcurrency: configuration.execution.maxAnalyzerConcurrency,

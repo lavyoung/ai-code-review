@@ -19,6 +19,10 @@ describe("resolveReviewConfiguration", () => {
             maxAnalyzerConcurrency: 3,
             maxAiRequestCount: 8,
         });
+        expect(configuration.analyzers.typescript).toEqual({
+            enabled: false,
+            timeoutMs: 120_000,
+        });
         expect(configuration.notifications.wecom).toEqual({
             enabled: false,
             failOnError: false,
@@ -44,6 +48,8 @@ describe("resolveReviewConfiguration", () => {
                 totalTimeoutMs: 60_000,
                 maxAnalyzerConcurrency: 1,
                 maxAiRequestCount: 2,
+                typeScriptEnabled: false,
+                typeScriptTimeoutMs: 30_000,
             },
             environment: {
                 REVIEW_SEVERITY_THRESHOLD: "high",
@@ -54,6 +60,8 @@ describe("resolveReviewConfiguration", () => {
                 REVIEW_TOTAL_ANALYZER_TIMEOUT_MS: "90000",
                 REVIEW_MAX_ANALYZER_CONCURRENCY: "2",
                 REVIEW_MAX_AI_REQUEST_COUNT: "4",
+                TYPESCRIPT_ANALYZER_ENABLED: "true",
+                TYPESCRIPT_ANALYZER_TIMEOUT_MS: "60000",
                 DEEPSEEK_API_KEY: "test-key",
                 WECOM_ENABLED: "true",
                 WECOM_FAIL_ON_ERROR: "true",
@@ -74,6 +82,8 @@ describe("resolveReviewConfiguration", () => {
                 totalTimeoutMs: 120_000,
                 maxAnalyzerConcurrency: 3,
                 maxAiRequestCount: 6,
+                typeScriptEnabled: true,
+                typeScriptTimeoutMs: 90_000,
             },
         });
 
@@ -100,6 +110,12 @@ describe("resolveReviewConfiguration", () => {
                 totalTimeoutMs: 120_000,
                 maxAnalyzerConcurrency: 3,
                 maxAiRequestCount: 6,
+            },
+            analyzers: {
+                typescript: {
+                    enabled: true,
+                    timeoutMs: 90_000,
+                },
             },
             comments: {
                 github: {

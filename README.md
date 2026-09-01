@@ -121,6 +121,27 @@ ai-code-review review --provider local --event manual --target main \
   --max-ai-request-count 8
 ```
 
+## TypeScript 确定性检查
+
+TypeScript 分析器在当前检出的提交上运行 `tsc --noEmit`，但只将能定位到本次新增 diff 行的诊断发布为发现项。它默认关闭；启用后，其已锚定诊断会标记为 `verified`，可按既有 `fail_on` 配置触发质量门禁。DeepSeek 发现仍为 `grounded`，不会单独阻断流水线。
+
+长期配置：
+
+```yaml
+analyzers:
+  typescript:
+    enabled: true
+    timeout_ms: 120000
+```
+
+也可使用环境变量 `TYPESCRIPT_ANALYZER_ENABLED=true`、`TYPESCRIPT_ANALYZER_TIMEOUT_MS=120000`，或临时指定：
+
+```bash
+ai-code-review review --provider local --event manual --target main --typescript-enabled true
+```
+
+启用它的仓库必须提供可用的 `tsconfig.json`；配置不可读取或 TypeScript 无法生成文件诊断时，该必需分析器将以退出码 `104` 失败，避免错误地将检查失效视为“没有问题”。
+
 ## 在其他 GitHub 仓库中使用
 
 本项目提供 GitHub Composite Action。调用方必须先 checkout PR 的完整 Git 历史，并为工作流授予最小必要权限：

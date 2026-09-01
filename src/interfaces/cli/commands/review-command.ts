@@ -45,6 +45,7 @@ interface ReviewCommandOptions {
     totalAnalyzerTimeoutMs?: number;
     maxAnalyzerConcurrency?: number;
     maxAiRequestCount?: number;
+    typescriptEnabled?: boolean;
 }
 
 const parseReviewEventType = (value: string): ReviewEventType => {
@@ -66,6 +67,14 @@ const parsePositiveInteger = (value: string, optionName: string): number => {
     return parsed;
 };
 
+const parseBoolean = (value: string, optionName: string): boolean => {
+    if (value !== "true" && value !== "false") {
+        throw new InvalidArgumentError(`${optionName} must be true or false.`);
+    }
+
+    return value === "true";
+};
+
 /** 注册评审命令；命令层仅处理输入、输出和应用用例的调用。 */
 export const configureReviewCommand = (program: Command): void => {
 const reviewCommand = program
@@ -82,6 +91,8 @@ const reviewCommand = program
         parsePositiveInteger(value, "--max-analyzer-concurrency"))
     .option("--max-ai-request-count <count>", "Maximum AI analyzer requests", (value) =>
         parsePositiveInteger(value, "--max-ai-request-count"))
+    .option("--typescript-enabled <true|false>", "Enable the local TypeScript analyzer", (value) =>
+        parseBoolean(value, "--typescript-enabled"))
     .action(async (options: ReviewCommandOptions) => {
         const isManualReview = options.event === "manual"
             && options.provider === "local"
@@ -118,6 +129,9 @@ const reviewCommand = program
                     ...(options.maxAiRequestCount === undefined
                         ? {}
                         : { maxAiRequestCount: options.maxAiRequestCount }),
+                    ...(options.typescriptEnabled === undefined
+                        ? {}
+                        : { typeScriptEnabled: options.typescriptEnabled }),
                 },
             });
         } catch {
