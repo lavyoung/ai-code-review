@@ -23,6 +23,7 @@ export interface ConfigurationFileOverride {
     typeScriptTimeoutMs?: number;
     sarifEnabled?: boolean;
     sarifReportPath?: string;
+    deepSeekEnabled?: boolean;
     wecomEnabled?: boolean;
     wecomFailOnError?: boolean;
     githubCommentEnabled?: boolean;
@@ -56,6 +57,9 @@ const configurationFileSchema = z.object({
         max_ai_request_count: z.number().int().positive().optional(),
     }).strict().optional(),
     analyzers: z.object({
+        deepseek: z.object({
+            enabled: z.boolean().optional(),
+        }).strict().optional(),
         typescript: z.object({
             enabled: z.boolean().optional(),
             timeout_ms: z.number().int().positive().optional(),
@@ -123,6 +127,9 @@ export const loadConfigurationFile = async (
         ...(configuration.analyzers?.typescript?.enabled === undefined
             ? {}
             : { typeScriptEnabled: configuration.analyzers.typescript.enabled }),
+        ...(configuration.analyzers?.deepseek?.enabled === undefined
+            ? {}
+            : { deepSeekEnabled: configuration.analyzers.deepseek.enabled }),
         ...(configuration.analyzers?.typescript?.timeout_ms === undefined
             ? {}
             : { typeScriptTimeoutMs: configuration.analyzers.typescript.timeout_ms }),

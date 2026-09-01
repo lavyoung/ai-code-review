@@ -14,6 +14,10 @@ inputs:
     description: Whether to run the local TypeScript deterministic analyzer.
     required: false
     default: "false"
+  deepseek-enabled:
+    description: Whether to run the DeepSeek semantic analyzer.
+    required: false
+    default: "true"
   sarif-enabled:
     description: Whether to import a local SARIF 2.1.0 report.
     required: false
@@ -47,6 +51,7 @@ runs:
         GITHUB_COMMENT_ENABLED: ${{ inputs.comment-enabled }}
         REVIEW_OUTPUT_LANGUAGE: ${{ inputs.output-language }}
         TYPESCRIPT_ANALYZER_ENABLED: ${{ inputs.typescript-enabled }}
+        DEEPSEEK_ANALYZER_ENABLED: ${{ inputs.deepseek-enabled }}
         SARIF_ANALYZER_ENABLED: ${{ inputs.sarif-enabled }}
         SARIF_REPORT_PATH: ${{ inputs.sarif-report }}
       run: node "$GITHUB_ACTION_PATH/dist/interfaces/cli/index.js" review --provider github --event pull-request

@@ -32,7 +32,9 @@ export const createReviewDependencies = (
     configuration: ReviewConfiguration,
     workingDirectory: string,
 ) => {
-    const deepSeekAnalyzer = new DeepSeekReviewAdapter(configuration.ai);
+    const deepSeekAnalyzer = configuration.analyzers.deepseek.enabled
+        ? new DeepSeekReviewAdapter(configuration.ai)
+        : undefined;
     const typeScriptAnalyzer = new TypeScriptReviewAnalyzer(workingDirectory);
     const sarifAnalyzer = configuration.analyzers.sarif.enabled && configuration.analyzers.sarif.reportPath !== undefined
         ? new SarifReviewAnalyzer(workingDirectory, configuration.analyzers.sarif.reportPath)
@@ -40,13 +42,16 @@ export const createReviewDependencies = (
     if (configuration.analyzers.sarif.enabled && sarifAnalyzer === undefined) {
         throw new Error("SARIF report path must be configured when the SARIF analyzer is enabled.");
     }
-    const analyzers = [deepSeekAnalyzer, ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer])];
-    const analyzerPlans = [{
+    const analyzers = [...(deepSeekAnalyzer === undefined ? [] : [deepSeekAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer])];
+    if (analyzers.length === 0) {
+        throw new Error("At least one review analyzer must be enabled.");
+    }
+    const analyzerPlans = [...(deepSeekAnalyzer === undefined ? [] : [{
         analyzerId: deepSeekAnalyzer.identity.id,
         required: true,
         timeoutMs: configuration.ai.timeoutMs,
         failureMode: "fail" as const,
-    }, ...(configuration.analyzers.typescript.enabled
+    }]), ...(configuration.analyzers.typescript.enabled
         ? [{
             analyzerId: typeScriptAnalyzer.identity.id,
             required: true,

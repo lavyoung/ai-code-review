@@ -81,8 +81,15 @@ const formatFinding = (finding: ValidatedFinding, index: number): string => {
         ? ""
         : `\n  Suggestion: ${redactText(finding.suggestion)}`;
 
-    return `${index + 1}. [${finding.severity}] ${redactText(finding.title)}${formatLocation(finding)}\n   ${redactText(finding.description)}${suggestion}`;
+    return `${index + 1}. [${finding.verificationStatus}] [${finding.severity}] ${redactText(finding.title)}${formatLocation(finding)}\n   ${redactText(finding.description)}${suggestion}`;
 };
+
+const countFindingsByVerificationStatus = (
+    findings: readonly ValidatedFinding[],
+): Record<ValidatedFinding["verificationStatus"], number> => findings.reduce(
+    (counts, finding) => ({ ...counts, [finding.verificationStatus]: counts[finding.verificationStatus] + 1 }),
+    { grounded: 0, verified: 0 },
+);
 
 const formatAnalyzerRuns = (
     runs: ManualReviewResult["analyzerRuns"] | undefined,
@@ -103,6 +110,7 @@ export const renderReviewReport = (
         policy,
     } = input.result;
     const status = policy.shouldFail ? "QUALITY GATE FAILED" : "PASSED";
+    const verificationCounts = countFindingsByVerificationStatus(validatedFindings);
     const findings = validatedFindings.length === 0
         ? "No actionable findings."
         : validatedFindings.map(formatFinding).join("\n\n");
@@ -114,6 +122,8 @@ export const renderReviewReport = (
         `- Target: ${redactText(input.target)}`,
         `- Highest severity: ${policy.highestSeverity ?? "none"}`,
         `- Findings: ${validatedFindings.length}`,
+        `- Verified findings: ${verificationCounts.verified}`,
+        `- Grounded findings: ${verificationCounts.grounded}`,
         `- Filtered candidates: ${Object.values(input.result.suppressedCandidateCounts)
             .reduce((total, count) => total + count, 0)}`,
         ...(formatAnalyzerRuns(input.result.analyzerRuns) === undefined

@@ -48,6 +48,7 @@ interface ReviewCommandOptions {
     typescriptEnabled?: boolean;
     sarifEnabled?: boolean;
     sarifReport?: string;
+    deepseekEnabled?: boolean;
 }
 
 const parseReviewEventType = (value: string): ReviewEventType => {
@@ -98,6 +99,8 @@ const reviewCommand = program
     .option("--sarif-enabled <true|false>", "Enable the local SARIF analyzer", (value) =>
         parseBoolean(value, "--sarif-enabled"))
     .option("--sarif-report <path>", "Path to a SARIF 2.1.0 report")
+    .option("--deepseek-enabled <true|false>", "Enable the DeepSeek semantic analyzer", (value) =>
+        parseBoolean(value, "--deepseek-enabled"))
     .action(async (options: ReviewCommandOptions) => {
         const isManualReview = options.event === "manual"
             && options.provider === "local"
@@ -139,6 +142,9 @@ const reviewCommand = program
                         : { typeScriptEnabled: options.typescriptEnabled }),
                     ...(options.sarifEnabled === undefined ? {} : { sarifEnabled: options.sarifEnabled }),
                     ...(options.sarifReport === undefined ? {} : { sarifReportPath: options.sarifReport }),
+                    ...(options.deepseekEnabled === undefined
+                        ? {}
+                        : { deepSeekEnabled: options.deepseekEnabled }),
                 },
             });
         } catch {
@@ -149,7 +155,7 @@ const reviewCommand = program
             return;
         }
 
-        if (configuration.ai.apiKey === undefined) {
+        if (configuration.analyzers.deepseek.enabled && configuration.ai.apiKey === undefined) {
             console.error("Configuration error. DEEPSEEK_API_KEY must be set.");
             process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
             return;

@@ -123,6 +123,18 @@ ai-code-review review --provider local --event manual --target main \
 
 ## TypeScript 确定性检查
 
+DeepSeek 默认启用以兼容现有工作流。若只需要确定性检查，可在任一配置来源中关闭它；关闭后不再要求 `DEEPSEEK_API_KEY`，但必须启用至少一个其他分析器：
+
+```yaml
+analyzers:
+  deepseek:
+    enabled: false
+  typescript:
+    enabled: true
+```
+
+等效环境变量为 `DEEPSEEK_ANALYZER_ENABLED=false`，Composite Action 输入为 `deepseek-enabled: "false"`。
+
 TypeScript 分析器在当前检出的提交上运行 `tsc --noEmit`，但只将能定位到本次新增 diff 行的诊断发布为发现项。它默认关闭；启用后，其已锚定诊断会标记为 `verified`，可按既有 `fail_on` 配置触发质量门禁。DeepSeek 发现仍为 `grounded`，不会单独阻断流水线。
 
 长期配置：

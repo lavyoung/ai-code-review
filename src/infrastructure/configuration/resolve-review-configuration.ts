@@ -31,6 +31,7 @@ const configurationOverrideSchema = z.object({
     typeScriptTimeoutMs: z.number().int().positive().optional(),
     sarifEnabled: z.boolean().optional(),
     sarifReportPath: z.string().trim().min(1).optional(),
+    deepSeekEnabled: z.boolean().optional(),
     wecomEnabled: z.boolean().optional(),
     wecomFailOnError: z.boolean().optional(),
     githubCommentEnabled: z.boolean().optional(),
@@ -96,6 +97,7 @@ export const resolveReviewConfiguration = (
             : Number(sources.environment.TYPESCRIPT_ANALYZER_TIMEOUT_MS),
         sarifEnabled: parseBooleanEnvironmentValue(sources.environment?.SARIF_ANALYZER_ENABLED),
         sarifReportPath: optionalEnvironmentSecret(sources.environment?.SARIF_REPORT_PATH),
+        deepSeekEnabled: parseBooleanEnvironmentValue(sources.environment?.DEEPSEEK_ANALYZER_ENABLED),
         wecomEnabled: parseBooleanEnvironmentValue(sources.environment?.WECOM_ENABLED),
         wecomFailOnError: parseBooleanEnvironmentValue(
             sources.environment?.WECOM_FAIL_ON_ERROR,
@@ -150,9 +152,24 @@ export const resolveReviewConfiguration = (
         ?? environment.codeUpCommentFailOnError
         ?? file.codeUpCommentFailOnError
         ?? false;
+    const deepSeekEnabled = cli.deepSeekEnabled ?? environment.deepSeekEnabled ?? file.deepSeekEnabled ?? true;
+    const typeScriptEnabled = cli.typeScriptEnabled
+        ?? environment.typeScriptEnabled
+        ?? file.typeScriptEnabled
+        ?? false;
+    const sarifEnabled = cli.sarifEnabled ?? environment.sarifEnabled ?? file.sarifEnabled ?? false;
+    const sarifReportPath = cli.sarifReportPath ?? environment.sarifReportPath ?? file.sarifReportPath;
 
     if (wecomEnabled && webhookUrl === undefined) {
         throw new Error("WECOM_WEBHOOK_URL must be set when WeCom notifications are enabled.");
+    }
+
+    if (!deepSeekEnabled && !typeScriptEnabled && !sarifEnabled) {
+        throw new Error("At least one review analyzer must be enabled.");
+    }
+
+    if (sarifEnabled && sarifReportPath === undefined) {
+        throw new Error("A SARIF report path must be configured when the SARIF analyzer is enabled.");
     }
 
     return {
@@ -191,21 +208,21 @@ export const resolveReviewConfiguration = (
                 ?? 8,
         },
         analyzers: {
+            deepseek: {
+                enabled: deepSeekEnabled,
+            },
             typescript: {
-                enabled: cli.typeScriptEnabled
-                    ?? environment.typeScriptEnabled
-                    ?? file.typeScriptEnabled
-                    ?? false,
+                enabled: typeScriptEnabled,
                 timeoutMs: cli.typeScriptTimeoutMs
                     ?? environment.typeScriptTimeoutMs
                     ?? file.typeScriptTimeoutMs
                     ?? 120_000,
             },
             sarif: {
-                enabled: cli.sarifEnabled ?? environment.sarifEnabled ?? file.sarifEnabled ?? false,
-                ...(cli.sarifReportPath ?? environment.sarifReportPath ?? file.sarifReportPath === undefined
+                enabled: sarifEnabled,
+                ...(sarifReportPath === undefined
                     ? {}
-                    : { reportPath: cli.sarifReportPath ?? environment.sarifReportPath ?? file.sarifReportPath }),
+                    : { reportPath: sarifReportPath }),
             },
         },
         notifications: {

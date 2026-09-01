@@ -104,7 +104,9 @@ describe("renderReviewReport", () => {
 
         expect(report).toContain("## AI Code Review");
         expect(report).toContain("Status: QUALITY GATE FAILED");
-        expect(report).toContain("[high] Authorization: Bearer [REDACTED]");
+        expect(report).toContain("[verified] [high] Authorization: Bearer [REDACTED]");
+        expect(report).toContain("Verified findings: 1");
+        expect(report).toContain("Grounded findings: 0");
         expect(report).toContain("Suggestion: Move token: [REDACTED] to a secret store.");
         expect(report).not.toContain("exposed-value");
         expect(report).not.toContain(".env.production");

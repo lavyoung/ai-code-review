@@ -23,6 +23,7 @@ describe("resolveReviewConfiguration", () => {
             enabled: false,
             timeoutMs: 120_000,
         });
+        expect(configuration.analyzers.deepseek).toEqual({ enabled: true });
         expect(configuration.notifications.wecom).toEqual({
             enabled: false,
             failOnError: false,
@@ -167,6 +168,31 @@ describe("resolveReviewConfiguration", () => {
                 SARIF_REPORT_PATH: "",
             },
         }).analyzers.sarif).toEqual({ enabled: false });
+    });
+
+    it("allows DeepSeek to be disabled without an API key", () => {
+        const configuration = resolveReviewConfiguration({
+            environment: {
+                DEEPSEEK_ANALYZER_ENABLED: "false",
+                TYPESCRIPT_ANALYZER_ENABLED: "true",
+            },
+        });
+
+        expect(configuration.analyzers.deepseek).toEqual({ enabled: false });
+        expect(configuration.ai.apiKey).toBeUndefined();
+    });
+
+    it("requires at least one analyzer and a report path for enabled SARIF", () => {
+        expect(() => resolveReviewConfiguration({
+            environment: { DEEPSEEK_ANALYZER_ENABLED: "false" },
+        })).toThrow("At least one review analyzer");
+
+        expect(() => resolveReviewConfiguration({
+            environment: {
+                DEEPSEEK_ANALYZER_ENABLED: "false",
+                SARIF_ANALYZER_ENABLED: "true",
+            },
+        })).toThrow("SARIF report path");
     });
 
     it("accepts the API key only from the environment", () => {

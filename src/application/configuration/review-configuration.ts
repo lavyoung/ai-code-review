@@ -24,6 +24,9 @@ export interface ReviewConfiguration {
         maxAiRequestCount: number;
     };
     analyzers: {
+        deepseek: {
+            enabled: boolean;
+        };
         typescript: {
             enabled: boolean;
             timeoutMs: number;
