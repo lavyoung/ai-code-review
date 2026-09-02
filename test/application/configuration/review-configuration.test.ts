@@ -24,6 +24,7 @@ describe("resolveReviewConfiguration", () => {
             enabled: false,
             timeoutMs: 120_000,
         });
+        expect(configuration.analyzers.typescriptAst).toEqual({enabled: false});
         expect(configuration.analyzers.deepseek).toEqual({ enabled: true });
         expect(configuration.analyzers.secretScan).toEqual({ enabled: false });
         expect(configuration.notifications.wecom).toEqual({
@@ -203,6 +204,14 @@ describe("resolveReviewConfiguration", () => {
             deepseek: { enabled: false },
             secretScan: { enabled: true },
         });
+    });
+
+    it("enables the TypeScript AST analyzer through normal configuration precedence", () => {
+        expect(resolveReviewConfiguration({
+            file: {typeScriptAstEnabled: false},
+            environment: {TYPESCRIPT_AST_ANALYZER_ENABLED: "true"},
+            cli: {typeScriptAstEnabled: false},
+        }).analyzers.typescriptAst).toEqual({enabled: false});
     });
 
     it("requires at least one analyzer and a report path for enabled SARIF", () => {

@@ -1,5 +1,5 @@
-import type { ReviewFinding } from "./review-finding.js";
-import type { AnalyzerIdentity } from "./analyzer-identity.js";
+import type {ReviewFinding} from "./review-finding.js";
+import type {AnalyzerIdentity} from "./analyzer-identity.js";
 
 /** 候选发现项被锚定或验证后的状态。 */
 export type FindingVerificationStatus = "grounded" | "verified";
@@ -32,6 +32,7 @@ export type FindingVerificationMethod =
     | "diff-anchor"
     | "source-range"
     | "evidence-match"
+    | "ast"
     | "deterministic-analyzer";
 
 /** 因安全或证据不足而不对外输出的候选项原因。 */

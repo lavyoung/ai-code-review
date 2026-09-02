@@ -1,6 +1,9 @@
 import type {ReviewConfiguration} from "../application/configuration/review-configuration.js";
 import {DeepSeekReviewAdapter} from "../infrastructure/ai/deepseek/deepseek-review-adapter.js";
 import {TypeScriptReviewAnalyzer} from "../infrastructure/analyzers/typescript/typescript-review-analyzer.js";
+import {
+    TypeScriptAstReviewAnalyzer
+} from "../infrastructure/analyzers/typescript-ast/typescript-ast-review-analyzer.js";
 import {SarifReviewAnalyzer} from "../infrastructure/analyzers/sarif/sarif-review-analyzer.js";
 import {SecretScanReviewAnalyzer} from "../infrastructure/analyzers/secret-scan/secret-scan-review-analyzer.js";
 import {StaticReviewAnalyzerRegistry} from "../application/review/orchestration/static-review-analyzer-registry.js";
@@ -43,6 +46,9 @@ export const createReviewDependencies = (
         ? new DeepSeekReviewAdapter(configuration.ai)
         : undefined;
     const typeScriptAnalyzer = new TypeScriptReviewAnalyzer(workingDirectory);
+    const typeScriptAstAnalyzer = configuration.analyzers.typescriptAst.enabled
+        ? new TypeScriptAstReviewAnalyzer()
+        : undefined;
     const sarifAnalyzer = configuration.analyzers.sarif.enabled && configuration.analyzers.sarif.reportPath !== undefined
         ? new SarifReviewAnalyzer(workingDirectory, configuration.analyzers.sarif.reportPath)
         : undefined;
@@ -52,7 +58,7 @@ export const createReviewDependencies = (
     const secretScanAnalyzer = configuration.analyzers.secretScan.enabled
         ? new SecretScanReviewAnalyzer()
         : undefined;
-    const analyzers = [...(deepSeekAnalyzer === undefined ? [] : [deepSeekAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer]), ...(secretScanAnalyzer === undefined ? [] : [secretScanAnalyzer])];
+    const analyzers = [...(deepSeekAnalyzer === undefined ? [] : [deepSeekAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(typeScriptAstAnalyzer === undefined ? [] : [typeScriptAstAnalyzer]), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer]), ...(secretScanAnalyzer === undefined ? [] : [secretScanAnalyzer])];
     if (analyzers.length === 0) {
         throw new Error("At least one review analyzer must be enabled.");
     }
@@ -73,6 +79,15 @@ export const createReviewDependencies = (
         : [])];
     if (sarifAnalyzer !== undefined) {
         analyzerPlans.push({ analyzerId: sarifAnalyzer.identity.id, required: true, timeoutMs: 60_000, retryCount: 0, failureMode: "fail" });
+    }
+    if (typeScriptAstAnalyzer !== undefined) {
+        analyzerPlans.push({
+            analyzerId: typeScriptAstAnalyzer.identity.id,
+            required: true,
+            timeoutMs: 10_000,
+            retryCount: 0,
+            failureMode: "fail",
+        });
     }
     if (secretScanAnalyzer !== undefined) {
         analyzerPlans.push({ analyzerId: secretScanAnalyzer.identity.id, required: true, timeoutMs: 5_000, retryCount: 0, failureMode: "fail" });

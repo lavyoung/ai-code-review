@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { verifyDeterministicAnalyzerFinding } from "../../../../src/domain/review/policy/verify-deterministic-analyzer-finding.js";
+import {describe, expect, it} from "vitest";
+import {
+    verifyDeterministicAnalyzerFinding
+} from "../../../../src/domain/review/policy/verify-deterministic-analyzer-finding.js";
 
 const groundedFinding = {
     severity: "critical" as const,
@@ -29,6 +31,16 @@ describe("verifyDeterministicAnalyzerFinding", () => {
         })).toEqual({
             ...groundedFinding,
             analyzer: { kind: "ai", id: "deepseek" },
+        });
+    });
+
+    it("records AST evidence for a trusted AST analyzer", () => {
+        expect(verifyDeterministicAnalyzerFinding({
+            ...groundedFinding,
+            analyzer: {kind: "ast", id: "typescript-ast"},
+        })).toMatchObject({
+            verificationStatus: "verified",
+            verificationMethods: ["diff-anchor", "evidence-match", "ast", "deterministic-analyzer"],
         });
     });
 });

@@ -33,6 +33,9 @@ export interface ReviewConfiguration {
             enabled: boolean;
             timeoutMs: number;
         };
+        typescriptAst: {
+            enabled: boolean;
+        };
         sarif: {
             enabled: boolean;
             reportPath?: string;

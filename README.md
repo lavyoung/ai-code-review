@@ -161,6 +161,22 @@ ai-code-review review --provider local --event manual --target main --typescript
 
 启用它的仓库必须提供可用的 `tsconfig.json`；配置不可读取或 TypeScript 无法生成文件诊断时，该必需分析器将以退出码 `104` 失败，避免错误地将检查失效视为“没有问题”。
 
+## TypeScript AST 检查
+
+TypeScript AST 分析器只解析当前已提交 diff 中的新增 `.ts`/`.tsx` 行，不读取工作区文件，因此未提交改动不会混入结论。首个规则只识别
+AST 可直接证明的 `eval(...)` 调用；它产生的发现带有 `ast` 验证证据并标记为 `verified`，可进入既有质量门禁。它不会提升任何
+AI 发现的验证状态。
+
+```yaml
+analyzers:
+  typescript_ast:
+    enabled: true
+```
+
+也可使用 `TYPESCRIPT_AST_ANALYZER_ENABLED=true` 或 `--typescript-ast-enabled true`。GitHub Composite Action 对应输入为
+`typescript-ast-enabled: "true"`。该分析器内部使用官方 TypeScript 6 兼容 API 与当前 TypeScript 7 构建并存，避免依赖 TS7
+尚未稳定的编译器 API。
+
 ## 高置信度密钥扫描
 
 本地密钥扫描器只读取已提交 diff 的新增行，并只识别具有明确格式的凭据（例如服务 API key、GitHub token、AWS access key ID 或私钥头）。它默认关闭；启用后原始 diff 仅在本地扫描器中短暂使用，输出则只包含已脱敏锚点和通用修复建议。敏感文件会继续从扫描、日志、评论和模型输入中排除。

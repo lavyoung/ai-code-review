@@ -19,6 +19,7 @@ export interface ConfigurationFileOverride {
     maxModelInputChars?: number;
     typeScriptEnabled?: boolean;
     typeScriptTimeoutMs?: number;
+    typeScriptAstEnabled?: boolean;
     sarifEnabled?: boolean;
     sarifReportPath?: string;
     secretScanEnabled?: boolean;
@@ -66,6 +67,9 @@ const configurationFileSchema = z.object({
         typescript: z.object({
             enabled: z.boolean().optional(),
             timeout_ms: z.number().int().positive().optional(),
+        }).strict().optional(),
+        typescript_ast: z.object({
+            enabled: z.boolean().optional(),
         }).strict().optional(),
         sarif: z.object({
             enabled: z.boolean().optional(),
@@ -149,6 +153,9 @@ export const loadConfigurationFile = async (
         ...(configuration.analyzers?.typescript?.timeout_ms === undefined
             ? {}
             : { typeScriptTimeoutMs: configuration.analyzers.typescript.timeout_ms }),
+        ...(configuration.analyzers?.typescript_ast?.enabled === undefined
+            ? {}
+            : {typeScriptAstEnabled: configuration.analyzers.typescript_ast.enabled}),
         ...(configuration.analyzers?.sarif?.enabled === undefined
             ? {}
             : { sarifEnabled: configuration.analyzers.sarif.enabled }),

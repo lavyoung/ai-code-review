@@ -29,6 +29,7 @@ const configurationOverrideSchema = z.object({
     maxModelInputChars: z.number().int().min(1_024).optional(),
     typeScriptEnabled: z.boolean().optional(),
     typeScriptTimeoutMs: z.number().int().positive().optional(),
+    typeScriptAstEnabled: z.boolean().optional(),
     sarifEnabled: z.boolean().optional(),
     sarifReportPath: z.string().trim().min(1).optional(),
     secretScanEnabled: z.boolean().optional(),
@@ -102,6 +103,9 @@ export const resolveReviewConfiguration = (
         typeScriptTimeoutMs: sources.environment?.TYPESCRIPT_ANALYZER_TIMEOUT_MS === undefined
             ? undefined
             : Number(sources.environment.TYPESCRIPT_ANALYZER_TIMEOUT_MS),
+        typeScriptAstEnabled: parseBooleanEnvironmentValue(
+            sources.environment?.TYPESCRIPT_AST_ANALYZER_ENABLED,
+        ),
         sarifEnabled: parseBooleanEnvironmentValue(sources.environment?.SARIF_ANALYZER_ENABLED),
         sarifReportPath: optionalEnvironmentSecret(sources.environment?.SARIF_REPORT_PATH),
         secretScanEnabled: parseBooleanEnvironmentValue(sources.environment?.SECRET_SCAN_ANALYZER_ENABLED),
@@ -170,6 +174,10 @@ export const resolveReviewConfiguration = (
     const typeScriptEnabled = cli.typeScriptEnabled
         ?? environment.typeScriptEnabled
         ?? file.typeScriptEnabled
+        ?? false;
+    const typeScriptAstEnabled = cli.typeScriptAstEnabled
+        ?? environment.typeScriptAstEnabled
+        ?? file.typeScriptAstEnabled
         ?? false;
     const sarifEnabled = cli.sarifEnabled ?? environment.sarifEnabled ?? file.sarifEnabled ?? false;
     const secretScanEnabled = cli.secretScanEnabled
@@ -254,6 +262,9 @@ export const resolveReviewConfiguration = (
                     ?? environment.typeScriptTimeoutMs
                     ?? file.typeScriptTimeoutMs
                     ?? 120_000,
+            },
+            typescriptAst: {
+                enabled: typeScriptAstEnabled,
             },
             sarif: {
                 enabled: sarifEnabled,

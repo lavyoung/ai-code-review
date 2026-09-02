@@ -1,6 +1,7 @@
-import type { ValidatedFinding } from "../model/review-candidate.js";
+import type {ValidatedFinding} from "../model/review-candidate.js";
 
 const deterministicAnalyzerKinds = new Set([
+    "ast",
     "sast",
     "linter",
     "typecheck",
@@ -24,6 +25,10 @@ export const verifyDeterministicAnalyzerFinding = (
     return {
         ...finding,
         verificationStatus: "verified",
-        verificationMethods: [...finding.verificationMethods, "deterministic-analyzer"],
+        verificationMethods: [
+            ...finding.verificationMethods,
+            ...(finding.analyzer.kind === "ast" ? ["ast" as const] : []),
+            "deterministic-analyzer",
+        ],
     };
 };

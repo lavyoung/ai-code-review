@@ -49,6 +49,7 @@ interface ReviewCommandOptions {
     maxAiRequestCount?: number;
     maxModelInputChars?: number;
     typescriptEnabled?: boolean;
+    typescriptAstEnabled?: boolean;
     sarifEnabled?: boolean;
     sarifReport?: string;
     secretScanEnabled?: boolean;
@@ -105,6 +106,8 @@ const reviewCommand = program
         parsePositiveInteger(value, "--max-model-input-chars"))
     .option("--typescript-enabled <true|false>", "Enable the local TypeScript analyzer", (value) =>
         parseBoolean(value, "--typescript-enabled"))
+    .option("--typescript-ast-enabled <true|false>", "Enable the local TypeScript AST analyzer", (value) =>
+        parseBoolean(value, "--typescript-ast-enabled"))
     .option("--sarif-enabled <true|false>", "Enable the local SARIF analyzer", (value) =>
         parseBoolean(value, "--sarif-enabled"))
     .option("--sarif-report <path>", "Path to a SARIF 2.1.0 report")
@@ -158,6 +161,9 @@ const reviewCommand = program
                     ...(options.typescriptEnabled === undefined
                         ? {}
                         : { typeScriptEnabled: options.typescriptEnabled }),
+                    ...(options.typescriptAstEnabled === undefined
+                        ? {}
+                        : {typeScriptAstEnabled: options.typescriptAstEnabled}),
                     ...(options.sarifEnabled === undefined ? {} : { sarifEnabled: options.sarifEnabled }),
                     ...(options.sarifReport === undefined ? {} : { sarifReportPath: options.sarifReport }),
                     ...(options.secretScanEnabled === undefined
