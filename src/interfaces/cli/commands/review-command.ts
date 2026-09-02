@@ -1,14 +1,12 @@
-import { Command, InvalidArgumentError } from "commander";
-import { randomUUID } from "node:crypto";
+import {Command, InvalidArgumentError} from "commander";
+import {randomUUID} from "node:crypto";
 import {
-    REVIEW_EVENT_TYPES,
     isReviewEventType,
+    REVIEW_EVENT_TYPES,
     type ReviewEventType,
 } from "../../../domain/review/model/review-event.js";
-import {
-    renderReviewReport,
-    renderReviewDeliveryStatus,
-} from "../formatters/render-review-report.js";
+import {renderReviewDeliveryStatus, renderReviewReport,} from "../formatters/render-review-report.js";
+import {redactReviewDiagnostic} from "../formatters/redact-review-diagnostic.js";
 import {
     createCodeUpReviewCommentPort,
     createGitHubReviewCommentPort,
@@ -19,27 +17,26 @@ import {
     resolveGitHubPullRequestContext,
     ReviewPlatformContextError,
 } from "../../../bootstrap/create-review-dependencies.js";
-import { runManualReviewUseCase } from "../../../application/review/use-cases/run-manual-review-use-case.js";
-import type { ManualReviewResult } from "../../../application/review/use-cases/run-manual-review-use-case.js";
-import { runPullRequestReviewUseCase } from "../../../application/review/use-cases/run-pull-request-review-use-case.js";
-import { createSummaryReviewComment } from "../../../application/delivery/comments/create-summary-review-comment.js";
-import { publishReviewCommentUseCase } from "../../../application/delivery/use-cases/publish-review-comment-use-case.js";
-import { createReviewCommentId } from "../../../domain/review/model/review-comment.js";
+import type {ManualReviewResult} from "../../../application/review/use-cases/run-manual-review-use-case.js";
+import {runManualReviewUseCase} from "../../../application/review/use-cases/run-manual-review-use-case.js";
+import {runPullRequestReviewUseCase} from "../../../application/review/use-cases/run-pull-request-review-use-case.js";
+import {createSummaryReviewComment} from "../../../application/delivery/comments/create-summary-review-comment.js";
+import {publishReviewCommentUseCase} from "../../../application/delivery/use-cases/publish-review-comment-use-case.js";
+import {createReviewCommentId} from "../../../domain/review/model/review-comment.js";
 import {
-    AiReviewFailure,
     AiReviewExecutionError,
+    AiReviewFailure,
     DiffResolutionError,
     ReviewAnalyzerExecutionError,
     ReviewVerifierExecutionError,
 } from "../../../application/review/errors/review-execution-error.js";
-import { publishNotificationUseCase } from "../../../application/delivery/use-cases/publish-notification-use-case.js";
-import { createSanitizedReviewRunRecord } from "../../../application/review/recording/create-sanitized-review-run-record.js";
-import { recordReviewRunUseCase } from "../../../application/review/recording/record-review-run-use-case.js";
-import { LocalJsonlReviewRunRecorder } from "../../../infrastructure/recording/local-jsonl-review-run-recorder.js";
+import {publishNotificationUseCase} from "../../../application/delivery/use-cases/publish-notification-use-case.js";
 import {
-    CLI_EXIT_CODES,
-    getAiReviewFailureExitCode,
-} from "../exit-code.js";
+    createSanitizedReviewRunRecord
+} from "../../../application/review/recording/create-sanitized-review-run-record.js";
+import {recordReviewRunUseCase} from "../../../application/review/recording/record-review-run-use-case.js";
+import {LocalJsonlReviewRunRecorder} from "../../../infrastructure/recording/local-jsonl-review-run-recorder.js";
+import {CLI_EXIT_CODES, getAiReviewFailureExitCode,} from "../exit-code.js";
 
 interface ReviewCommandOptions {
     event: ReviewEventType;
@@ -197,9 +194,11 @@ const reviewCommand = program
             return;
         }
 
+        const runId = randomUUID();
+        console.log(`AI Code Review Run ID: ${runId}`);
+
         try {
             const dependencies = createReviewDependencies(configuration, process.cwd());
-            const runId = randomUUID();
             let result: ManualReviewResult;
             let reportTarget: string;
             let githubContext;
@@ -341,6 +340,7 @@ const reviewCommand = program
                 ? CLI_EXIT_CODES.QUALITY_GATE_FAILED
                 : CLI_EXIT_CODES.SUCCESS;
         } catch (error) {
+            console.error(`AI Code Review Run ID: ${runId}`);
             if (error instanceof ReviewPlatformContextError) {
                 console.error(error.provider === "github"
                     ? "GitHub Actions event error. Check the pull_request event context."
@@ -358,7 +358,7 @@ const reviewCommand = program
             if (error instanceof AiReviewExecutionError) {
                 console.error("AI review error. Check the DeepSeek configuration and service status.");
                 if (error.cause instanceof AiReviewFailure) {
-                    console.error(`AI diagnostic: ${error.cause.message}`);
+                    console.error(`AI diagnostic: ${redactReviewDiagnostic(error.cause.message)}`);
                 }
                 process.exitCode = getAiReviewFailureExitCode(error.failureType);
                 return;
