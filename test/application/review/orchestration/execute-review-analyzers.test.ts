@@ -17,6 +17,11 @@ const codeChange = {
     redactedValueCount: 0,
 };
 
+const reviewInput = {
+    rawCodeChange: { fileChanges: [] },
+    codeChange,
+};
+
 const createAnalyzer = (analyze: ReturnType<typeof vi.fn>) => ({
     identity: { kind: "ai" as const, id: "deepseek" },
     capabilities: {
@@ -40,7 +45,7 @@ describe("executeReviewAnalyzers", () => {
         }));
         const registry = new StaticReviewAnalyzerRegistry([completed]);
 
-        const result = await executeReviewAnalyzers(codeChange, [{
+        const result = await executeReviewAnalyzers(reviewInput, [{
             analyzerId: "deepseek",
             required: true,
             timeoutMs: 1_000,
@@ -61,7 +66,7 @@ describe("executeReviewAnalyzers", () => {
             vi.fn().mockRejectedValue(new AiReviewFailure("rate-limit", "Rate limited.")),
         )]);
 
-        await expect(executeReviewAnalyzers(codeChange, [{
+        await expect(executeReviewAnalyzers(reviewInput, [{
             analyzerId: "deepseek",
             required: true,
             timeoutMs: 1_000,
@@ -70,7 +75,7 @@ describe("executeReviewAnalyzers", () => {
     });
 
     it("fails a required unregistered analyzer with a generic analyzer error", async () => {
-        await expect(executeReviewAnalyzers(codeChange, [{
+        await expect(executeReviewAnalyzers(reviewInput, [{
             analyzerId: "typescript",
             required: true,
             timeoutMs: 1_000,
@@ -81,7 +86,7 @@ describe("executeReviewAnalyzers", () => {
     it("rejects a run that exceeds the configured AI request budget", async () => {
         const registry = new StaticReviewAnalyzerRegistry([createAnalyzer(vi.fn())]);
 
-        await expect(executeReviewAnalyzers(codeChange, [{
+        await expect(executeReviewAnalyzers(reviewInput, [{
             analyzerId: "deepseek",
             required: true,
             timeoutMs: 1_000,
@@ -110,7 +115,7 @@ describe("executeReviewAnalyzers", () => {
             createNamedAnalyzer("ai-two", analyze),
         ]);
 
-        await executeReviewAnalyzers(codeChange, [{
+        await executeReviewAnalyzers(reviewInput, [{
             analyzerId: "ai-one",
             required: false,
             timeoutMs: 1_000,
@@ -130,5 +135,67 @@ describe("executeReviewAnalyzers", () => {
             createAnalyzer(vi.fn()),
             createAnalyzer(vi.fn()),
         ])).toThrow("identifiers must be unique");
+    });
+
+    it("passes raw input only to trusted local analyzers", async () => {
+        const remoteAnalyze = vi.fn().mockResolvedValue({ summary: "Remote.", findings: [] });
+        const localAnalyze = vi.fn().mockResolvedValue({ summary: "Local.", findings: [] });
+        const registry = new StaticReviewAnalyzerRegistry([
+            createAnalyzer(remoteAnalyze),
+            {
+                identity: { kind: "secret-scan" as const, id: "secret-scan" },
+                capabilities: {
+                    inputAccess: "trusted-raw-local" as const,
+                    supportsChangedOnly: true,
+                    supportsRepositoryScan: false,
+                },
+                analyze: localAnalyze,
+            },
+        ]);
+        const trustedInput = {
+            rawCodeChange: {
+                fileChanges: [{
+                    file: { path: ".env", status: "added" as const },
+                    diff: "+SECRET=raw-value\n",
+                }],
+            },
+            codeChange,
+        };
+
+        await executeReviewAnalyzers(trustedInput, [{
+            analyzerId: "deepseek",
+            required: true,
+            timeoutMs: 1_000,
+            failureMode: "fail",
+        }, {
+            analyzerId: "secret-scan",
+            required: true,
+            timeoutMs: 1_000,
+            failureMode: "fail",
+        }], registry, budget);
+
+        expect(remoteAnalyze.mock.calls[0]?.[0]).not.toHaveProperty("rawCodeChange");
+        expect(localAnalyze.mock.calls[0]?.[0]).toMatchObject({
+            rawCodeChange: trustedInput.rawCodeChange,
+        });
+    });
+
+    it("rejects an AI analyzer that incorrectly requests raw input", async () => {
+        const registry = new StaticReviewAnalyzerRegistry([{
+            identity: { kind: "ai" as const, id: "unsafe-ai" },
+            capabilities: {
+                inputAccess: "trusted-raw-local" as const,
+                supportsChangedOnly: true,
+                supportsRepositoryScan: false,
+            },
+            analyze: vi.fn(),
+        }]);
+
+        await expect(executeReviewAnalyzers(reviewInput, [{
+            analyzerId: "unsafe-ai",
+            required: true,
+            timeoutMs: 1_000,
+            failureMode: "fail",
+        }], registry, budget)).rejects.toBeInstanceOf(ReviewAnalyzerExecutionError);
     });
 });

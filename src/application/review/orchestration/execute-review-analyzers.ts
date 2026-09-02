@@ -1,4 +1,4 @@
-import type { CodeChange } from "../../../domain/review/model/code-change.js";
+import type { ReviewChangeInput } from "../../../domain/review/model/code-change.js";
 import type { AnalyzerIdentity } from "../../../domain/review/model/analyzer-identity.js";
 import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
 import {
@@ -43,7 +43,7 @@ const mergeAnalyses = (analyses: readonly CompletedAnalysis[]): ReviewAnalysis =
  * 当前阶段每个计划独立执行；后续并发预算调度可以保持该输入/输出契约不变。
  */
 export const executeReviewAnalyzers = async (
-    codeChange: CodeChange,
+    reviewInput: ReviewChangeInput,
     plans: readonly AnalyzerExecutionPlan[],
     registry: ReviewAnalyzerRegistry,
     budget: ReviewRunBudget,
@@ -80,11 +80,22 @@ export const executeReviewAnalyzers = async (
                 continue;
             }
 
+            if (analyzer.identity.kind === "ai"
+                && analyzer.capabilities.inputAccess !== "sanitized-model-input") {
+                throw new ReviewAnalyzerExecutionError(
+                    analyzer.identity.id,
+                    new Error("AI analyzers must use sanitized model input."),
+                );
+            }
+
             const startedAt = Date.now();
             try {
                 const analysis = await analyzer.analyze({
-                    codeChange,
+                    codeChange: reviewInput.codeChange,
                     signal: AbortSignal.any([globalTimeout, AbortSignal.timeout(plan.timeoutMs)]),
+                    ...(analyzer.capabilities.inputAccess === "trusted-raw-local"
+                        ? { rawCodeChange: reviewInput.rawCodeChange }
+                        : {}),
                 });
                 analyses.push({ analysis, analyzer: analyzer.identity });
                 runs.push({

@@ -42,7 +42,7 @@ describe("reviewCodeChangeUseCase", () => {
         };
 
         const result = await reviewCodeChangeUseCase({
-            codeChange,
+            reviewInput: { rawCodeChange: { fileChanges: [] }, codeChange },
             failOn: ["critical"],
         }, {
             reviewAnalyzerRegistry: new StaticReviewAnalyzerRegistry([analyzer]),

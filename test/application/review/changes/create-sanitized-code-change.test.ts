@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createSanitizedCodeChange } from "../../../../src/application/review/changes/create-sanitized-code-change.js";
+import {
+    createReviewChangeInput,
+    createSanitizedCodeChange,
+} from "../../../../src/application/review/changes/create-sanitized-code-change.js";
 
 describe("createSanitizedCodeChange", () => {
     it("filters sensitive files before redacting and chunking model input", () => {
@@ -25,5 +28,22 @@ describe("createSanitizedCodeChange", () => {
         });
         expect(change.diff).not.toContain(".env");
         expect(change.diff).not.toContain("raw-value");
+    });
+});
+
+describe("createReviewChangeInput", () => {
+    it("keeps the raw and sanitized forms together only for local dispatch", () => {
+        const rawCodeChange = { fileChanges: [] };
+
+        expect(createReviewChangeInput(rawCodeChange)).toEqual({
+            rawCodeChange,
+            codeChange: {
+                diff: "",
+                files: [],
+                chunks: [],
+                excludedFileCount: 0,
+                redactedValueCount: 0,
+            },
+        });
     });
 });

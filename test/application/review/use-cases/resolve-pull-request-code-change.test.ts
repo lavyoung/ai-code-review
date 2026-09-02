@@ -12,11 +12,14 @@ describe("resolvePullRequestCodeChange", () => {
             baseSha: "base-sha",
             headSha: "head-sha",
         })).resolves.toEqual({
-            diff: "",
-            files: [],
-            chunks: [],
-            excludedFileCount: 0,
-            redactedValueCount: 0,
+            rawCodeChange,
+            codeChange: {
+                diff: "",
+                files: [],
+                chunks: [],
+                excludedFileCount: 0,
+                redactedValueCount: 0,
+            },
         });
 
         expect(getRawCodeChange).toHaveBeenCalledWith({

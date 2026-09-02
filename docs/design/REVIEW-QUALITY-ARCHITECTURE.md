@@ -514,7 +514,7 @@ analyzer_plans:
 
 迁移必须保持已有 CLI、GitHub Action、DeepSeek 配置和摘要评论协议可用。
 
-当前实现已经完成原始/安全输入分级、候选项的 diff 锚定与证据一致性校验、分析器注册与预算调度，以及来源受控的确定性验证接线。`DeepSeek` 仍只会产生 `grounded` 发现；已接入的本地 TypeScript 分析器和 SARIF 2.1.0 报告适配器只将本次新增 diff 行的确定性诊断升级为 `verified` 并参与质量门禁。输出发现已具有仅基于安全定位与规范化语义的稳定指纹；同次运行的等价发现会合并来源与验证方法。可选 JSONL 记录器保存带类型标识的运行摘要，并可追加只含固定状态、指纹、运行 ID 与时间的人工反馈事件；本地指标命令只输出这些记录的脱敏聚合值，不提供跨仓库指标。ESLint、CodeQL、Semgrep 与密钥扫描可沿用同一边界接入，不能通过伪造 AI 输出或配置开关绕过该边界。
+当前实现已经完成原始/安全输入分级、候选项的 diff 锚定与证据一致性校验、分析器注册与预算调度，以及来源受控的确定性验证接线。调度器只向声明 `trusted-raw-local` 的已注册本地分析器传递原始已提交 diff；`ai` 身份分析器被强制限定为安全输入。`DeepSeek` 仍只会产生 `grounded` 发现；已接入的本地 TypeScript 分析器和 SARIF 2.1.0 报告适配器只将本次新增 diff 行的确定性诊断升级为 `verified` 并参与质量门禁。输出发现已具有仅基于安全定位与规范化语义的稳定指纹；同次运行的等价发现会合并来源与验证方法。可选 JSONL 记录器保存带类型标识的运行摘要，并可追加只含固定状态、指纹、运行 ID 与时间的人工反馈事件；本地指标命令只输出这些记录的脱敏聚合值，不提供跨仓库指标。ESLint、CodeQL、Semgrep 与密钥扫描可沿用同一边界接入，不能通过伪造 AI 输出或配置开关绕过该边界。
 
 1. 引入 `RawCommittedInput`、`SanitizedModelInput`、`SanitizedOutput`、`ChangeSet` 与 `DiffChunk`，为现有 `CodeChange` 提供兼容映射。
 2. 引入 `ReviewCandidate`、`VerificationEvidence`、`ValidatedFinding` 与状态聚合器，为现有 `ReviewFinding` 提供兼容映射。

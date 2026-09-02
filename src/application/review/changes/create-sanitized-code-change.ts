@@ -3,6 +3,7 @@ import type {
     CodeChange,
     DiffChunk,
     RawCodeChange,
+    ReviewChangeInput,
     SourceRange,
 } from "../../../domain/review/model/code-change.js";
 import {
@@ -120,3 +121,9 @@ export const createSanitizedCodeChange = (rawCodeChange: RawCodeChange): CodeCha
         redactedValueCount: redactedDiff.redactedValueCount,
     };
 };
+
+/** 创建受控的原始/安全输入对，供本地调度器按分析器能力分发。 */
+export const createReviewChangeInput = (rawCodeChange: RawCodeChange): ReviewChangeInput => ({
+    rawCodeChange,
+    codeChange: createSanitizedCodeChange(rawCodeChange),
+});

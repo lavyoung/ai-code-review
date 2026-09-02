@@ -75,6 +75,7 @@ describe("runManualReviewUseCase", () => {
         expect(analyze).toHaveBeenCalledWith(expect.objectContaining({
             codeChange: expect.objectContaining({ files: [{ path: "src/example.ts", status: "modified" }] }),
         }));
+        expect(analyze.mock.calls[0]?.[0]).not.toHaveProperty("rawCodeChange");
     });
 
     it("maps a diff provider failure to a diff resolution error", async () => {

@@ -31,13 +31,13 @@ export const runPullRequestReviewUseCase = async (
     dependencies: RunPullRequestReviewDependencies,
 ): Promise<ReviewExecutionResult> => {
     try {
-        const codeChange = await resolvePullRequestCodeChange(
+        const reviewInput = await resolvePullRequestCodeChange(
             dependencies.diffProvider,
             command,
         );
 
         return reviewCodeChangeUseCase({
-            codeChange,
+            reviewInput,
             failOn: command.failOn,
         }, dependencies);
     } catch (error) {

@@ -1,5 +1,5 @@
 import type { DiffProvider } from "../ports/diff-provider.js";
-import type { CodeChange } from "../../../domain/review/model/code-change.js";
+import type { ReviewChangeInput } from "../../../domain/review/model/code-change.js";
 import { resolveManualCodeChange } from "./resolve-manual-code-change.js";
 import type { Severity } from "../../../domain/review/model/severity.js";
 import {
@@ -32,15 +32,15 @@ export interface RunManualReviewCommand {
 export type ManualReviewResult = ReviewExecutionResult;
 
 /**
- * 编排手动评审：读取安全 diff、调用 AI、应用质量门禁。
+ * 编排手动评审：读取受控原始/安全 diff、调用分析器、应用质量门禁。
  */
 export const runManualReviewUseCase = async (
     command: RunManualReviewCommand,
     dependencies: RunManualReviewDependencies,
 ): Promise<ManualReviewResult> => {
-    let codeChange: CodeChange;
+    let reviewInput: ReviewChangeInput;
     try {
-        codeChange = await resolveManualCodeChange(
+        reviewInput = await resolveManualCodeChange(
             dependencies.diffProvider,
             command.target,
         );
@@ -49,7 +49,7 @@ export const runManualReviewUseCase = async (
     }
 
     return reviewCodeChangeUseCase({
-        codeChange,
+        reviewInput,
         failOn: command.failOn,
     }, dependencies);
 };

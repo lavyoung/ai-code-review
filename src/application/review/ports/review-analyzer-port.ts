@@ -1,4 +1,4 @@
-import type { CodeChange } from "../../../domain/review/model/code-change.js";
+import type { CodeChange, RawCodeChange } from "../../../domain/review/model/code-change.js";
 import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
 import type { AnalyzerIdentity } from "../../../domain/review/model/analyzer-identity.js";
 
@@ -15,12 +15,20 @@ export interface AnalyzerCapabilities {
     supportsRepositoryScan: boolean;
 }
 
-/** 通用分析器的安全输入。当前阶段只暴露已脱敏的变更集。 */
-export interface AnalysisRequest {
+/** 所有分析器都可接收的安全输入。 */
+export interface SanitizedAnalysisRequest {
     codeChange: CodeChange;
     /** 调度器提供的截止信号；适配器应将其传递给可取消的底层调用。 */
     signal: AbortSignal;
 }
+
+/** 仅供已注册的本地可信分析器使用的附加原始输入。 */
+export interface TrustedLocalAnalysisRequest extends SanitizedAnalysisRequest {
+    rawCodeChange: RawCodeChange;
+}
+
+/** 调度器按能力声明创建的分析请求。 */
+export type AnalysisRequest = SanitizedAnalysisRequest | TrustedLocalAnalysisRequest;
 
 /**
  * 生成结构化评审候选项的通用应用端口。

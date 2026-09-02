@@ -1,4 +1,4 @@
-import type { CodeChange } from "../../../domain/review/model/code-change.js";
+import type { CodeChange, ReviewChangeInput } from "../../../domain/review/model/code-change.js";
 import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
 import type {
     CandidateValidationResult,
@@ -29,9 +29,9 @@ export interface ReviewCodeChangeDependencies {
     findingVerifiers: readonly FindingVerifier[];
 }
 
-/** 对已过滤、已脱敏代码变更执行评审的输入。 */
+/** 对同一次受控原始/安全变更执行评审的输入。 */
 export interface ReviewCodeChangeCommand {
-    codeChange: CodeChange;
+    reviewInput: ReviewChangeInput;
     failOn: readonly Severity[];
 }
 
@@ -56,23 +56,24 @@ export const reviewCodeChangeUseCase = async (
     dependencies: ReviewCodeChangeDependencies,
 ): Promise<ReviewExecutionResult> => {
     const execution = await executeReviewAnalyzers(
-        command.codeChange,
+        command.reviewInput,
         dependencies.analyzerPlans,
         dependencies.reviewAnalyzerRegistry,
         dependencies.analyzerBudget,
     );
     const analysis: ReviewAnalysis = execution.analysis;
 
-    const validation = validateReviewCandidates(analysis.findings, command.codeChange);
+    const codeChange = command.reviewInput.codeChange;
+    const validation = validateReviewCandidates(analysis.findings, codeChange);
     const verifiedFindings = verifyReviewFindings(
         validation.findings,
-        command.codeChange,
+        codeChange,
         dependencies.findingVerifiers,
     );
     const findings = deduplicateReviewFindings(verifiedFindings);
 
     return {
-        codeChange: command.codeChange,
+        codeChange,
         analysis,
         findings,
         suppressedCandidateCounts: validation.suppressedCounts,

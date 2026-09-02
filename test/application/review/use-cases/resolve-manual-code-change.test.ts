@@ -12,11 +12,14 @@ describe("resolveManualCodeChange", () => {
             { getRawCodeChange },
             "main",
         )).resolves.toEqual({
-            diff: "",
-            files: [],
-            chunks: [],
-            excludedFileCount: 0,
-            redactedValueCount: 0,
+            rawCodeChange: rawChange,
+            codeChange: {
+                diff: "",
+                files: [],
+                chunks: [],
+                excludedFileCount: 0,
+                redactedValueCount: 0,
+            },
         });
 
         expect(getRawCodeChange).toHaveBeenCalledWith({

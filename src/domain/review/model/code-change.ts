@@ -60,3 +60,14 @@ export interface CodeChange {
     excludedFileCount: number;
     redactedValueCount: number;
 }
+
+/**
+ * 同一次评审的原始与安全输入。
+ *
+ * 原始变更只可由应用层调度器传递给 `trusted-raw-local` 分析器，绝不能进入
+ * 远程 AI、日志、评论、通知、反馈或最终执行结果。
+ */
+export interface ReviewChangeInput {
+    rawCodeChange: RawCodeChange;
+    codeChange: CodeChange;
+}

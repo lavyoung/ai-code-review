@@ -1,6 +1,6 @@
-import type { CodeChange } from "../../../domain/review/model/code-change.js";
+import type { ReviewChangeInput } from "../../../domain/review/model/code-change.js";
 import type { DiffProvider } from "../ports/diff-provider.js";
-import { createSanitizedCodeChange } from "../changes/create-sanitized-code-change.js";
+import { createReviewChangeInput } from "../changes/create-sanitized-code-change.js";
 
 /**
  * 解析手动评审的已提交变更。
@@ -12,8 +12,8 @@ import { createSanitizedCodeChange } from "../changes/create-sanitized-code-chan
 export const resolveManualCodeChange = (
     diffProvider: DiffProvider,
     target: string,
-): Promise<CodeChange> => diffProvider.getRawCodeChange({
+): Promise<ReviewChangeInput> => diffProvider.getRawCodeChange({
     baseRef: target,
     headRef: "HEAD",
     comparison: "three-dot",
-}).then(createSanitizedCodeChange);
+}).then(createReviewChangeInput);
