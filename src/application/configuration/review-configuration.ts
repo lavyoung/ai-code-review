@@ -35,6 +35,9 @@ export interface ReviewConfiguration {
             enabled: boolean;
             reportPath?: string;
         };
+        secretScan: {
+            enabled: boolean;
+        };
     };
     recording: {
         /** 可选的本地 JSONL 运行记录路径；禁止在日志中输出此路径。 */

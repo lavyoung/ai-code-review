@@ -154,6 +154,24 @@ ai-code-review review --provider local --event manual --target main --typescript
 
 启用它的仓库必须提供可用的 `tsconfig.json`；配置不可读取或 TypeScript 无法生成文件诊断时，该必需分析器将以退出码 `104` 失败，避免错误地将检查失效视为“没有问题”。
 
+## 高置信度密钥扫描
+
+本地密钥扫描器只读取已提交 diff 的新增行，并只识别具有明确格式的凭据（例如服务 API key、GitHub token、AWS access key ID 或私钥头）。它默认关闭；启用后原始 diff 仅在本地扫描器中短暂使用，输出则只包含已脱敏锚点和通用修复建议。敏感文件会继续从扫描、日志、评论和模型输入中排除。
+
+```yaml
+analyzers:
+  secret_scan:
+    enabled: true
+```
+
+等效环境变量为 `SECRET_SCAN_ANALYZER_ENABLED=true`，或临时指定：
+
+```bash
+ai-code-review review --provider local --event manual --target main --secret-scan-enabled true
+```
+
+GitHub Composite Action 的输入为 `secret-scan-enabled: "true"`。扫描器产生的发现标记为 `verified`、严重级别为 `critical`，因此会遵循现有 `fail_on` 质量门禁；绝不输出匹配到的凭据值或敏感文件路径。
+
 ## SARIF 确定性检查
 
 已生成 SARIF 2.1.0 报告的工具（如 CodeQL、Semgrep 或 ESLint 的 SARIF 输出）可通过本地文件接入。报告中的结果同样只在其位置对应本次新增 diff 行时才发布，并会标记为 `verified`：

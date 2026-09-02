@@ -2,6 +2,7 @@ import type { ReviewConfiguration } from "../application/configuration/review-co
 import { DeepSeekReviewAdapter } from "../infrastructure/ai/deepseek/deepseek-review-adapter.js";
 import { TypeScriptReviewAnalyzer } from "../infrastructure/analyzers/typescript/typescript-review-analyzer.js";
 import { SarifReviewAnalyzer } from "../infrastructure/analyzers/sarif/sarif-review-analyzer.js";
+import { SecretScanReviewAnalyzer } from "../infrastructure/analyzers/secret-scan/secret-scan-review-analyzer.js";
 import { StaticReviewAnalyzerRegistry } from "../application/review/orchestration/static-review-analyzer-registry.js";
 import { deterministicAnalyzerFindingVerifier } from "../application/review/verification/deterministic-analyzer-finding-verifier.js";
 import { resolveCliConfiguration } from "../infrastructure/configuration/resolve-cli-configuration.js";
@@ -42,7 +43,10 @@ export const createReviewDependencies = (
     if (configuration.analyzers.sarif.enabled && sarifAnalyzer === undefined) {
         throw new Error("SARIF report path must be configured when the SARIF analyzer is enabled.");
     }
-    const analyzers = [...(deepSeekAnalyzer === undefined ? [] : [deepSeekAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer])];
+    const secretScanAnalyzer = configuration.analyzers.secretScan.enabled
+        ? new SecretScanReviewAnalyzer()
+        : undefined;
+    const analyzers = [...(deepSeekAnalyzer === undefined ? [] : [deepSeekAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer]), ...(secretScanAnalyzer === undefined ? [] : [secretScanAnalyzer])];
     if (analyzers.length === 0) {
         throw new Error("At least one review analyzer must be enabled.");
     }
@@ -61,6 +65,9 @@ export const createReviewDependencies = (
         : [])];
     if (sarifAnalyzer !== undefined) {
         analyzerPlans.push({ analyzerId: sarifAnalyzer.identity.id, required: true, timeoutMs: 60_000, failureMode: "fail" });
+    }
+    if (secretScanAnalyzer !== undefined) {
+        analyzerPlans.push({ analyzerId: secretScanAnalyzer.identity.id, required: true, timeoutMs: 5_000, failureMode: "fail" });
     }
 
     return {

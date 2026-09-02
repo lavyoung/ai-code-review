@@ -30,7 +30,32 @@ const redactPatterns: readonly [RegExp, RedactionReplacement][] = [
         /\bsk-[a-z0-9_-]{8,}\b/gi,
         () => "[REDACTED]",
     ],
+    [
+        /\bgh[pousr]_[a-z0-9_]{36,255}\b/gi,
+        () => "[REDACTED]",
+    ],
+    [
+        /\bgithub_pat_[a-z0-9_]{22,255}\b/gi,
+        () => "[REDACTED]",
+    ],
+    [
+        /\bAKIA[0-9A-Z]{16}\b/g,
+        () => "[REDACTED]",
+    ],
+    [
+        /-----BEGIN [A-Z ]*PRIVATE KEY-----/g,
+        () => "[REDACTED]",
+    ],
 ];
+
+/** 仅包含足以触发确定性安全发现的高置信度凭据特征。 */
+const highConfidenceSecretPatterns = [
+    /\bsk-[a-z0-9_-]{8,}\b/i,
+    /\bgh[pousr]_[a-z0-9_]{36,255}\b/i,
+    /\bgithub_pat_[a-z0-9_]{22,255}\b/i,
+    /\bAKIA[0-9A-Z]{16}\b/,
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+] as const;
 
 const isSensitivePath = (path: string): boolean => {
     const normalizedPath = path.replaceAll("\\", "/");
@@ -69,6 +94,10 @@ export const redactSensitiveValues = (content: string): RedactedContent => {
 
     return { content: redactedContent, redactedValueCount };
 };
+
+/** 判断文本是否包含高置信度凭据特征，绝不返回匹配到的原文。 */
+export const containsHighConfidenceSecret = (content: string): boolean =>
+    highConfidenceSecretPatterns.some((pattern) => pattern.test(content));
 
 /**
  * 替换自由文本中出现的敏感文件路径，防止其进入日志、评论或通知正文。

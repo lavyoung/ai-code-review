@@ -24,6 +24,7 @@ describe("resolveReviewConfiguration", () => {
             timeoutMs: 120_000,
         });
         expect(configuration.analyzers.deepseek).toEqual({ enabled: true });
+        expect(configuration.analyzers.secretScan).toEqual({ enabled: false });
         expect(configuration.notifications.wecom).toEqual({
             enabled: false,
             failOnError: false,
@@ -62,6 +63,7 @@ describe("resolveReviewConfiguration", () => {
                 REVIEW_MAX_ANALYZER_CONCURRENCY: "2",
                 REVIEW_MAX_AI_REQUEST_COUNT: "4",
                 TYPESCRIPT_ANALYZER_ENABLED: "true",
+                SECRET_SCAN_ANALYZER_ENABLED: "false",
                 TYPESCRIPT_ANALYZER_TIMEOUT_MS: "60000",
                 DEEPSEEK_API_KEY: "test-key",
                 WECOM_ENABLED: "true",
@@ -85,6 +87,7 @@ describe("resolveReviewConfiguration", () => {
                 maxAiRequestCount: 6,
                 typeScriptEnabled: true,
                 typeScriptTimeoutMs: 90_000,
+                secretScanEnabled: true,
             },
         });
 
@@ -116,6 +119,9 @@ describe("resolveReviewConfiguration", () => {
                 typescript: {
                     enabled: true,
                     timeoutMs: 90_000,
+                },
+                secretScan: {
+                    enabled: true,
                 },
             },
             comments: {
@@ -180,6 +186,18 @@ describe("resolveReviewConfiguration", () => {
 
         expect(configuration.analyzers.deepseek).toEqual({ enabled: false });
         expect(configuration.ai.apiKey).toBeUndefined();
+    });
+
+    it("allows the local secret scanner to be the only enabled analyzer", () => {
+        expect(resolveReviewConfiguration({
+            environment: {
+                DEEPSEEK_ANALYZER_ENABLED: "false",
+                SECRET_SCAN_ANALYZER_ENABLED: "true",
+            },
+        }).analyzers).toMatchObject({
+            deepseek: { enabled: false },
+            secretScan: { enabled: true },
+        });
     });
 
     it("requires at least one analyzer and a report path for enabled SARIF", () => {

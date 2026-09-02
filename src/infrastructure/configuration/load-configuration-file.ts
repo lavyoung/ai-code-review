@@ -23,6 +23,7 @@ export interface ConfigurationFileOverride {
     typeScriptTimeoutMs?: number;
     sarifEnabled?: boolean;
     sarifReportPath?: string;
+    secretScanEnabled?: boolean;
     deepSeekEnabled?: boolean;
     reviewRunRecordPath?: string;
     wecomEnabled?: boolean;
@@ -68,6 +69,9 @@ const configurationFileSchema = z.object({
         sarif: z.object({
             enabled: z.boolean().optional(),
             report_path: z.string().trim().min(1).optional(),
+        }).strict().optional(),
+        secret_scan: z.object({
+            enabled: z.boolean().optional(),
         }).strict().optional(),
     }).strict().optional(),
     notifiers: z.object({
@@ -143,6 +147,9 @@ export const loadConfigurationFile = async (
         ...(configuration.analyzers?.sarif?.report_path === undefined
             ? {}
             : { sarifReportPath: configuration.analyzers.sarif.report_path }),
+        ...(configuration.analyzers?.secret_scan?.enabled === undefined
+            ? {}
+            : { secretScanEnabled: configuration.analyzers.secret_scan.enabled }),
         ...(configuration.recording?.local_path === undefined
             ? {}
             : { reviewRunRecordPath: configuration.recording.local_path }),

@@ -31,6 +31,7 @@ const configurationOverrideSchema = z.object({
     typeScriptTimeoutMs: z.number().int().positive().optional(),
     sarifEnabled: z.boolean().optional(),
     sarifReportPath: z.string().trim().min(1).optional(),
+    secretScanEnabled: z.boolean().optional(),
     deepSeekEnabled: z.boolean().optional(),
     reviewRunRecordPath: z.string().trim().min(1).optional(),
     wecomEnabled: z.boolean().optional(),
@@ -98,6 +99,7 @@ export const resolveReviewConfiguration = (
             : Number(sources.environment.TYPESCRIPT_ANALYZER_TIMEOUT_MS),
         sarifEnabled: parseBooleanEnvironmentValue(sources.environment?.SARIF_ANALYZER_ENABLED),
         sarifReportPath: optionalEnvironmentSecret(sources.environment?.SARIF_REPORT_PATH),
+        secretScanEnabled: parseBooleanEnvironmentValue(sources.environment?.SECRET_SCAN_ANALYZER_ENABLED),
         deepSeekEnabled: parseBooleanEnvironmentValue(sources.environment?.DEEPSEEK_ANALYZER_ENABLED),
         reviewRunRecordPath: optionalEnvironmentSecret(sources.environment?.REVIEW_RUN_RECORD_PATH),
         wecomEnabled: parseBooleanEnvironmentValue(sources.environment?.WECOM_ENABLED),
@@ -160,6 +162,10 @@ export const resolveReviewConfiguration = (
         ?? file.typeScriptEnabled
         ?? false;
     const sarifEnabled = cli.sarifEnabled ?? environment.sarifEnabled ?? file.sarifEnabled ?? false;
+    const secretScanEnabled = cli.secretScanEnabled
+        ?? environment.secretScanEnabled
+        ?? file.secretScanEnabled
+        ?? false;
     const sarifReportPath = cli.sarifReportPath ?? environment.sarifReportPath ?? file.sarifReportPath;
     const reviewRunRecordPath = cli.reviewRunRecordPath
         ?? environment.reviewRunRecordPath
@@ -169,7 +175,7 @@ export const resolveReviewConfiguration = (
         throw new Error("WECOM_WEBHOOK_URL must be set when WeCom notifications are enabled.");
     }
 
-    if (!deepSeekEnabled && !typeScriptEnabled && !sarifEnabled) {
+    if (!deepSeekEnabled && !typeScriptEnabled && !sarifEnabled && !secretScanEnabled) {
         throw new Error("At least one review analyzer must be enabled.");
     }
 
@@ -228,6 +234,9 @@ export const resolveReviewConfiguration = (
                 ...(sarifReportPath === undefined
                     ? {}
                     : { reportPath: sarifReportPath }),
+            },
+            secretScan: {
+                enabled: secretScanEnabled,
             },
         },
         recording: {

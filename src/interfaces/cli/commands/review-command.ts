@@ -52,6 +52,7 @@ interface ReviewCommandOptions {
     typescriptEnabled?: boolean;
     sarifEnabled?: boolean;
     sarifReport?: string;
+    secretScanEnabled?: boolean;
     deepseekEnabled?: boolean;
     runRecordPath?: string;
 }
@@ -104,6 +105,8 @@ const reviewCommand = program
     .option("--sarif-enabled <true|false>", "Enable the local SARIF analyzer", (value) =>
         parseBoolean(value, "--sarif-enabled"))
     .option("--sarif-report <path>", "Path to a SARIF 2.1.0 report")
+    .option("--secret-scan-enabled <true|false>", "Enable the local high-confidence secret scanner", (value) =>
+        parseBoolean(value, "--secret-scan-enabled"))
     .option("--deepseek-enabled <true|false>", "Enable the DeepSeek semantic analyzer", (value) =>
         parseBoolean(value, "--deepseek-enabled"))
     .option("--run-record-path <path>", "Append a sanitized review record as JSONL")
@@ -148,6 +151,9 @@ const reviewCommand = program
                         : { typeScriptEnabled: options.typescriptEnabled }),
                     ...(options.sarifEnabled === undefined ? {} : { sarifEnabled: options.sarifEnabled }),
                     ...(options.sarifReport === undefined ? {} : { sarifReportPath: options.sarifReport }),
+                    ...(options.secretScanEnabled === undefined
+                        ? {}
+                        : { secretScanEnabled: options.secretScanEnabled }),
                     ...(options.deepseekEnabled === undefined
                         ? {}
                         : { deepSeekEnabled: options.deepseekEnabled }),
