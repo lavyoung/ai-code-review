@@ -11,8 +11,9 @@ CodeQL 对 Java 支持 `none`、`autobuild` 和 `manual` 三种构建模式；`n
 ## 无 Secret 的 Java CodeQL 阶段
 
 将下面的步骤加入调用方现有的 `.github/workflows/ai-code-review.yml` 的同一 `review` job，置于检出提交之后。它仍是原有的
-`pull_request_target` 评审工作流：只用 CodeQL `build-mode: none` 读取源码，不执行 Maven、Gradle、测试或 PR 脚本。CodeQL 默认不
-上传至 GitHub Code Scanning，因此不需要 `security-events: write`；若组织另行需要上传，可显式改为 `upload: always` 并增加该权限。
+`pull_request_target` 评审工作流：只用 CodeQL `build-mode: none` 读取源码，不执行 Maven、Gradle、测试或 PR 脚本。GitHub 的
+CodeQL advanced setup 要求工作流包含 `security-events: write`，因此在现有 `permissions` 中增加该最小权限；本示例仍以
+`upload: never` 禁止将 SARIF 上传到 GitHub Code Scanning。
 
 ```yaml
       - name: Initialize Java CodeQL evidence stage
@@ -20,9 +21,6 @@ CodeQL 对 Java 支持 `none`、`autobuild` 和 `manual` 三种构建模式；`n
         with:
           languages: java
           build-mode: none
-          # Keep query selection in the trusted workflow, not in PR content.
-          config: |
-            name: "AI Code Review Java baseline"
 
       - name: Analyze Java code
         uses: github/codeql-action/analyze@v4
