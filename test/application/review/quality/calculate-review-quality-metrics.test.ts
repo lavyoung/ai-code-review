@@ -12,8 +12,8 @@ describe("calculateReviewQualityMetrics", () => {
                 qualityGateFailed: true,
                 highestSeverity: "high",
                 analyzerRuns: [
-                    { analyzerId: "semantic:deepseek", status: "completed", durationMs: 10 },
-                    { analyzerId: "typecheck:typescript", status: "failed", durationMs: 20 },
+                    { analyzerId: "semantic:deepseek", status: "completed", attempts: 2, durationMs: 10 },
+                    { analyzerId: "typecheck:typescript", status: "failed", attempts: 1, durationMs: 20 },
                 ],
                 findings: [
                     { fingerprint: "0123456789abcdef01234567", severity: "high", verificationStatus: "verified", analyzerIds: ["semantic:deepseek"] },
@@ -75,8 +75,24 @@ describe("calculateReviewQualityMetrics", () => {
             falsePositiveRatePercent: 50,
             averageFeedbackResolutionMs: 1000,
             analyzers: [
-                { analyzerId: "semantic:deepseek", completedCount: 1, degradedCount: 0, failedCount: 0, averageDurationMs: 10 },
-                { analyzerId: "typecheck:typescript", completedCount: 0, degradedCount: 0, failedCount: 1, averageDurationMs: 20 },
+                {
+                    analyzerId: "semantic:deepseek",
+                    completedCount: 1,
+                    degradedCount: 0,
+                    failedCount: 0,
+                    totalAttemptCount: 2,
+                    averageAttemptCount: 2,
+                    averageDurationMs: 10,
+                },
+                {
+                    analyzerId: "typecheck:typescript",
+                    completedCount: 0,
+                    degradedCount: 0,
+                    failedCount: 1,
+                    totalAttemptCount: 1,
+                    averageAttemptCount: 1,
+                    averageDurationMs: 20,
+                },
             ],
         });
         expect(JSON.stringify(metrics)).not.toContain(".env");

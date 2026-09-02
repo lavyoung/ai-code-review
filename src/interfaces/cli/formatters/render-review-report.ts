@@ -100,7 +100,7 @@ const formatAnalyzerRuns = (
     runs: ManualReviewResult["analyzerRuns"] | undefined,
 ): string | undefined => runs === undefined || runs.length === 0
     ? undefined
-    : runs.map((run) => `${run.analyzer.id}=${run.status}`).join(", ");
+    : runs.map((run) => `${run.analyzer.id}=${run.status} (attempts: ${run.attempts})`).join(", ");
 
 /**
  * 将安全的手动评审结果渲染为 CI 与通知渠道可复用的 Markdown。

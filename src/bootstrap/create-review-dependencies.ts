@@ -54,20 +54,22 @@ export const createReviewDependencies = (
         analyzerId: deepSeekAnalyzer.identity.id,
         required: true,
         timeoutMs: configuration.ai.timeoutMs,
+        retryCount: 2,
         failureMode: "fail" as const,
     }]), ...(configuration.analyzers.typescript.enabled
         ? [{
             analyzerId: typeScriptAnalyzer.identity.id,
             required: true,
             timeoutMs: configuration.analyzers.typescript.timeoutMs,
+            retryCount: 0,
             failureMode: "fail" as const,
         }]
         : [])];
     if (sarifAnalyzer !== undefined) {
-        analyzerPlans.push({ analyzerId: sarifAnalyzer.identity.id, required: true, timeoutMs: 60_000, failureMode: "fail" });
+        analyzerPlans.push({ analyzerId: sarifAnalyzer.identity.id, required: true, timeoutMs: 60_000, retryCount: 0, failureMode: "fail" });
     }
     if (secretScanAnalyzer !== undefined) {
-        analyzerPlans.push({ analyzerId: secretScanAnalyzer.identity.id, required: true, timeoutMs: 5_000, failureMode: "fail" });
+        analyzerPlans.push({ analyzerId: secretScanAnalyzer.identity.id, required: true, timeoutMs: 5_000, retryCount: 0, failureMode: "fail" });
     }
 
     return {

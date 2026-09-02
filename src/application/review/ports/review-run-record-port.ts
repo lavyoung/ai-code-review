@@ -17,7 +17,12 @@ export interface SanitizedReviewRunRecord {
     recordedAt: string;
     qualityGateFailed: boolean;
     highestSeverity: Severity | null;
-    analyzerRuns: Array<{ analyzerId: string; status: "completed" | "degraded" | "failed"; durationMs: number }>;
+    analyzerRuns: Array<{
+        analyzerId: string;
+        status: "completed" | "degraded" | "failed";
+        attempts: number;
+        durationMs: number;
+    }>;
     findings: SanitizedRecordedFinding[];
 }
 

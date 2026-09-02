@@ -25,6 +25,26 @@ interface CompletedAnalysis {
     analyzer: AnalyzerIdentity;
 }
 
+const RETRYABLE_AI_FAILURE_TYPES = new Set<AiReviewFailure["failureType"]>([
+    "request",
+    "rate-limit",
+    "timeout",
+]);
+
+const getRetryCount = (plan: AnalyzerExecutionPlan): number => {
+    const retryCount = plan.retryCount ?? 0;
+
+    if (!Number.isInteger(retryCount) || retryCount < 0) {
+        throw new ReviewAnalyzerExecutionError(plan.analyzerId, new Error("Analyzer retry count is invalid."));
+    }
+
+    return retryCount;
+};
+
+const isRetryableFailure = (error: unknown, signal: AbortSignal): boolean => !signal.aborted
+    && error instanceof AiReviewFailure
+    && RETRYABLE_AI_FAILURE_TYPES.has(error.failureType);
+
 const mergeAnalyses = (analyses: readonly CompletedAnalysis[]): ReviewAnalysis => ({
     summary: analyses.length === 1
         ? analyses[0]?.analysis.summary ?? "No analyzer completed."
@@ -53,7 +73,10 @@ export const executeReviewAnalyzers = async (
     const runs: AnalyzerRun[] = [];
     const globalTimeout = AbortSignal.timeout(budget.totalTimeoutMs);
     const executablePlans = plans;
-    const aiPlanCount = executablePlans.filter((plan) => registry.resolve(plan.analyzerId)?.identity.kind === "ai").length;
+    const aiPlanCount = executablePlans.reduce((total, plan) =>
+        registry.resolve(plan.analyzerId)?.identity.kind === "ai"
+            ? total + getRetryCount(plan) + 1
+            : total, 0);
 
     if (aiPlanCount > budget.maxAiRequestCount) {
         throw new ReviewAnalyzerExecutionError("review-run", new Error("AI request budget exceeded."));
@@ -76,6 +99,7 @@ export const executeReviewAnalyzers = async (
                 runs.push({
                     analyzer: { kind: "ai", id: plan.analyzerId },
                     status: "degraded",
+                    attempts: 0,
                     durationMs: 0,
                 });
                 continue;
@@ -90,6 +114,8 @@ export const executeReviewAnalyzers = async (
             }
 
             const startedAt = Date.now();
+            let attempts = 0;
+            const planSignal = AbortSignal.any([globalTimeout, AbortSignal.timeout(plan.timeoutMs)]);
             try {
                 const codeChange = analyzer.capabilities.inputAccess === "sanitized-model-input"
                     ? boundSanitizedModelInput(
@@ -97,17 +123,32 @@ export const executeReviewAnalyzers = async (
                         budget.maxModelInputChars,
                     )
                     : reviewInput.codeChange;
-                const analysis = await analyzer.analyze({
-                    codeChange,
-                    signal: AbortSignal.any([globalTimeout, AbortSignal.timeout(plan.timeoutMs)]),
-                    ...(analyzer.capabilities.inputAccess === "trusted-raw-local"
-                        ? { rawCodeChange: reviewInput.rawCodeChange }
-                        : {}),
-                });
+                let analysis: ReviewAnalysis | undefined;
+                const maxAttempts = getRetryCount(plan) + 1;
+                for (attempts = 1; attempts <= maxAttempts; attempts += 1) {
+                    try {
+                        analysis = await analyzer.analyze({
+                            codeChange,
+                            signal: planSignal,
+                            ...(analyzer.capabilities.inputAccess === "trusted-raw-local"
+                                ? { rawCodeChange: reviewInput.rawCodeChange }
+                                : {}),
+                        });
+                        break;
+                    } catch (error) {
+                        if (attempts === maxAttempts || !isRetryableFailure(error, planSignal)) {
+                            throw error;
+                        }
+                    }
+                }
+                if (analysis === undefined) {
+                    throw new Error("Analyzer retry loop did not complete.");
+                }
                 analyses.push({ analysis, analyzer: analyzer.identity });
                 runs.push({
                     analyzer: analyzer.identity,
                     status: "completed",
+                    attempts,
                     durationMs: Date.now() - startedAt,
                 });
             } catch (error) {
@@ -127,6 +168,7 @@ export const executeReviewAnalyzers = async (
                 runs.push({
                     analyzer: analyzer.identity,
                     status: "degraded",
+                    attempts,
                     durationMs,
                 });
             }

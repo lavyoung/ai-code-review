@@ -29,13 +29,14 @@ describe("renderReviewReport", () => {
                 analyzerRuns: [{
                     analyzer: { kind: "ai", id: "deepseek" },
                     status: "completed",
+                    attempts: 2,
                     durationMs: 20,
                 }],
                 policy: { highestSeverity: null, shouldFail: false },
             },
         });
 
-        expect(report).toContain("Analyzer status: deepseek=completed");
+        expect(report).toContain("Analyzer status: deepseek=completed (attempts: 2)");
         expect(report).not.toContain("durationMs");
     });
 

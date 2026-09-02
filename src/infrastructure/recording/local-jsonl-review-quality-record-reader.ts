@@ -6,6 +6,8 @@ import type { SanitizedQualityRecord } from "../../application/review/ports/revi
 const analyzerRunSchema = z.object({
     analyzerId: z.string(),
     status: z.enum(["completed", "degraded", "failed"]),
+    // v1 早期记录未保存尝试次数，读取时按一次兼容处理。
+    attempts: z.number().int().nonnegative().optional().default(1),
     durationMs: z.number().nonnegative(),
 });
 

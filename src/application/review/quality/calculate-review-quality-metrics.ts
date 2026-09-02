@@ -12,6 +12,8 @@ export interface AnalyzerQualityMetrics {
     completedCount: number;
     degradedCount: number;
     failedCount: number;
+    totalAttemptCount: number;
+    averageAttemptCount: number;
     averageDurationMs: number;
 }
 
@@ -37,6 +39,7 @@ interface AnalyzerAggregate {
     completedCount: number;
     degradedCount: number;
     failedCount: number;
+    totalAttemptCount: number;
     totalDurationMs: number;
 }
 
@@ -106,6 +109,7 @@ export const calculateReviewQualityMetrics = (
                 completedCount: 0,
                 degradedCount: 0,
                 failedCount: 0,
+                totalAttemptCount: 0,
                 totalDurationMs: 0,
             };
             switch (analyzerRun.status) {
@@ -119,6 +123,7 @@ export const calculateReviewQualityMetrics = (
                     aggregate.failedCount += 1;
                     break;
             }
+            aggregate.totalAttemptCount += analyzerRun.attempts;
             aggregate.totalDurationMs += analyzerRun.durationMs;
             analyzerAggregates.set(analyzerRun.analyzerId, aggregate);
         }
@@ -182,6 +187,9 @@ export const calculateReviewQualityMetrics = (
                 completedCount: aggregate.completedCount,
                 degradedCount: aggregate.degradedCount,
                 failedCount: aggregate.failedCount,
+                totalAttemptCount: aggregate.totalAttemptCount,
+                averageAttemptCount: aggregate.totalAttemptCount
+                    / (aggregate.completedCount + aggregate.degradedCount + aggregate.failedCount),
                 averageDurationMs: aggregate.totalDurationMs
                     / (aggregate.completedCount + aggregate.degradedCount + aggregate.failedCount),
             }))

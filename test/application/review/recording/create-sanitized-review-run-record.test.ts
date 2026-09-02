@@ -26,6 +26,7 @@ describe("createSanitizedReviewRunRecord", () => {
             analyzerRuns: [{
                 analyzer: { kind: "secret-scan", id: "secret-scanner" },
                 status: "completed",
+                attempts: 1,
                 durationMs: 12,
             }],
             policy: { highestSeverity: "high", shouldFail: true },
@@ -38,7 +39,7 @@ describe("createSanitizedReviewRunRecord", () => {
             recordedAt: "2026-09-02T00:00:00.000Z",
             qualityGateFailed: true,
             highestSeverity: "high",
-            analyzerRuns: [{ analyzerId: "secret-scan:secret-scanner", status: "completed", durationMs: 12 }],
+            analyzerRuns: [{ analyzerId: "secret-scan:secret-scanner", status: "completed", attempts: 1, durationMs: 12 }],
             findings: [{
                 fingerprint: "0123456789abcdef01234567",
                 severity: "high",

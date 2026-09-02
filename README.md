@@ -113,6 +113,8 @@ execution:
 
 对应环境变量为 `REVIEW_TOTAL_ANALYZER_TIMEOUT_MS`、`REVIEW_MAX_ANALYZER_CONCURRENCY`、`REVIEW_MAX_AI_REQUEST_COUNT` 和 `REVIEW_MAX_MODEL_INPUT_CHARS`。其中 `max_model_input_chars` 是每个远程 AI 分析器可见的安全 JSON diff 字符上限，默认 `60000`；超出时只保留按 diff 顺序排列的前缀分块。本地 TypeScript、SARIF 和密钥扫描器不受该上限影响。超出 AI 请求预算或必需分析器不可用时，流水线会以非零退出码结束；建议性分析器失败只会进入脱敏运行摘要。
 
+内置 DeepSeek 分析器仅在网络请求失败、限流或超时时最多额外重试两次；认证、上下文限制、无效 JSON 和 Schema 错误不会重试。三次最大调用数会预先计入 `max_ai_request_count` 预算，最终实际尝试次数会显示在评审摘要和脱敏运行记录中。
+
 临时覆盖时可使用：
 
 ```bash
@@ -218,7 +220,7 @@ ai-code-review feedback \
 
 ## 本地质量指标
 
-`metrics` 只读取上述脱敏 JSONL 并输出 JSON 聚合值：运行数、质量门禁次数、发现数、分析器状态与耗时、反馈覆盖率、误报率和可关联反馈的平均处理耗时。
+`metrics` 只读取上述脱敏 JSONL 并输出 JSON 聚合值：运行数、质量门禁次数、发现数、分析器状态、尝试次数与耗时、反馈覆盖率、误报率和可关联反馈的平均处理耗时。
 
 ```bash
 ai-code-review metrics --run-record-path .ai-code-review/runs.jsonl
@@ -338,17 +340,17 @@ notifiers:
 
 | 平台 | 状态 | 说明 |
 | --- | --- | --- |
-| Local Git | Planned | 用于本地调试和通用 CI 场景 |
-| CodeUp | Planned | 优先支持云效 CodeUp / Flow |
-| GitHub | Planned | 后续支持 GitHub Actions 和 Pull Request |
+| Local Git | Supported | 用于本地调试和通用 CI 场景 |
+| CodeUp | Supported | 支持 Merge Request 范围与可更新的摘要评论 |
+| GitHub | Supported | 支持 GitHub Actions、Pull Request 与可更新的摘要评论 |
 | GitLab | Planned | 后续支持 GitLab CI 和 Merge Request |
 
 ## 通知支持计划
 
 | 通知渠道 | 状态 | 说明 |
 | --- | --- | --- |
-| 企业微信 | Planned | 第一阶段优先支持 |
-| CI Log | Planned | 第一阶段优先支持 |
+| 企业微信 | Supported | 支持 Markdown 通知与脱敏投递状态 |
+| CI Log | Supported | 输出脱敏评审结果、分析器与投递状态 |
 | 通用 Webhook | Planned | 用于对接内部系统 |
 | 钉钉 | Planned | 后续扩展 |
 | 飞书 | Planned | 后续扩展 |

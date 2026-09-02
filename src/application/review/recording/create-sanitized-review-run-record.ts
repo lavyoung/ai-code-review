@@ -16,6 +16,7 @@ export const createSanitizedReviewRunRecord = (
     analyzerRuns: result.analyzerRuns.map((run) => ({
         analyzerId: `${run.analyzer.kind}:${run.analyzer.id}`,
         status: run.status,
+        attempts: run.attempts,
         durationMs: run.durationMs,
     })),
     findings: result.findings.map((finding) => ({

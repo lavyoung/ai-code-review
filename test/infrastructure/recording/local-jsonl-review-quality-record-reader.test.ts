@@ -16,7 +16,11 @@ describe("LocalJsonlReviewQualityRecordReader", () => {
                     recordedAt: "2026-09-02T00:00:00.000Z",
                     qualityGateFailed: false,
                     highestSeverity: null,
-                    analyzerRuns: [],
+                    analyzerRuns: [{
+                        analyzerId: "ai:deepseek",
+                        status: "completed",
+                        durationMs: 10,
+                    }],
                     findings: [],
                 }),
                 JSON.stringify({
@@ -30,7 +34,10 @@ describe("LocalJsonlReviewQualityRecordReader", () => {
             ].join("\n"), "utf8");
 
             await expect(new LocalJsonlReviewQualityRecordReader(path).readAll()).resolves.toEqual([
-                expect.objectContaining({ recordType: "review-run" }),
+                expect.objectContaining({
+                    recordType: "review-run",
+                    analyzerRuns: [expect.objectContaining({ attempts: 1 })],
+                }),
                 expect.objectContaining({ recordType: "finding-feedback", status: "fixed" }),
             ]);
         } finally {

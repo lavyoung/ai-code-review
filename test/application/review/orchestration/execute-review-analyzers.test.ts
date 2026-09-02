@@ -79,6 +79,47 @@ describe("executeReviewAnalyzers", () => {
         }], registry, budget)).rejects.toBeInstanceOf(AiReviewExecutionError);
     });
 
+    it("retries only transient classified AI failures within the plan limit", async () => {
+        const analyze = vi.fn()
+            .mockRejectedValueOnce(new AiReviewFailure("rate-limit", "Retry later."))
+            .mockRejectedValueOnce(new AiReviewFailure("timeout", "Timed out."))
+            .mockResolvedValue({ summary: "Completed after retry.", findings: [] });
+        const registry = new StaticReviewAnalyzerRegistry([createAnalyzer(analyze)]);
+
+        const result = await executeReviewAnalyzers(reviewInput, [{
+            analyzerId: "deepseek",
+            required: true,
+            timeoutMs: 1_000,
+            retryCount: 2,
+            failureMode: "fail",
+        }], registry, { ...budget, maxAiRequestCount: 3 });
+
+        expect(analyze).toHaveBeenCalledTimes(3);
+        expect(result.runs).toEqual([expect.objectContaining({
+            status: "completed",
+            attempts: 3,
+        })]);
+    });
+
+    it("does not retry non-transient AI failures", async () => {
+        const analyze = vi.fn().mockRejectedValue(new AiReviewFailure("authentication", "Invalid key."));
+        const registry = new StaticReviewAnalyzerRegistry([createAnalyzer(analyze)]);
+
+        const result = await executeReviewAnalyzers(reviewInput, [{
+            analyzerId: "deepseek",
+            required: false,
+            timeoutMs: 1_000,
+            retryCount: 2,
+            failureMode: "degrade",
+        }], registry, { ...budget, maxAiRequestCount: 3 });
+
+        expect(analyze).toHaveBeenCalledTimes(1);
+        expect(result.runs).toEqual([expect.objectContaining({
+            status: "degraded",
+            attempts: 1,
+        })]);
+    });
+
     it("fails a required unregistered analyzer with a generic analyzer error", async () => {
         await expect(executeReviewAnalyzers(reviewInput, [{
             analyzerId: "typescript",
@@ -102,6 +143,19 @@ describe("executeReviewAnalyzers", () => {
             timeoutMs: 1_000,
             failureMode: "degrade",
         }], registry, { ...budget, maxAiRequestCount: 1 }))
+            .rejects.toBeInstanceOf(ReviewAnalyzerExecutionError);
+    });
+
+    it("includes planned AI retries in the request budget", async () => {
+        const registry = new StaticReviewAnalyzerRegistry([createAnalyzer(vi.fn())]);
+
+        await expect(executeReviewAnalyzers(reviewInput, [{
+            analyzerId: "deepseek",
+            required: true,
+            timeoutMs: 1_000,
+            retryCount: 2,
+            failureMode: "fail",
+        }], registry, { ...budget, maxAiRequestCount: 2 }))
             .rejects.toBeInstanceOf(ReviewAnalyzerExecutionError);
     });
 

@@ -47,6 +47,8 @@ export interface AnalyzerExecutionPlan {
     analyzerId: string;
     required: boolean;
     timeoutMs: number;
+    /** 瞬时失败后允许的额外尝试次数；未指定时不重试。 */
+    retryCount?: number;
     failureMode: "fail" | "degrade";
 }
 
@@ -62,6 +64,8 @@ export interface ReviewRunBudget {
 export interface AnalyzerRun {
     analyzer: AnalyzerIdentity;
     status: "completed" | "degraded" | "failed";
+    /** 本分析器实际执行的次数；未注册而跳过的计划为 0。 */
+    attempts: number;
     durationMs: number;
 }
 
