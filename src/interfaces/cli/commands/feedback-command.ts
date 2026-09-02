@@ -1,12 +1,17 @@
-import { Command, InvalidArgumentError } from "commander";
+import {Command, InvalidArgumentError} from "commander";
 import {
     FINDING_FEEDBACK_STATUSES,
     type FindingFeedbackStatus,
 } from "../../../application/review/ports/review-run-record-port.js";
-import { createSanitizedFindingFeedback, recordFindingFeedbackUseCase } from "../../../application/review/recording/record-finding-feedback-use-case.js";
-import { resolveCliReviewConfiguration } from "../../../bootstrap/create-review-dependencies.js";
-import { LocalJsonlReviewRunRecorder } from "../../../infrastructure/recording/local-jsonl-review-run-recorder.js";
-import { CLI_EXIT_CODES } from "../exit-code.js";
+import {
+    createSanitizedFindingFeedback,
+    recordFindingFeedbackUseCase
+} from "../../../application/review/recording/record-finding-feedback-use-case.js";
+import {
+    createReviewQualityStore,
+    resolveCliReviewConfiguration
+} from "../../../bootstrap/create-review-dependencies.js";
+import {CLI_EXIT_CODES} from "../exit-code.js";
 
 interface FeedbackCommandOptions {
     fingerprint: string;
@@ -14,6 +19,8 @@ interface FeedbackCommandOptions {
     runId?: string;
     config?: string;
     runRecordPath?: string;
+    qualityStoreEnabled?: boolean;
+    qualityStoreEndpoint?: string;
 }
 
 const parseFingerprint = (value: string): string => {
@@ -52,19 +59,32 @@ export const configureFeedbackCommand = (program: Command): void => {
         .option("--run-id <run-id>", "Optional review run identifier", parseRunId)
         .option("--config <path>", "Configuration file path")
         .option("--run-record-path <path>", "Append feedback to a JSONL review record")
+        .option("--quality-store-enabled <true|false>", "Enable the signed organization quality store", (value) =>
+            value === "true" ? true : value === "false" ? false : (() => {
+                throw new InvalidArgumentError("--quality-store-enabled must be true or false.");
+            })())
+        .option("--quality-store-endpoint <https-url>", "Organization quality store HTTPS endpoint")
         .action(async (options: FeedbackCommandOptions) => {
-            let recordPath: string | undefined;
+            let qualityStore;
             try {
                 const configuration = await resolveCliReviewConfiguration({
                     ...(options.config === undefined ? {} : { configurationPath: options.config }),
-                    cli: options.runRecordPath === undefined ? {} : { reviewRunRecordPath: options.runRecordPath },
+                    cli: {
+                        ...(options.runRecordPath === undefined ? {} : {reviewRunRecordPath: options.runRecordPath}),
+                        ...(options.qualityStoreEnabled === undefined
+                            ? {}
+                            : {qualityStoreEnabled: options.qualityStoreEnabled}),
+                        ...(options.qualityStoreEndpoint === undefined
+                            ? {}
+                            : {qualityStoreEndpointUrl: options.qualityStoreEndpoint}),
+                    },
                 });
-                recordPath = configuration.recording.localPath;
-                if (recordPath === undefined) {
-                    throw new Error("A review run record path must be configured.");
+                qualityStore = createReviewQualityStore(configuration);
+                if (qualityStore === undefined) {
+                    throw new Error("A review quality store must be configured.");
                 }
             } catch {
-                console.error("Feedback configuration error. Configure a review run record path.");
+                console.error("Feedback configuration error. Configure a local record path or organization quality store.");
                 process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
                 return;
             }
@@ -75,7 +95,7 @@ export const configureFeedbackCommand = (program: Command): void => {
                     status: options.status,
                     ...(options.runId === undefined ? {} : { runId: options.runId }),
                 }),
-                new LocalJsonlReviewRunRecorder(recordPath),
+                qualityStore,
             );
             console.log(`Finding feedback: ${status}`);
             process.exitCode = status === "delivered"

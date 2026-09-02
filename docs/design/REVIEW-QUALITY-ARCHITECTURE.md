@@ -426,9 +426,17 @@ interface ReviewDecision {
 
 系统需要支持人工对最终发现项记录：`accepted`、`false-positive`、`not-applicable`、`fixed`。反馈不直接修改模型输出，而是形成审计记录和聚合指标。
 
-评论不是反馈的真相来源。跨仓库质量度量的生产实现是组织受控的 `ReviewQualityStore`：CLI/Action 通过签名 HTTPS 事件提交脱敏运行记录和反馈，再由组织受控存储保存。GitHub/CodeUp 评论、Reaction 或未来反馈入口只负责收集用户意图，必须转换为以 `findingFingerprint` 为键的反馈事件后才写入存储。
+评论不是反馈的真相来源。跨仓库质量度量的生产实现是组织受控的 `ReviewQualityStore`：CLI/Action 通过签名 HTTPS
+事件提交脱敏运行记录和反馈，再由组织受控存储保存。当前协议固定为向配置的 HTTPS `endpoint_url` 发送 JSON `POST`，正文只能是版本化
+`SanitizedReviewRunRecord` 或 `SanitizedFindingFeedback`；请求必须包含 `X-AICR-Event-Type`、`X-AICR-Event-Id`、
+`X-AICR-Timestamp` 与 `X-AICR-Signature`。签名为 `v1=HMAC-SHA256(timestamp + "." + body)`，签名密钥只允许由环境变量/CI
+Secret 注入。接收方必须校验签名与时间窗，并按事件 ID 幂等去重；不得将 URL、密钥、响应正文或失败详情写入日志。GitHub/CodeUp
+评论、Reaction 或未来反馈入口只负责收集用户意图，必须转换为以 `findingFingerprint` 为键的反馈事件后才写入存储。
 
-本地 JSONL 可保存仅含指纹、固定状态、运行 ID 和时间的人工反馈事件，并计算单仓库脱敏聚合指标；它不是跨仓库质量度量的真相来源。计算反馈比率时，同一指纹以最新反馈状态为准，且只有能关联本地发现的反馈才能参与比率。未配置 `ReviewQualityStore` 时，跨仓库指标能力必须显式禁用，工具不能声称具有长期误报率统计。反馈记录须定义保留期限、删除流程、访问权限和签名验证策略。
+本地 JSONL 可保存仅含指纹、固定状态、运行 ID 和时间的人工反馈事件，并计算单仓库脱敏聚合指标；它不是跨仓库质量度量的真相来源。当前
+CLI 可将 JSONL 与组织 `ReviewQualityStore` 并行写入；任一目标失败只报告脱敏 `failed`
+状态，默认不改变质量门禁。计算反馈比率时，同一指纹以最新反馈状态为准，且只有能关联本地发现的反馈才能参与比率。未配置
+`ReviewQualityStore` 时，跨仓库指标能力必须显式禁用，工具不能声称具有长期误报率统计。服务端仍须在组织部署时定义保留期限、删除流程与访问权限。
 
 最小指标维度：
 

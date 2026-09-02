@@ -34,6 +34,14 @@ inputs:
     description: Optional path for an append-only sanitized JSONL review record.
     required: false
     default: ""
+  quality-store-enabled:
+    description: Whether to send sanitized records to the organization quality store.
+    required: false
+    default: "false"
+  quality-store-endpoint:
+    description: HTTPS endpoint for the organization quality store.
+    required: false
+    default: ""
   max-model-input-chars:
     description: Maximum safe JSON diff characters passed to each AI analyzer.
     required: false
@@ -68,5 +76,8 @@ runs:
         SARIF_REPORT_PATH: ${{ inputs.sarif-report }}
         SECRET_SCAN_ANALYZER_ENABLED: ${{ inputs.secret-scan-enabled }}
         REVIEW_RUN_RECORD_PATH: ${{ inputs.run-record-path }}
+        QUALITY_STORE_ENABLED: ${{ inputs.quality-store-enabled }}
+        QUALITY_STORE_ENDPOINT_URL: ${{ inputs.quality-store-endpoint }}
+        QUALITY_STORE_SIGNING_SECRET: ${{ env.QUALITY_STORE_SIGNING_SECRET }}
         REVIEW_MAX_MODEL_INPUT_CHARS: ${{ inputs.max-model-input-chars }}
       run: node "$GITHUB_ACTION_PATH/dist/interfaces/cli/index.js" review --provider github --event pull-request

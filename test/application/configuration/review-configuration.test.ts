@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { resolveReviewConfiguration } from "../../../src/infrastructure/configuration/resolve-review-configuration.js";
+import {describe, expect, it} from "vitest";
+import {resolveReviewConfiguration} from "../../../src/infrastructure/configuration/resolve-review-configuration.js";
 
 describe("resolveReviewConfiguration", () => {
     it("uses defaults when no source provides a value", () => {
@@ -223,7 +223,46 @@ describe("resolveReviewConfiguration", () => {
             file: { reviewRunRecordPath: "file.jsonl" },
             environment: { REVIEW_RUN_RECORD_PATH: "environment.jsonl" },
             cli: { reviewRunRecordPath: "cli.jsonl" },
-        }).recording).toEqual({ localPath: "cli.jsonl" });
+        }).recording).toEqual({
+            localPath: "cli.jsonl",
+            qualityStore: {enabled: false},
+        });
+    });
+
+    it("enables the organization quality store with an environment-only signing secret", () => {
+        const configuration = resolveReviewConfiguration({
+            file: {
+                qualityStoreEnabled: true,
+                qualityStoreEndpointUrl: "https://quality.example.test/events",
+            },
+            environment: {
+                QUALITY_STORE_SIGNING_SECRET: "quality-store-secret",
+            },
+        });
+
+        expect(configuration.recording.qualityStore).toEqual({
+            enabled: true,
+            endpointUrl: "https://quality.example.test/events",
+            signingSecret: "quality-store-secret",
+        });
+    });
+
+    it("requires a HTTPS endpoint and environment signing secret for an enabled quality store", () => {
+        expect(() => resolveReviewConfiguration({
+            environment: {QUALITY_STORE_ENABLED: "true"},
+        })).toThrow("QUALITY_STORE_ENDPOINT_URL");
+
+        expect(() => resolveReviewConfiguration({
+            environment: {
+                QUALITY_STORE_ENABLED: "true",
+                QUALITY_STORE_ENDPOINT_URL: "http://quality.example.test/events",
+                QUALITY_STORE_SIGNING_SECRET: "quality-store-secret",
+            },
+        })).toThrow();
+
+        expect(() => resolveReviewConfiguration({
+            file: {signingSecret: "must-not-be-accepted"},
+        })).toThrow();
     });
 
     it("accepts the API key only from the environment", () => {

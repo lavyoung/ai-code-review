@@ -1,25 +1,31 @@
-import type { ReviewConfiguration } from "../application/configuration/review-configuration.js";
-import { DeepSeekReviewAdapter } from "../infrastructure/ai/deepseek/deepseek-review-adapter.js";
-import { TypeScriptReviewAnalyzer } from "../infrastructure/analyzers/typescript/typescript-review-analyzer.js";
-import { SarifReviewAnalyzer } from "../infrastructure/analyzers/sarif/sarif-review-analyzer.js";
-import { SecretScanReviewAnalyzer } from "../infrastructure/analyzers/secret-scan/secret-scan-review-analyzer.js";
-import { StaticReviewAnalyzerRegistry } from "../application/review/orchestration/static-review-analyzer-registry.js";
-import { deterministicAnalyzerFindingVerifier } from "../application/review/verification/deterministic-analyzer-finding-verifier.js";
-import { resolveCliConfiguration } from "../infrastructure/configuration/resolve-cli-configuration.js";
-import { CodeUpReviewCommentAdapter } from "../infrastructure/scm/codeup/codeup-review-comment-adapter.js";
+import type {ReviewConfiguration} from "../application/configuration/review-configuration.js";
+import {DeepSeekReviewAdapter} from "../infrastructure/ai/deepseek/deepseek-review-adapter.js";
+import {TypeScriptReviewAnalyzer} from "../infrastructure/analyzers/typescript/typescript-review-analyzer.js";
+import {SarifReviewAnalyzer} from "../infrastructure/analyzers/sarif/sarif-review-analyzer.js";
+import {SecretScanReviewAnalyzer} from "../infrastructure/analyzers/secret-scan/secret-scan-review-analyzer.js";
+import {StaticReviewAnalyzerRegistry} from "../application/review/orchestration/static-review-analyzer-registry.js";
 import {
+    deterministicAnalyzerFindingVerifier
+} from "../application/review/verification/deterministic-analyzer-finding-verifier.js";
+import {resolveCliConfiguration} from "../infrastructure/configuration/resolve-cli-configuration.js";
+import {CodeUpReviewCommentAdapter} from "../infrastructure/scm/codeup/codeup-review-comment-adapter.js";
+import {
+    type CodeUpMergeRequestContext,
     CodeUpMergeRequestContextError,
     resolveCodeUpMergeRequestContext,
-    type CodeUpMergeRequestContext,
 } from "../infrastructure/scm/codeup/resolve-codeup-merge-request-context.js";
-import { LocalGitDiffProvider } from "../infrastructure/scm/git/local-git-diff-provider.js";
-import { GitHubReviewCommentAdapter } from "../infrastructure/scm/github/github-review-comment-adapter.js";
+import {LocalGitDiffProvider} from "../infrastructure/scm/git/local-git-diff-provider.js";
+import {GitHubReviewCommentAdapter} from "../infrastructure/scm/github/github-review-comment-adapter.js";
 import {
     GitHubActionsContextError,
-    resolveGitHubActionsPullRequestContext,
     type GitHubActionsPullRequestContext,
+    resolveGitHubActionsPullRequestContext,
 } from "../infrastructure/scm/github/resolve-github-actions-pull-request-context.js";
-import { WeComNotifier } from "../infrastructure/notification/wecom/wecom-notifier.js";
+import {WeComNotifier} from "../infrastructure/notification/wecom/wecom-notifier.js";
+import type {ReviewQualityStore} from "../application/review/ports/review-run-record-port.js";
+import {LocalJsonlReviewRunRecorder} from "../infrastructure/recording/local-jsonl-review-run-recorder.js";
+import {HttpReviewQualityStore} from "../infrastructure/recording/http-review-quality-store.js";
+import {CompositeReviewQualityStore} from "../infrastructure/recording/composite-review-quality-store.js";
 
 /** CLI 运行时的外部平台上下文无效时抛出，避免接口层依赖具体平台错误类型。 */
 export class ReviewPlatformContextError extends Error {
@@ -84,6 +90,33 @@ export const createReviewDependencies = (
         },
         findingVerifiers: [deterministicAnalyzerFindingVerifier],
     };
+};
+
+/** 创建已配置的本地和/或组织受控脱敏质量存储。 */
+export const createReviewQualityStore = (
+    configuration: ReviewConfiguration,
+): ReviewQualityStore | undefined => {
+    const stores: ReviewQualityStore[] = [];
+    if (configuration.recording.localPath !== undefined) {
+        stores.push(new LocalJsonlReviewRunRecorder(configuration.recording.localPath));
+    }
+
+    const qualityStore = configuration.recording.qualityStore;
+    if (qualityStore.enabled) {
+        if (qualityStore.endpointUrl === undefined || qualityStore.signingSecret === undefined) {
+            throw new Error("Quality store configuration was incomplete.");
+        }
+        stores.push(new HttpReviewQualityStore({
+            endpointUrl: qualityStore.endpointUrl,
+            signingSecret: qualityStore.signingSecret,
+        }));
+    }
+
+    if (stores.length === 0) {
+        return undefined;
+    }
+
+    return stores.length === 1 ? stores[0] : new CompositeReviewQualityStore(stores);
 };
 
 /** 解析 CLI 的多来源配置。 */

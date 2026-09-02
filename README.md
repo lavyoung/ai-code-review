@@ -198,7 +198,8 @@ analyzers:
 
 ## 脱敏运行记录
 
-可选记录器会把每次运行写入本地 JSONL 文件，内容仅包括 `runId`、质量门禁结果、严重级别、分析器运行摘要和发现指纹；不保存代码、文件路径、描述、证据或密钥。每行都含有 `recordType`，用于区分 `review-run` 和 `finding-feedback` 事件。适合在 CI 中作为 artifact 上传，或作为后续组织级质量存储的输入：
+可选记录器会把每次运行写入本地 JSONL 文件，内容仅包括 `runId`、质量门禁结果、严重级别、分析器运行摘要和发现指纹；不保存代码、文件路径、描述、证据或密钥。每行都含有
+`recordType`，用于区分 `review-run` 和 `finding-feedback` 事件。适合在 CI 中作为 artifact 上传，也可与组织级质量存储并行启用：
 
 ```yaml
 recording:
@@ -206,6 +207,30 @@ recording:
 ```
 
 也可使用 `REVIEW_RUN_RECORD_PATH=.ai-code-review/runs.jsonl`，或 `--run-record-path .ai-code-review/runs.jsonl`。Composite Action 对应输入为 `run-record-path`。记录失败只会输出 `Review record: failed`，不会影响评审、通知或质量门禁。
+
+### 组织级质量存储
+
+组织受控服务可接收跨仓库的脱敏运行记录和人工反馈。启用时必须使用 HTTPS；`QUALITY_STORE_SIGNING_SECRET` 只能通过 CI Secret
+或环境变量注入，绝不能写入 YAML、命令行或日志：
+
+```yaml
+recording:
+  quality_store:
+    enabled: true
+    endpoint_url: https://quality.example.com/api/v1/review-events
+```
+
+```bash
+QUALITY_STORE_ENABLED=true \
+QUALITY_STORE_ENDPOINT_URL=https://quality.example.com/api/v1/review-events \
+QUALITY_STORE_SIGNING_SECRET=<secret> \
+ai-code-review review --provider local --event manual --target main
+```
+
+CLI 也可覆盖普通配置：`--quality-store-enabled true --quality-store-endpoint https://…`；签名密钥始终只从
+`QUALITY_STORE_SIGNING_SECRET` 读取。每个事件以 JSON `POST` 到 `endpoint_url`，并携带 `X-AICR-Event-Type`、
+`X-AICR-Event-Id`、`X-AICR-Timestamp` 和 `X-AICR-Signature`。签名算法是 `v1=HMAC-SHA256(timestamp + "." + requestBody)`
+；接收方必须校验签名、限制时间窗，并按事件 ID 幂等去重。远程存储失败同样只输出脱敏的 `Review record: failed`，不影响质量门禁。
 
 ## 人工发现反馈
 
@@ -219,7 +244,8 @@ ai-code-review feedback \
   --run-record-path .ai-code-review/runs.jsonl
 ```
 
-可选状态为 `accepted`、`false-positive`、`not-applicable` 和 `fixed`。未配置记录路径时命令以退出码 `102` 结束；写入失败时输出 `Finding feedback: failed` 并以退出码 `107` 结束。该本地记录只支持人工反馈追溯，不提供跨仓库指标或自动调整规则；这些能力需要组织受控的质量存储。
+可选状态为 `accepted`、`false-positive`、`not-applicable` 和 `fixed`。未配置本地记录路径或组织级质量存储时命令以退出码
+`102` 结束；写入失败时输出 `Finding feedback: failed` 并以退出码 `107` 结束。组织存储只接收指纹和固定状态，支持跨仓库聚合；不得将其用于未经人工审核的规则自动调整。
 
 ## 本地质量指标
 

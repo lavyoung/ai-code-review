@@ -60,3 +60,11 @@ export interface ReviewRunRecordPort {
 export interface ReviewFeedbackPort {
     appendFeedback(feedback: SanitizedFindingFeedback): Promise<void>;
 }
+
+/**
+ * 保存脱敏运行记录及人工反馈的质量存储。
+ *
+ * 实现只可处理此模块定义的安全事件，不能接收原始 diff、路径、代码或自由文本。
+ */
+export interface ReviewQualityStore extends ReviewRunRecordPort, ReviewFeedbackPort {
+}

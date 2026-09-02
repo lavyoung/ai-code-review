@@ -1,4 +1,4 @@
-import type { Severity } from "../../domain/review/model/severity.js";
+import type {Severity} from "../../domain/review/model/severity.js";
 
 /**
  * 评审用例的已解析配置。
@@ -44,6 +44,13 @@ export interface ReviewConfiguration {
     recording: {
         /** 可选的本地 JSONL 运行记录路径；禁止在日志中输出此路径。 */
         localPath?: string;
+        /** 组织受控质量存储；只接收经 HMAC 签名的脱敏事件。 */
+        qualityStore: {
+            enabled: boolean;
+            endpointUrl?: string;
+            /** 仅由环境变量或 CI Secret 注入，禁止写入配置文件与日志。 */
+            signingSecret?: string;
+        };
     };
     notifications: {
         wecom: {

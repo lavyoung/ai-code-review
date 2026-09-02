@@ -1,12 +1,7 @@
-import { z } from "zod";
-import type { ReviewConfiguration } from "../../application/configuration/review-configuration.js";
-import {
-    SEVERITIES,
-} from "../../domain/review/model/severity.js";
-import {
-    canonicalizeOutputLanguage,
-    DEFAULT_OUTPUT_LANGUAGE,
-} from "../../application/configuration/output-language.js";
+import {z} from "zod";
+import type {ReviewConfiguration} from "../../application/configuration/review-configuration.js";
+import {SEVERITIES,} from "../../domain/review/model/severity.js";
+import {canonicalizeOutputLanguage, DEFAULT_OUTPUT_LANGUAGE,} from "../../application/configuration/output-language.js";
 
 const outputLanguageSchema = z.string().trim().min(1).max(64)
     .transform((value, context) => {
@@ -17,6 +12,10 @@ const outputLanguageSchema = z.string().trim().min(1).max(64)
             return z.NEVER;
         }
     });
+
+const httpsUrlSchema = z.string().url().refine((value) => new URL(value).protocol === "https:", {
+    message: "Expected an HTTPS URL.",
+});
 
 const configurationOverrideSchema = z.object({
     severityThreshold: z.enum(SEVERITIES).optional(),
@@ -35,6 +34,8 @@ const configurationOverrideSchema = z.object({
     secretScanEnabled: z.boolean().optional(),
     deepSeekEnabled: z.boolean().optional(),
     reviewRunRecordPath: z.string().trim().min(1).optional(),
+    qualityStoreEnabled: z.boolean().optional(),
+    qualityStoreEndpointUrl: httpsUrlSchema.optional(),
     wecomEnabled: z.boolean().optional(),
     wecomFailOnError: z.boolean().optional(),
     githubCommentEnabled: z.boolean().optional(),
@@ -106,6 +107,8 @@ export const resolveReviewConfiguration = (
         secretScanEnabled: parseBooleanEnvironmentValue(sources.environment?.SECRET_SCAN_ANALYZER_ENABLED),
         deepSeekEnabled: parseBooleanEnvironmentValue(sources.environment?.DEEPSEEK_ANALYZER_ENABLED),
         reviewRunRecordPath: optionalEnvironmentSecret(sources.environment?.REVIEW_RUN_RECORD_PATH),
+        qualityStoreEnabled: parseBooleanEnvironmentValue(sources.environment?.QUALITY_STORE_ENABLED),
+        qualityStoreEndpointUrl: optionalEnvironmentSecret(sources.environment?.QUALITY_STORE_ENDPOINT_URL),
         wecomEnabled: parseBooleanEnvironmentValue(sources.environment?.WECOM_ENABLED),
         wecomFailOnError: parseBooleanEnvironmentValue(
             sources.environment?.WECOM_FAIL_ON_ERROR,
@@ -135,6 +138,9 @@ export const resolveReviewConfiguration = (
     );
     const codeUpAccessToken = z.string().trim().min(1).optional().parse(
         optionalEnvironmentSecret(sources.environment?.CODEUP_TOKEN),
+    );
+    const qualityStoreSigningSecret = z.string().trim().min(1).optional().parse(
+        optionalEnvironmentSecret(sources.environment?.QUALITY_STORE_SIGNING_SECRET),
     );
     const wecomEnabled = cli.wecomEnabled
         ?? environment.wecomEnabled
@@ -174,6 +180,13 @@ export const resolveReviewConfiguration = (
     const reviewRunRecordPath = cli.reviewRunRecordPath
         ?? environment.reviewRunRecordPath
         ?? file.reviewRunRecordPath;
+    const qualityStoreEnabled = cli.qualityStoreEnabled
+        ?? environment.qualityStoreEnabled
+        ?? file.qualityStoreEnabled
+        ?? false;
+    const qualityStoreEndpointUrl = cli.qualityStoreEndpointUrl
+        ?? environment.qualityStoreEndpointUrl
+        ?? file.qualityStoreEndpointUrl;
 
     if (wecomEnabled && webhookUrl === undefined) {
         throw new Error("WECOM_WEBHOOK_URL must be set when WeCom notifications are enabled.");
@@ -185,6 +198,11 @@ export const resolveReviewConfiguration = (
 
     if (sarifEnabled && sarifReportPath === undefined) {
         throw new Error("A SARIF report path must be configured when the SARIF analyzer is enabled.");
+    }
+
+    if (qualityStoreEnabled
+        && (qualityStoreEndpointUrl === undefined || qualityStoreSigningSecret === undefined)) {
+        throw new Error("QUALITY_STORE_ENDPOINT_URL and QUALITY_STORE_SIGNING_SECRET must be set when the quality store is enabled.");
     }
 
     return {
@@ -251,6 +269,11 @@ export const resolveReviewConfiguration = (
             ...(reviewRunRecordPath === undefined
                 ? {}
                 : { localPath: reviewRunRecordPath }),
+            qualityStore: {
+                enabled: qualityStoreEnabled,
+                ...(qualityStoreEndpointUrl === undefined ? {} : {endpointUrl: qualityStoreEndpointUrl}),
+                ...(qualityStoreSigningSecret === undefined ? {} : {signingSecret: qualityStoreSigningSecret}),
+            },
         },
         notifications: {
             wecom: {

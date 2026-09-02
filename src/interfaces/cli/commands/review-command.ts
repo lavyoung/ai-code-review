@@ -11,6 +11,7 @@ import {
     createCodeUpReviewCommentPort,
     createGitHubReviewCommentPort,
     createReviewDependencies,
+    createReviewQualityStore,
     createWeComNotifier,
     resolveCliReviewConfiguration,
     resolveCodeUpMergeRequestReviewContext,
@@ -35,7 +36,6 @@ import {
     createSanitizedReviewRunRecord
 } from "../../../application/review/recording/create-sanitized-review-run-record.js";
 import {recordReviewRunUseCase} from "../../../application/review/recording/record-review-run-use-case.js";
-import {LocalJsonlReviewRunRecorder} from "../../../infrastructure/recording/local-jsonl-review-run-recorder.js";
 import {CLI_EXIT_CODES, getAiReviewFailureExitCode,} from "../exit-code.js";
 
 interface ReviewCommandOptions {
@@ -54,6 +54,8 @@ interface ReviewCommandOptions {
     secretScanEnabled?: boolean;
     deepseekEnabled?: boolean;
     runRecordPath?: string;
+    qualityStoreEnabled?: boolean;
+    qualityStoreEndpoint?: string;
 }
 
 const parseReviewEventType = (value: string): ReviewEventType => {
@@ -111,6 +113,9 @@ const reviewCommand = program
     .option("--deepseek-enabled <true|false>", "Enable the DeepSeek semantic analyzer", (value) =>
         parseBoolean(value, "--deepseek-enabled"))
     .option("--run-record-path <path>", "Append a sanitized review record as JSONL")
+    .option("--quality-store-enabled <true|false>", "Enable the signed organization quality store", (value) =>
+        parseBoolean(value, "--quality-store-enabled"))
+    .option("--quality-store-endpoint <https-url>", "Organization quality store HTTPS endpoint")
     .action(async (options: ReviewCommandOptions) => {
         const isManualReview = options.event === "manual"
             && options.provider === "local"
@@ -164,6 +169,12 @@ const reviewCommand = program
                     ...(options.runRecordPath === undefined
                         ? {}
                         : { reviewRunRecordPath: options.runRecordPath }),
+                    ...(options.qualityStoreEnabled === undefined
+                        ? {}
+                        : {qualityStoreEnabled: options.qualityStoreEnabled}),
+                    ...(options.qualityStoreEndpoint === undefined
+                        ? {}
+                        : {qualityStoreEndpointUrl: options.qualityStoreEndpoint}),
                 },
             });
         } catch {
@@ -248,12 +259,12 @@ const reviewCommand = program
                 includeDeliveryStatus: false,
             }));
 
-            const recordPath = configuration.recording.localPath;
-            const recordingStatus = recordPath === undefined
+            const qualityStore = createReviewQualityStore(configuration);
+            const recordingStatus = qualityStore === undefined
                 ? undefined
                 : await recordReviewRunUseCase(
                     createSanitizedReviewRunRecord(runId, result),
-                    new LocalJsonlReviewRunRecorder(recordPath),
+                    qualityStore,
                 );
             if (recordingStatus !== undefined) {
                 console.log(`Review record: ${recordingStatus}`);

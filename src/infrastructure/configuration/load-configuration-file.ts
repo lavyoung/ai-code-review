@@ -1,11 +1,8 @@
-import { readFile } from "node:fs/promises";
-import { parse } from "yaml";
-import { z } from "zod";
-import {
-    SEVERITIES,
-    type Severity,
-} from "../../domain/review/model/severity.js";
-import { canonicalizeOutputLanguage } from "../../application/configuration/output-language.js";
+import {readFile} from "node:fs/promises";
+import {parse} from "yaml";
+import {z} from "zod";
+import {SEVERITIES, type Severity,} from "../../domain/review/model/severity.js";
+import {canonicalizeOutputLanguage} from "../../application/configuration/output-language.js";
 
 /**
  * 配置文件经校验后转换出的扁平覆盖项。
@@ -27,6 +24,8 @@ export interface ConfigurationFileOverride {
     secretScanEnabled?: boolean;
     deepSeekEnabled?: boolean;
     reviewRunRecordPath?: string;
+    qualityStoreEnabled?: boolean;
+    qualityStoreEndpointUrl?: string;
     wecomEnabled?: boolean;
     wecomFailOnError?: boolean;
     githubCommentEnabled?: boolean;
@@ -94,6 +93,10 @@ const configurationFileSchema = z.object({
     }).strict().optional(),
     recording: z.object({
         local_path: z.string().trim().min(1).optional(),
+        quality_store: z.object({
+            enabled: z.boolean().optional(),
+            endpoint_url: z.string().url().optional(),
+        }).strict().optional(),
     }).strict().optional(),
 }).strict();
 
@@ -158,6 +161,12 @@ export const loadConfigurationFile = async (
         ...(configuration.recording?.local_path === undefined
             ? {}
             : { reviewRunRecordPath: configuration.recording.local_path }),
+        ...(configuration.recording?.quality_store?.enabled === undefined
+            ? {}
+            : {qualityStoreEnabled: configuration.recording.quality_store.enabled}),
+        ...(configuration.recording?.quality_store?.endpoint_url === undefined
+            ? {}
+            : {qualityStoreEndpointUrl: configuration.recording.quality_store.endpoint_url}),
         ...(configuration.notifiers?.wecom?.enabled === undefined
             ? {}
             : { wecomEnabled: configuration.notifiers.wecom.enabled }),
