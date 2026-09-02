@@ -3,6 +3,7 @@
 import { Command, CommanderError } from "commander";
 import packageMetadata from "../../../package.json" with { type: "json" };
 import { configureReviewCommand } from "./commands/review-command.js";
+import { configureFeedbackCommand } from "./commands/feedback-command.js";
 import { CLI_EXIT_CODES } from "./exit-code.js";
 
 const program = new Command();
@@ -13,6 +14,7 @@ program
     .version(packageMetadata.version);
 
 configureReviewCommand(program);
+configureFeedbackCommand(program);
 program.exitOverride();
 
 try {

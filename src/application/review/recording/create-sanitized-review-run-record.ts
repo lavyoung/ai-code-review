@@ -8,6 +8,7 @@ export const createSanitizedReviewRunRecord = (
     recordedAt: string = new Date().toISOString(),
 ): SanitizedReviewRunRecord => ({
     schemaVersion: "v1",
+    recordType: "review-run",
     runId,
     recordedAt,
     qualityGateFailed: result.policy.shouldFail,

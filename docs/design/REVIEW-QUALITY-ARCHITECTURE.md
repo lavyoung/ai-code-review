@@ -415,6 +415,7 @@ interface ReviewDecision {
 | `104` | 必需确定性分析器执行失败 |
 | `105` | 必需验证器执行失败 |
 | `106` | 结果聚合或内部契约错误 |
+| `107` | 显式请求的脱敏运行记录或人工反馈写入失败 |
 | `110`–`119` | AI 执行失败的既有细分语义 |
 | `120` | 必需评论投递失败 |
 | `121` | 必需通知投递失败 |
@@ -427,7 +428,7 @@ interface ReviewDecision {
 
 评论不是反馈的真相来源。跨仓库质量度量的生产实现是组织受控的 `ReviewQualityStore`：CLI/Action 通过签名 HTTPS 事件提交脱敏运行记录和反馈，再由组织受控存储保存。GitHub/CodeUp 评论、Reaction 或未来反馈入口只负责收集用户意图，必须转换为以 `findingFingerprint` 为键的反馈事件后才写入存储。
 
-未配置 `ReviewQualityStore` 时，反馈与跨仓库指标能力必须显式禁用；工具只能输出当前运行的本地脱敏摘要，不能声称具有长期误报率统计。反馈记录须定义保留期限、删除流程、访问权限和签名验证策略。
+本地 JSONL 可保存仅含指纹、固定状态、运行 ID 和时间的人工反馈事件，用于单仓库追溯；它不是跨仓库质量度量的真相来源。未配置 `ReviewQualityStore` 时，跨仓库指标能力必须显式禁用，工具不能声称具有长期误报率统计。反馈记录须定义保留期限、删除流程、访问权限和签名验证策略。
 
 最小指标维度：
 
@@ -513,7 +514,7 @@ analyzer_plans:
 
 迁移必须保持已有 CLI、GitHub Action、DeepSeek 配置和摘要评论协议可用。
 
-当前实现已经完成原始/安全输入分级、候选项的 diff 锚定与证据一致性校验、分析器注册与预算调度，以及来源受控的确定性验证接线。`DeepSeek` 仍只会产生 `grounded` 发现；已接入的本地 TypeScript 分析器和 SARIF 2.1.0 报告适配器只将本次新增 diff 行的确定性诊断升级为 `verified` 并参与质量门禁。输出发现已具有仅基于安全定位与规范化语义的稳定指纹；同次运行的等价发现会合并来源与验证方法。可选 JSONL 记录器只保存运行 ID、门禁状态、分析器摘要与发现指纹，为后续反馈存储提供安全输入。ESLint、CodeQL、Semgrep 与密钥扫描可沿用同一边界接入，不能通过伪造 AI 输出或配置开关绕过该边界。
+当前实现已经完成原始/安全输入分级、候选项的 diff 锚定与证据一致性校验、分析器注册与预算调度，以及来源受控的确定性验证接线。`DeepSeek` 仍只会产生 `grounded` 发现；已接入的本地 TypeScript 分析器和 SARIF 2.1.0 报告适配器只将本次新增 diff 行的确定性诊断升级为 `verified` 并参与质量门禁。输出发现已具有仅基于安全定位与规范化语义的稳定指纹；同次运行的等价发现会合并来源与验证方法。可选 JSONL 记录器保存带类型标识的运行摘要，并可追加只含固定状态、指纹、运行 ID 与时间的人工反馈事件；它不提供跨仓库指标。ESLint、CodeQL、Semgrep 与密钥扫描可沿用同一边界接入，不能通过伪造 AI 输出或配置开关绕过该边界。
 
 1. 引入 `RawCommittedInput`、`SanitizedModelInput`、`SanitizedOutput`、`ChangeSet` 与 `DiffChunk`，为现有 `CodeChange` 提供兼容映射。
 2. 引入 `ReviewCandidate`、`VerificationEvidence`、`ValidatedFinding` 与状态聚合器，为现有 `ReviewFinding` 提供兼容映射。

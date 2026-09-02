@@ -33,6 +33,7 @@ describe("createSanitizedReviewRunRecord", () => {
 
         expect(record).toEqual({
             schemaVersion: "v1",
+            recordType: "review-run",
             runId: "run-123",
             recordedAt: "2026-09-02T00:00:00.000Z",
             qualityGateFailed: true,

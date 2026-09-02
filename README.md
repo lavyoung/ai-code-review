@@ -173,7 +173,7 @@ analyzers:
 
 ## 脱敏运行记录
 
-可选记录器会把每次运行写入本地 JSONL 文件，内容仅包括 `runId`、质量门禁结果、严重级别、分析器运行摘要和发现指纹；不保存代码、文件路径、描述、证据或密钥。适合在 CI 中作为 artifact 上传，或作为后续组织级质量存储的输入：
+可选记录器会把每次运行写入本地 JSONL 文件，内容仅包括 `runId`、质量门禁结果、严重级别、分析器运行摘要和发现指纹；不保存代码、文件路径、描述、证据或密钥。每行都含有 `recordType`，用于区分 `review-run` 和 `finding-feedback` 事件。适合在 CI 中作为 artifact 上传，或作为后续组织级质量存储的输入：
 
 ```yaml
 recording:
@@ -181,6 +181,20 @@ recording:
 ```
 
 也可使用 `REVIEW_RUN_RECORD_PATH=.ai-code-review/runs.jsonl`，或 `--run-record-path .ai-code-review/runs.jsonl`。Composite Action 对应输入为 `run-record-path`。记录失败只会输出 `Review record: failed`，不会影响评审、通知或质量门禁。
+
+## 人工发现反馈
+
+使用评审输出中的 24 位发现指纹记录固定状态，不接收自由文本、路径、代码或密钥。反馈会追加到同一个 JSONL 记录文件；`--run-id` 可选，用于关联一次评审运行：
+
+```bash
+ai-code-review feedback \
+  --fingerprint 0123456789abcdef01234567 \
+  --status false-positive \
+  --run-id 5ff86dc0-213b-4dc0-9490-ad8a8d15e99a \
+  --run-record-path .ai-code-review/runs.jsonl
+```
+
+可选状态为 `accepted`、`false-positive`、`not-applicable` 和 `fixed`。未配置记录路径时命令以退出码 `102` 结束；写入失败时输出 `Finding feedback: failed` 并以退出码 `107` 结束。该本地记录只支持人工反馈追溯，不提供跨仓库指标或自动调整规则；这些能力需要组织受控的质量存储。
 
 ## 在其他 GitHub 仓库中使用
 
