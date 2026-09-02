@@ -20,6 +20,8 @@ export interface ConfigurationFileOverride {
     typeScriptEnabled?: boolean;
     typeScriptTimeoutMs?: number;
     typeScriptAstEnabled?: boolean;
+    sandboxTestEnabled?: boolean;
+    sandboxTestReportPath?: string;
     sarifEnabled?: boolean;
     sarifReportPath?: string;
     secretScanEnabled?: boolean;
@@ -70,6 +72,10 @@ const configurationFileSchema = z.object({
         }).strict().optional(),
         typescript_ast: z.object({
             enabled: z.boolean().optional(),
+        }).strict().optional(),
+        sandbox_tests: z.object({
+            enabled: z.boolean().optional(),
+            report_path: z.string().trim().min(1).optional(),
         }).strict().optional(),
         sarif: z.object({
             enabled: z.boolean().optional(),
@@ -156,6 +162,12 @@ export const loadConfigurationFile = async (
         ...(configuration.analyzers?.typescript_ast?.enabled === undefined
             ? {}
             : {typeScriptAstEnabled: configuration.analyzers.typescript_ast.enabled}),
+        ...(configuration.analyzers?.sandbox_tests?.enabled === undefined
+            ? {}
+            : {sandboxTestEnabled: configuration.analyzers.sandbox_tests.enabled}),
+        ...(configuration.analyzers?.sandbox_tests?.report_path === undefined
+            ? {}
+            : {sandboxTestReportPath: configuration.analyzers.sandbox_tests.report_path}),
         ...(configuration.analyzers?.sarif?.enabled === undefined
             ? {}
             : { sarifEnabled: configuration.analyzers.sarif.enabled }),

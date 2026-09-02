@@ -177,6 +177,48 @@ analyzers:
 `typescript-ast-enabled: "true"`。该分析器内部使用官方 TypeScript 6 兼容 API 与当前 TypeScript 7 构建并存，避免依赖 TS7
 尚未稳定的编译器 API。
 
+## 受控沙箱测试结果
+
+工具不会在宿主机直接执行仓库测试脚本。若 CI 已在网络、权限和资源都受控的独立沙箱中执行测试，可将其失败结果作为已签名 JSON
+文件传入；只有签名有效、`sourceRevision` 与当前 `HEAD` 一致、且失败位置属于本次新增行的事件才会产生 `verified` 发现。
+
+```yaml
+analyzers:
+  sandbox_tests:
+    enabled: true
+    report_path: artifacts/sandbox-test-result.json
+```
+
+```bash
+SANDBOX_TEST_ANALYZER_ENABLED=true \
+SANDBOX_TEST_REPORT_PATH=artifacts/sandbox-test-result.json \
+SANDBOX_TEST_SIGNING_SECRET=<ci-secret> \
+ai-code-review review --provider local --event manual --target main
+```
+
+签名密钥只能通过环境变量或 CI Secret 提供。报告必须是以下结构，`signature` 为 `v1=HMAC-SHA256(JSON.stringify(payload))`
+；失败码和报告路径不会进入评论、通知或日志：
+
+```json
+{
+  "payload": {
+    "schemaVersion": "v1",
+    "sourceRevision": "<40-character-lowercase-commit-sha>",
+    "failures": [
+      {
+        "file": "src/example.ts",
+        "line": 42,
+        "failureCode": "ASSERTION_FAILED"
+      }
+    ]
+  },
+  "signature": "v1=<64-character-hex-hmac>"
+}
+```
+
+GitHub Composite Action 对应输入为 `sandbox-test-enabled` 和 `sandbox-test-report`；将 `SANDBOX_TEST_SIGNING_SECRET` 作为
+job Secret 传入。签名无效、报告过大、版本不匹配或无法读取时，必需分析器以退出码 `104` 失败，而不会将其误报为“无测试失败”。
+
 ## 高置信度密钥扫描
 
 本地密钥扫描器只读取已提交 diff 的新增行，并只识别具有明确格式的凭据（例如服务 API key、GitHub token、AWS access key ID 或私钥头）。它默认关闭；启用后原始 diff 仅在本地扫描器中短暂使用，输出则只包含已脱敏锚点和通用修复建议。敏感文件会继续从扫描、日志、评论和模型输入中排除。

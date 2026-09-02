@@ -4,6 +4,10 @@ import {TypeScriptReviewAnalyzer} from "../infrastructure/analyzers/typescript/t
 import {
     TypeScriptAstReviewAnalyzer
 } from "../infrastructure/analyzers/typescript-ast/typescript-ast-review-analyzer.js";
+import {
+    createCommittedRevisionProvider,
+    SandboxedTestResultAnalyzer,
+} from "../infrastructure/analyzers/sandbox-test/sandbox-test-result-analyzer.js";
 import {SarifReviewAnalyzer} from "../infrastructure/analyzers/sarif/sarif-review-analyzer.js";
 import {SecretScanReviewAnalyzer} from "../infrastructure/analyzers/secret-scan/secret-scan-review-analyzer.js";
 import {StaticReviewAnalyzerRegistry} from "../application/review/orchestration/static-review-analyzer-registry.js";
@@ -49,16 +53,27 @@ export const createReviewDependencies = (
     const typeScriptAstAnalyzer = configuration.analyzers.typescriptAst.enabled
         ? new TypeScriptAstReviewAnalyzer()
         : undefined;
+    const sandboxTestAnalyzer = configuration.analyzers.sandboxTests.enabled
+    && configuration.analyzers.sandboxTests.reportPath !== undefined
+    && configuration.analyzers.sandboxTests.signingSecret !== undefined
+        ? new SandboxedTestResultAnalyzer({
+            reportPath: configuration.analyzers.sandboxTests.reportPath,
+            signingSecret: configuration.analyzers.sandboxTests.signingSecret,
+        }, createCommittedRevisionProvider(workingDirectory))
+        : undefined;
     const sarifAnalyzer = configuration.analyzers.sarif.enabled && configuration.analyzers.sarif.reportPath !== undefined
         ? new SarifReviewAnalyzer(workingDirectory, configuration.analyzers.sarif.reportPath)
         : undefined;
     if (configuration.analyzers.sarif.enabled && sarifAnalyzer === undefined) {
         throw new Error("SARIF report path must be configured when the SARIF analyzer is enabled.");
     }
+    if (configuration.analyzers.sandboxTests.enabled && sandboxTestAnalyzer === undefined) {
+        throw new Error("Sandbox test report and signing secret must be configured when sandbox test analysis is enabled.");
+    }
     const secretScanAnalyzer = configuration.analyzers.secretScan.enabled
         ? new SecretScanReviewAnalyzer()
         : undefined;
-    const analyzers = [...(deepSeekAnalyzer === undefined ? [] : [deepSeekAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(typeScriptAstAnalyzer === undefined ? [] : [typeScriptAstAnalyzer]), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer]), ...(secretScanAnalyzer === undefined ? [] : [secretScanAnalyzer])];
+    const analyzers = [...(deepSeekAnalyzer === undefined ? [] : [deepSeekAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(typeScriptAstAnalyzer === undefined ? [] : [typeScriptAstAnalyzer]), ...(sandboxTestAnalyzer === undefined ? [] : [sandboxTestAnalyzer]), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer]), ...(secretScanAnalyzer === undefined ? [] : [secretScanAnalyzer])];
     if (analyzers.length === 0) {
         throw new Error("At least one review analyzer must be enabled.");
     }
@@ -83,6 +98,15 @@ export const createReviewDependencies = (
     if (typeScriptAstAnalyzer !== undefined) {
         analyzerPlans.push({
             analyzerId: typeScriptAstAnalyzer.identity.id,
+            required: true,
+            timeoutMs: 10_000,
+            retryCount: 0,
+            failureMode: "fail",
+        });
+    }
+    if (sandboxTestAnalyzer !== undefined) {
+        analyzerPlans.push({
+            analyzerId: sandboxTestAnalyzer.identity.id,
             required: true,
             timeoutMs: 10_000,
             retryCount: 0,

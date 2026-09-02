@@ -36,6 +36,13 @@ export interface ReviewConfiguration {
         typescriptAst: {
             enabled: boolean;
         };
+        sandboxTests: {
+            enabled: boolean;
+            /** 受控沙箱产生的签名结果文件；禁止输出路径或原始内容。 */
+            reportPath?: string;
+            /** 仅由环境变量或 CI Secret 注入，禁止写入配置文件与日志。 */
+            signingSecret?: string;
+        };
         sarif: {
             enabled: boolean;
             reportPath?: string;

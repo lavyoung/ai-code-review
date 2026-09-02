@@ -30,6 +30,8 @@ const configurationOverrideSchema = z.object({
     typeScriptEnabled: z.boolean().optional(),
     typeScriptTimeoutMs: z.number().int().positive().optional(),
     typeScriptAstEnabled: z.boolean().optional(),
+    sandboxTestEnabled: z.boolean().optional(),
+    sandboxTestReportPath: z.string().trim().min(1).optional(),
     sarifEnabled: z.boolean().optional(),
     sarifReportPath: z.string().trim().min(1).optional(),
     secretScanEnabled: z.boolean().optional(),
@@ -106,6 +108,10 @@ export const resolveReviewConfiguration = (
         typeScriptAstEnabled: parseBooleanEnvironmentValue(
             sources.environment?.TYPESCRIPT_AST_ANALYZER_ENABLED,
         ),
+        sandboxTestEnabled: parseBooleanEnvironmentValue(
+            sources.environment?.SANDBOX_TEST_ANALYZER_ENABLED,
+        ),
+        sandboxTestReportPath: optionalEnvironmentSecret(sources.environment?.SANDBOX_TEST_REPORT_PATH),
         sarifEnabled: parseBooleanEnvironmentValue(sources.environment?.SARIF_ANALYZER_ENABLED),
         sarifReportPath: optionalEnvironmentSecret(sources.environment?.SARIF_REPORT_PATH),
         secretScanEnabled: parseBooleanEnvironmentValue(sources.environment?.SECRET_SCAN_ANALYZER_ENABLED),
@@ -146,6 +152,9 @@ export const resolveReviewConfiguration = (
     const qualityStoreSigningSecret = z.string().trim().min(1).optional().parse(
         optionalEnvironmentSecret(sources.environment?.QUALITY_STORE_SIGNING_SECRET),
     );
+    const sandboxTestSigningSecret = z.string().trim().min(1).optional().parse(
+        optionalEnvironmentSecret(sources.environment?.SANDBOX_TEST_SIGNING_SECRET),
+    );
     const wecomEnabled = cli.wecomEnabled
         ?? environment.wecomEnabled
         ?? file.wecomEnabled
@@ -179,12 +188,19 @@ export const resolveReviewConfiguration = (
         ?? environment.typeScriptAstEnabled
         ?? file.typeScriptAstEnabled
         ?? false;
+    const sandboxTestEnabled = cli.sandboxTestEnabled
+        ?? environment.sandboxTestEnabled
+        ?? file.sandboxTestEnabled
+        ?? false;
     const sarifEnabled = cli.sarifEnabled ?? environment.sarifEnabled ?? file.sarifEnabled ?? false;
     const secretScanEnabled = cli.secretScanEnabled
         ?? environment.secretScanEnabled
         ?? file.secretScanEnabled
         ?? false;
     const sarifReportPath = cli.sarifReportPath ?? environment.sarifReportPath ?? file.sarifReportPath;
+    const sandboxTestReportPath = cli.sandboxTestReportPath
+        ?? environment.sandboxTestReportPath
+        ?? file.sandboxTestReportPath;
     const reviewRunRecordPath = cli.reviewRunRecordPath
         ?? environment.reviewRunRecordPath
         ?? file.reviewRunRecordPath;
@@ -200,12 +216,17 @@ export const resolveReviewConfiguration = (
         throw new Error("WECOM_WEBHOOK_URL must be set when WeCom notifications are enabled.");
     }
 
-    if (!deepSeekEnabled && !typeScriptEnabled && !sarifEnabled && !secretScanEnabled) {
+    if (!deepSeekEnabled && !typeScriptEnabled && !typeScriptAstEnabled && !sandboxTestEnabled && !sarifEnabled && !secretScanEnabled) {
         throw new Error("At least one review analyzer must be enabled.");
     }
 
     if (sarifEnabled && sarifReportPath === undefined) {
         throw new Error("A SARIF report path must be configured when the SARIF analyzer is enabled.");
+    }
+
+    if (sandboxTestEnabled
+        && (sandboxTestReportPath === undefined || sandboxTestSigningSecret === undefined)) {
+        throw new Error("SANDBOX_TEST_REPORT_PATH and SANDBOX_TEST_SIGNING_SECRET must be set when sandbox test analysis is enabled.");
     }
 
     if (qualityStoreEnabled
@@ -265,6 +286,11 @@ export const resolveReviewConfiguration = (
             },
             typescriptAst: {
                 enabled: typeScriptAstEnabled,
+            },
+            sandboxTests: {
+                enabled: sandboxTestEnabled,
+                ...(sandboxTestReportPath === undefined ? {} : {reportPath: sandboxTestReportPath}),
+                ...(sandboxTestSigningSecret === undefined ? {} : {signingSecret: sandboxTestSigningSecret}),
             },
             sarif: {
                 enabled: sarifEnabled,

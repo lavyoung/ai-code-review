@@ -50,6 +50,8 @@ interface ReviewCommandOptions {
     maxModelInputChars?: number;
     typescriptEnabled?: boolean;
     typescriptAstEnabled?: boolean;
+    sandboxTestEnabled?: boolean;
+    sandboxTestReport?: string;
     sarifEnabled?: boolean;
     sarifReport?: string;
     secretScanEnabled?: boolean;
@@ -108,6 +110,9 @@ const reviewCommand = program
         parseBoolean(value, "--typescript-enabled"))
     .option("--typescript-ast-enabled <true|false>", "Enable the local TypeScript AST analyzer", (value) =>
         parseBoolean(value, "--typescript-ast-enabled"))
+    .option("--sandbox-test-enabled <true|false>", "Enable signed sandbox test result analysis", (value) =>
+        parseBoolean(value, "--sandbox-test-enabled"))
+    .option("--sandbox-test-report <path>", "Signed sandbox test result report path")
     .option("--sarif-enabled <true|false>", "Enable the local SARIF analyzer", (value) =>
         parseBoolean(value, "--sarif-enabled"))
     .option("--sarif-report <path>", "Path to a SARIF 2.1.0 report")
@@ -164,6 +169,12 @@ const reviewCommand = program
                     ...(options.typescriptAstEnabled === undefined
                         ? {}
                         : {typeScriptAstEnabled: options.typescriptAstEnabled}),
+                    ...(options.sandboxTestEnabled === undefined
+                        ? {}
+                        : {sandboxTestEnabled: options.sandboxTestEnabled}),
+                    ...(options.sandboxTestReport === undefined
+                        ? {}
+                        : {sandboxTestReportPath: options.sandboxTestReport}),
                     ...(options.sarifEnabled === undefined ? {} : { sarifEnabled: options.sarifEnabled }),
                     ...(options.sarifReport === undefined ? {} : { sarifReportPath: options.sarifReport }),
                     ...(options.secretScanEnabled === undefined

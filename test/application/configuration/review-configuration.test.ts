@@ -25,6 +25,7 @@ describe("resolveReviewConfiguration", () => {
             timeoutMs: 120_000,
         });
         expect(configuration.analyzers.typescriptAst).toEqual({enabled: false});
+        expect(configuration.analyzers.sandboxTests).toEqual({enabled: false});
         expect(configuration.analyzers.deepseek).toEqual({ enabled: true });
         expect(configuration.analyzers.secretScan).toEqual({ enabled: false });
         expect(configuration.notifications.wecom).toEqual({
@@ -212,6 +213,21 @@ describe("resolveReviewConfiguration", () => {
             environment: {TYPESCRIPT_AST_ANALYZER_ENABLED: "true"},
             cli: {typeScriptAstEnabled: false},
         }).analyzers.typescriptAst).toEqual({enabled: false});
+    });
+
+    it("requires a signed sandbox report when sandbox test analysis is enabled", () => {
+        expect(() => resolveReviewConfiguration({
+            environment: {SANDBOX_TEST_ANALYZER_ENABLED: "true"},
+        })).toThrow("SANDBOX_TEST_REPORT_PATH");
+
+        expect(resolveReviewConfiguration({
+            file: {sandboxTestEnabled: true, sandboxTestReportPath: "sandbox-result.json"},
+            environment: {SANDBOX_TEST_SIGNING_SECRET: "sandbox-test-secret"},
+        }).analyzers.sandboxTests).toEqual({
+            enabled: true,
+            reportPath: "sandbox-result.json",
+            signingSecret: "sandbox-test-secret",
+        });
     });
 
     it("requires at least one analyzer and a report path for enabled SARIF", () => {

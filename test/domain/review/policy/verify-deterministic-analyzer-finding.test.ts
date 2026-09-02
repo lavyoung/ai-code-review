@@ -43,4 +43,14 @@ describe("verifyDeterministicAnalyzerFinding", () => {
             verificationMethods: ["diff-anchor", "evidence-match", "ast", "deterministic-analyzer"],
         });
     });
+
+    it("records test execution evidence for a trusted test analyzer", () => {
+        expect(verifyDeterministicAnalyzerFinding({
+            ...groundedFinding,
+            analyzer: {kind: "test", id: "sandbox-test"},
+        })).toMatchObject({
+            verificationStatus: "verified",
+            verificationMethods: ["diff-anchor", "evidence-match", "test-execution", "deterministic-analyzer"],
+        });
+    });
 });

@@ -33,6 +33,7 @@ export type FindingVerificationMethod =
     | "source-range"
     | "evidence-match"
     | "ast"
+    | "test-execution"
     | "deterministic-analyzer";
 
 /** 因安全或证据不足而不对外输出的候选项原因。 */

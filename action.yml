@@ -18,6 +18,14 @@ inputs:
     description: Whether to run the local TypeScript AST analyzer.
     required: false
     default: "false"
+  sandbox-test-enabled:
+    description: Whether to import a signed result from a controlled test sandbox.
+    required: false
+    default: "false"
+  sandbox-test-report:
+    description: Path to the signed test result report from a prior sandbox step.
+    required: false
+    default: ""
   deepseek-enabled:
     description: Whether to run the DeepSeek semantic analyzer.
     required: false
@@ -76,6 +84,9 @@ runs:
         REVIEW_OUTPUT_LANGUAGE: ${{ inputs.output-language }}
         TYPESCRIPT_ANALYZER_ENABLED: ${{ inputs.typescript-enabled }}
         TYPESCRIPT_AST_ANALYZER_ENABLED: ${{ inputs.typescript-ast-enabled }}
+        SANDBOX_TEST_ANALYZER_ENABLED: ${{ inputs.sandbox-test-enabled }}
+        SANDBOX_TEST_REPORT_PATH: ${{ inputs.sandbox-test-report }}
+        SANDBOX_TEST_SIGNING_SECRET: ${{ env.SANDBOX_TEST_SIGNING_SECRET }}
         DEEPSEEK_ANALYZER_ENABLED: ${{ inputs.deepseek-enabled }}
         SARIF_ANALYZER_ENABLED: ${{ inputs.sarif-enabled }}
         SARIF_REPORT_PATH: ${{ inputs.sarif-report }}

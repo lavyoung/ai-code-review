@@ -28,6 +28,7 @@ export const verifyDeterministicAnalyzerFinding = (
         verificationMethods: [
             ...finding.verificationMethods,
             ...(finding.analyzer.kind === "ast" ? ["ast" as const] : []),
+            ...(finding.analyzer.kind === "test" ? ["test-execution" as const] : []),
             "deterministic-analyzer",
         ],
     };
