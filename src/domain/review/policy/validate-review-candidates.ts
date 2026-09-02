@@ -76,7 +76,11 @@ export const validateReviewCandidates = (
             chunkId: candidate.chunkId,
             evidence: candidate.evidence,
             verificationStatus: "grounded",
-            verificationMethods: ["diff-anchor", "evidence-match"],
+            verificationMethods: [
+                "diff-anchor",
+                ...(candidate.line === undefined ? [] : ["source-range" as const]),
+                "evidence-match",
+            ],
             ...(candidate.analyzer === undefined ? {} : { analyzer: candidate.analyzer }),
             analyzers: candidate.analyzer === undefined ? [] : [candidate.analyzer],
             ...(candidate.file === undefined ? {} : { file: candidate.file }),

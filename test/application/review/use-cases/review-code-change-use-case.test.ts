@@ -64,7 +64,7 @@ describe("reviewCodeChangeUseCase", () => {
         expect(result.findings).toEqual([expect.objectContaining({
             verificationStatus: "verified",
             analyzer: { kind: "typecheck", id: "typescript" },
-            verificationMethods: ["diff-anchor", "evidence-match", "deterministic-analyzer"],
+            verificationMethods: ["diff-anchor", "source-range", "evidence-match", "deterministic-analyzer"],
         })]);
         expect(result.policy).toEqual({ highestSeverity: "critical", shouldFail: true });
     });

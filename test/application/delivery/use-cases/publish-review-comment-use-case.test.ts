@@ -12,14 +12,34 @@ describe("publishReviewCommentUseCase", () => {
         const upsertSummary = vi.fn().mockResolvedValue(undefined);
 
         await expect(publishReviewCommentUseCase(comment, { upsertSummary }))
-            .resolves.toEqual({ status: "delivered" });
+            .resolves.toEqual({ status: "delivered", attempts: 1 });
         expect(upsertSummary).toHaveBeenCalledWith(comment);
     });
 
-    it("returns a safe failure status without exposing adapter details", async () => {
+    it("retries transient publication failures before succeeding", async () => {
+        const upsertSummary = vi.fn()
+            .mockRejectedValueOnce(new Error("token=secret"))
+            .mockRejectedValueOnce(new Error("token=secret"))
+            .mockResolvedValue(undefined);
+
+        await expect(publishReviewCommentUseCase(comment, { upsertSummary }))
+            .resolves.toEqual({ status: "delivered", attempts: 3 });
+        expect(upsertSummary).toHaveBeenCalledTimes(3);
+    });
+
+    it("returns a safe final failure status after all retries", async () => {
         const upsertSummary = vi.fn().mockRejectedValue(new Error("token=secret"));
 
         await expect(publishReviewCommentUseCase(comment, { upsertSummary }))
-            .resolves.toEqual({ status: "failed" });
+            .resolves.toEqual({ status: "failed", attempts: 3 });
+        expect(upsertSummary).toHaveBeenCalledTimes(3);
+    });
+
+    it("does not retry when the platform deliberately skips publication", async () => {
+        const upsertSummary = vi.fn().mockResolvedValue("skipped");
+
+        await expect(publishReviewCommentUseCase(comment, { upsertSummary }))
+            .resolves.toEqual({ status: "skipped", attempts: 1 });
+        expect(upsertSummary).toHaveBeenCalledTimes(1);
     });
 });

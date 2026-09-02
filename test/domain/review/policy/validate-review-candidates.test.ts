@@ -38,7 +38,7 @@ describe("validateReviewCandidates", () => {
             chunkId: "chunk-1",
             evidence: "+run(enabled);",
             verificationStatus: "grounded",
-            verificationMethods: ["diff-anchor", "evidence-match"],
+            verificationMethods: ["diff-anchor", "source-range", "evidence-match"],
         })]);
         expect(result.suppressedCounts).toEqual({ "location-mismatch": 1 });
     });
@@ -61,5 +61,19 @@ describe("validateReviewCandidates", () => {
             "missing-chunk-reference": 1,
             "evidence-mismatch": 1,
         });
+    });
+
+    it("does not claim source-range verification for a finding without a line", () => {
+        const result = validateReviewCandidates([{
+            severity: "low",
+            title: "General observation",
+            description: "The hunk needs a follow-up review.",
+            chunkId: "chunk-1",
+            evidence: "+const enabled = true;",
+        }], codeChange);
+
+        expect(result.findings).toEqual([expect.objectContaining({
+            verificationMethods: ["diff-anchor", "evidence-match"],
+        })]);
     });
 });

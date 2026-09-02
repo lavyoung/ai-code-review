@@ -28,7 +28,11 @@ export interface ValidatedFinding extends ReviewFinding {
 }
 
 /** 最终发现项获得验证状态的可审计方法。 */
-export type FindingVerificationMethod = "diff-anchor" | "evidence-match" | "deterministic-analyzer";
+export type FindingVerificationMethod =
+    | "diff-anchor"
+    | "source-range"
+    | "evidence-match"
+    | "deterministic-analyzer";
 
 /** 因安全或证据不足而不对外输出的候选项原因。 */
 export type CandidateSuppressionReason =

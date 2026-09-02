@@ -39,13 +39,17 @@ const formatGitHubCommentDelivery = (
     delivery: ManualReviewReportInput["githubCommentDelivery"],
 ): string | undefined => delivery === undefined
     ? undefined
-    : `- GitHub PR comment: ${delivery.status}`;
+    : delivery.status === "disabled"
+        ? "- GitHub PR comment: disabled"
+        : `- GitHub PR comment: ${delivery.status} (attempts: ${delivery.attempts})`;
 
 const formatCodeUpCommentDelivery = (
     delivery: ManualReviewReportInput["codeupCommentDelivery"],
 ): string | undefined => delivery === undefined
     ? undefined
-    : `- CodeUp MR comment: ${delivery.status}`;
+    : delivery.status === "disabled"
+        ? "- CodeUp MR comment: disabled"
+        : `- CodeUp MR comment: ${delivery.status} (attempts: ${delivery.attempts})`;
 
 /** 渲染不会重复包含评审发现项的最终投递状态。 */
 export const renderReviewDeliveryStatus = (

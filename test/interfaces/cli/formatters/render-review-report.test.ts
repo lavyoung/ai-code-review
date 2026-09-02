@@ -8,13 +8,13 @@ describe("renderReviewReport", () => {
     it("renders final delivery status without repeating review findings", () => {
         expect(renderReviewDeliveryStatus({
             wecomDelivery: { status: "failed", attempts: 3 },
-            githubCommentDelivery: { status: "delivered" },
+            githubCommentDelivery: { status: "delivered", attempts: 1 },
         })).toBe([
             "## AI Code Review Delivery",
             "",
             "- CI Log: delivered",
             "- WeCom: failed (attempts: 3)",
-            "- GitHub PR comment: delivered",
+            "- GitHub PR comment: delivered (attempts: 1)",
         ].join("\n"));
     });
 
@@ -186,10 +186,10 @@ describe("renderReviewReport", () => {
                 suppressedCandidateCounts: {},
                 policy: { highestSeverity: null, shouldFail: false },
             },
-            githubCommentDelivery: { status: "failed" },
+            githubCommentDelivery: { status: "failed", attempts: 3 },
         });
 
-        expect(report).toContain("GitHub PR comment: failed");
+        expect(report).toContain("GitHub PR comment: failed (attempts: 3)");
     });
 
     it("renders the CodeUp MR comment publication state only when provided", () => {
@@ -202,9 +202,9 @@ describe("renderReviewReport", () => {
                 suppressedCandidateCounts: {},
                 policy: { highestSeverity: null, shouldFail: false },
             },
-            codeupCommentDelivery: { status: "delivered" },
+            codeupCommentDelivery: { status: "delivered", attempts: 1 },
         });
 
-        expect(report).toContain("CodeUp MR comment: delivered");
+        expect(report).toContain("CodeUp MR comment: delivered (attempts: 1)");
     });
 });
