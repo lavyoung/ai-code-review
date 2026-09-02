@@ -195,6 +195,14 @@ describe("resolveReviewConfiguration", () => {
         })).toThrow("SARIF report path");
     });
 
+    it("uses the configured local run record path with normal source precedence", () => {
+        expect(resolveReviewConfiguration({
+            file: { reviewRunRecordPath: "file.jsonl" },
+            environment: { REVIEW_RUN_RECORD_PATH: "environment.jsonl" },
+            cli: { reviewRunRecordPath: "cli.jsonl" },
+        }).recording).toEqual({ localPath: "cli.jsonl" });
+    });
+
     it("accepts the API key only from the environment", () => {
         expect(() =>
             resolveReviewConfiguration({

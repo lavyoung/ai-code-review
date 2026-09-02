@@ -32,6 +32,7 @@ const configurationOverrideSchema = z.object({
     sarifEnabled: z.boolean().optional(),
     sarifReportPath: z.string().trim().min(1).optional(),
     deepSeekEnabled: z.boolean().optional(),
+    reviewRunRecordPath: z.string().trim().min(1).optional(),
     wecomEnabled: z.boolean().optional(),
     wecomFailOnError: z.boolean().optional(),
     githubCommentEnabled: z.boolean().optional(),
@@ -98,6 +99,7 @@ export const resolveReviewConfiguration = (
         sarifEnabled: parseBooleanEnvironmentValue(sources.environment?.SARIF_ANALYZER_ENABLED),
         sarifReportPath: optionalEnvironmentSecret(sources.environment?.SARIF_REPORT_PATH),
         deepSeekEnabled: parseBooleanEnvironmentValue(sources.environment?.DEEPSEEK_ANALYZER_ENABLED),
+        reviewRunRecordPath: optionalEnvironmentSecret(sources.environment?.REVIEW_RUN_RECORD_PATH),
         wecomEnabled: parseBooleanEnvironmentValue(sources.environment?.WECOM_ENABLED),
         wecomFailOnError: parseBooleanEnvironmentValue(
             sources.environment?.WECOM_FAIL_ON_ERROR,
@@ -159,6 +161,9 @@ export const resolveReviewConfiguration = (
         ?? false;
     const sarifEnabled = cli.sarifEnabled ?? environment.sarifEnabled ?? file.sarifEnabled ?? false;
     const sarifReportPath = cli.sarifReportPath ?? environment.sarifReportPath ?? file.sarifReportPath;
+    const reviewRunRecordPath = cli.reviewRunRecordPath
+        ?? environment.reviewRunRecordPath
+        ?? file.reviewRunRecordPath;
 
     if (wecomEnabled && webhookUrl === undefined) {
         throw new Error("WECOM_WEBHOOK_URL must be set when WeCom notifications are enabled.");
@@ -224,6 +229,11 @@ export const resolveReviewConfiguration = (
                     ? {}
                     : { reportPath: sarifReportPath }),
             },
+        },
+        recording: {
+            ...(reviewRunRecordPath === undefined
+                ? {}
+                : { localPath: reviewRunRecordPath }),
         },
         notifications: {
             wecom: {

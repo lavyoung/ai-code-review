@@ -32,6 +32,9 @@ import {
     ReviewAnalyzerExecutionError,
 } from "../../../application/review/errors/review-execution-error.js";
 import { publishNotificationUseCase } from "../../../application/delivery/use-cases/publish-notification-use-case.js";
+import { createSanitizedReviewRunRecord } from "../../../application/review/recording/create-sanitized-review-run-record.js";
+import { recordReviewRunUseCase } from "../../../application/review/recording/record-review-run-use-case.js";
+import { LocalJsonlReviewRunRecorder } from "../../../infrastructure/recording/local-jsonl-review-run-recorder.js";
 import {
     CLI_EXIT_CODES,
     getAiReviewFailureExitCode,
@@ -50,6 +53,7 @@ interface ReviewCommandOptions {
     sarifEnabled?: boolean;
     sarifReport?: string;
     deepseekEnabled?: boolean;
+    runRecordPath?: string;
 }
 
 const parseReviewEventType = (value: string): ReviewEventType => {
@@ -102,6 +106,7 @@ const reviewCommand = program
     .option("--sarif-report <path>", "Path to a SARIF 2.1.0 report")
     .option("--deepseek-enabled <true|false>", "Enable the DeepSeek semantic analyzer", (value) =>
         parseBoolean(value, "--deepseek-enabled"))
+    .option("--run-record-path <path>", "Append a sanitized review record as JSONL")
     .action(async (options: ReviewCommandOptions) => {
         const isManualReview = options.event === "manual"
             && options.provider === "local"
@@ -146,6 +151,9 @@ const reviewCommand = program
                     ...(options.deepseekEnabled === undefined
                         ? {}
                         : { deepSeekEnabled: options.deepseekEnabled }),
+                    ...(options.runRecordPath === undefined
+                        ? {}
+                        : { reviewRunRecordPath: options.runRecordPath }),
                 },
             });
         } catch {
@@ -227,6 +235,17 @@ const reviewCommand = program
                 result,
                 includeDeliveryStatus: false,
             }));
+
+            const recordPath = configuration.recording.localPath;
+            const recordingStatus = recordPath === undefined
+                ? undefined
+                : await recordReviewRunUseCase(
+                    createSanitizedReviewRunRecord(runId, result),
+                    new LocalJsonlReviewRunRecorder(recordPath),
+                );
+            if (recordingStatus !== undefined) {
+                console.log(`Review record: ${recordingStatus}`);
+            }
 
             const webhookUrl = configuration.notifications.wecom.webhookUrl;
             const wecomDelivery = configuration.notifications.wecom.enabled && webhookUrl !== undefined

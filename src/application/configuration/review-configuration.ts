@@ -36,6 +36,10 @@ export interface ReviewConfiguration {
             reportPath?: string;
         };
     };
+    recording: {
+        /** 可选的本地 JSONL 运行记录路径；禁止在日志中输出此路径。 */
+        localPath?: string;
+    };
     notifications: {
         wecom: {
             enabled: boolean;

@@ -24,6 +24,7 @@ export interface ConfigurationFileOverride {
     sarifEnabled?: boolean;
     sarifReportPath?: string;
     deepSeekEnabled?: boolean;
+    reviewRunRecordPath?: string;
     wecomEnabled?: boolean;
     wecomFailOnError?: boolean;
     githubCommentEnabled?: boolean;
@@ -85,6 +86,9 @@ const configurationFileSchema = z.object({
             fail_on_error: z.boolean().optional(),
         }).strict().optional(),
     }).strict().optional(),
+    recording: z.object({
+        local_path: z.string().trim().min(1).optional(),
+    }).strict().optional(),
 }).strict();
 
 /**
@@ -139,6 +143,9 @@ export const loadConfigurationFile = async (
         ...(configuration.analyzers?.sarif?.report_path === undefined
             ? {}
             : { sarifReportPath: configuration.analyzers.sarif.report_path }),
+        ...(configuration.recording?.local_path === undefined
+            ? {}
+            : { reviewRunRecordPath: configuration.recording.local_path }),
         ...(configuration.notifiers?.wecom?.enabled === undefined
             ? {}
             : { wecomEnabled: configuration.notifiers.wecom.enabled }),

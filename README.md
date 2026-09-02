@@ -171,6 +171,17 @@ analyzers:
 
 每条可输出发现都有稳定的 24 位十六进制指纹。它由安全 diff 分块、行号、类别和规范化标题生成，不包含完整 diff、密钥、敏感路径、证据正文或模型描述。相同运行中来自多个分析器的等价发现会合并为一条，并保留全部受控来源与最高验证状态。该指纹可作为后续人工反馈、误报率统计和跨运行关联的安全键。
 
+## 脱敏运行记录
+
+可选记录器会把每次运行写入本地 JSONL 文件，内容仅包括 `runId`、质量门禁结果、严重级别、分析器运行摘要和发现指纹；不保存代码、文件路径、描述、证据或密钥。适合在 CI 中作为 artifact 上传，或作为后续组织级质量存储的输入：
+
+```yaml
+recording:
+  local_path: .ai-code-review/runs.jsonl
+```
+
+也可使用 `REVIEW_RUN_RECORD_PATH=.ai-code-review/runs.jsonl`，或 `--run-record-path .ai-code-review/runs.jsonl`。Composite Action 对应输入为 `run-record-path`。记录失败只会输出 `Review record: failed`，不会影响评审、通知或质量门禁。
+
 ## 在其他 GitHub 仓库中使用
 
 本项目提供 GitHub Composite Action。调用方必须先 checkout PR 的完整 Git 历史，并为工作流授予最小必要权限：
