@@ -196,6 +196,16 @@ ai-code-review feedback \
 
 可选状态为 `accepted`、`false-positive`、`not-applicable` 和 `fixed`。未配置记录路径时命令以退出码 `102` 结束；写入失败时输出 `Finding feedback: failed` 并以退出码 `107` 结束。该本地记录只支持人工反馈追溯，不提供跨仓库指标或自动调整规则；这些能力需要组织受控的质量存储。
 
+## 本地质量指标
+
+`metrics` 只读取上述脱敏 JSONL 并输出 JSON 聚合值：运行数、质量门禁次数、发现数、分析器状态与耗时、反馈覆盖率、误报率和可关联反馈的平均处理耗时。
+
+```bash
+ai-code-review metrics --run-record-path .ai-code-review/runs.jsonl
+```
+
+同一指纹有多次反馈时，指标以最新状态为准；只有能匹配本记录中发现指纹的反馈才参与覆盖率和误报率，无法关联的事件单独计数。平均处理耗时只统计同时提供 `runId` 且该运行确实包含该指纹的反馈。命令不输出原始记录、路径、代码、描述、证据或密钥。未配置路径时退出码为 `102`；文件不可读、包含非安全 JSON 或不符合事件协议时退出码为 `107`。
+
 ## 在其他 GitHub 仓库中使用
 
 本项目提供 GitHub Composite Action。调用方必须先 checkout PR 的完整 Git 历史，并为工作流授予最小必要权限：

@@ -41,6 +41,9 @@ export interface SanitizedFindingFeedback {
     runId?: string;
 }
 
+/** 可被安全质量度量读取的本地或远程事件联合类型。 */
+export type SanitizedQualityRecord = SanitizedReviewRunRecord | SanitizedFindingFeedback;
+
 /** 运行记录持久化端口；实现不得保存原始 diff 或敏感内容。 */
 export interface ReviewRunRecordPort {
     append(record: SanitizedReviewRunRecord): Promise<void>;
