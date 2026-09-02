@@ -82,7 +82,7 @@ const formatFinding = (finding: ValidatedFinding, index: number): string => {
         ? ""
         : `\n  Suggestion: ${redactText(finding.suggestion)}`;
 
-    return `${index + 1}. [${finding.verificationStatus}] [${finding.severity}] ${redactText(finding.title)}${formatLocation(finding)}\n   ${redactText(finding.description)}${suggestion}`;
+    return `${index + 1}. [${finding.verificationStatus}] [${finding.severity}] ${redactText(finding.title)}${formatLocation(finding)}\n   ${redactText(finding.description)}${suggestion}\n   Fingerprint: \`${finding.fingerprint}\``;
 };
 
 const countFindingsByVerificationStatus = (

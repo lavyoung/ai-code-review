@@ -16,11 +16,15 @@ export interface ReviewCandidate extends ReviewFinding {
 
 /** 完成变更锚定与证据一致性校验后可对外输出的发现项。 */
 export interface ValidatedFinding extends ReviewFinding {
+    /** 仅由已脱敏定位和规范化语义生成的稳定发现标识。 */
+    fingerprint: string;
     chunkId: string;
     evidence: string;
     verificationStatus: FindingVerificationStatus;
     verificationMethods: FindingVerificationMethod[];
     analyzer?: AnalyzerIdentity;
+    /** 产生或确认同一发现的受控分析器来源。 */
+    analyzers: AnalyzerIdentity[];
 }
 
 /** 最终发现项获得验证状态的可审计方法。 */

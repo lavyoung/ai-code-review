@@ -5,6 +5,7 @@ import type {
     ReviewCandidate,
     ValidatedFinding,
 } from "../model/review-candidate.js";
+import { createFindingFingerprint } from "./create-finding-fingerprint.js";
 
 const suppress = (
     suppressedCounts: CandidateValidationResult["suppressedCounts"],
@@ -68,7 +69,7 @@ export const validateReviewCandidates = (
             continue;
         }
 
-        findings.push({
+        const finding = {
             severity: candidate.severity,
             title: candidate.title,
             description: candidate.description,
@@ -77,11 +78,17 @@ export const validateReviewCandidates = (
             verificationStatus: "grounded",
             verificationMethods: ["diff-anchor", "evidence-match"],
             ...(candidate.analyzer === undefined ? {} : { analyzer: candidate.analyzer }),
+            analyzers: candidate.analyzer === undefined ? [] : [candidate.analyzer],
             ...(candidate.file === undefined ? {} : { file: candidate.file }),
             ...(candidate.line === undefined ? {} : { line: candidate.line }),
             ...(candidate.category === undefined ? {} : { category: candidate.category }),
             ...(candidate.suggestion === undefined ? {} : { suggestion: candidate.suggestion }),
             ...(candidate.confidence === undefined ? {} : { confidence: candidate.confidence }),
+        } satisfies Omit<ValidatedFinding, "fingerprint">;
+
+        findings.push({
+            ...finding,
+            fingerprint: createFindingFingerprint(finding),
         });
     }
 

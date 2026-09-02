@@ -19,6 +19,7 @@ import type {
 import { executeReviewAnalyzers } from "../orchestration/execute-review-analyzers.js";
 import { verifyReviewFindings } from "../orchestration/verify-review-findings.js";
 import type { FindingVerifier } from "../ports/finding-verifier-port.js";
+import { deduplicateReviewFindings } from "../orchestration/deduplicate-review-findings.js";
 
 /** 对已获取代码变更执行统一分析器集合所需的外部能力。 */
 export interface ReviewCodeChangeDependencies {
@@ -63,11 +64,12 @@ export const reviewCodeChangeUseCase = async (
     const analysis: ReviewAnalysis = execution.analysis;
 
     const validation = validateReviewCandidates(analysis.findings, command.codeChange);
-    const findings = verifyReviewFindings(
+    const verifiedFindings = verifyReviewFindings(
         validation.findings,
         command.codeChange,
         dependencies.findingVerifiers,
     );
+    const findings = deduplicateReviewFindings(verifiedFindings);
 
     return {
         codeChange: command.codeChange,

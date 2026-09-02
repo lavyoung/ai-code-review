@@ -106,7 +106,10 @@ describe("renderReviewReport", () => {
                     suggestion: "Move token: exposed-value to a secret store.",
                     chunkId: "chunk-1",
                     evidence: "+token: [REDACTED]",
+                    fingerprint: "0123456789abcdef01234567",
                     verificationStatus: "verified",
+                    verificationMethods: ["diff-anchor", "evidence-match"],
+                    analyzers: [],
                 }],
                 suppressedCandidateCounts: {},
                 policy: {
@@ -121,6 +124,7 @@ describe("renderReviewReport", () => {
         expect(report).toContain("[verified] [high] Authorization: Bearer [REDACTED]");
         expect(report).toContain("Verified findings: 1");
         expect(report).toContain("Grounded findings: 0");
+        expect(report).toContain("Fingerprint: `0123456789abcdef01234567`");
         expect(report).toContain("Suggestion: Move token: [REDACTED] to a secret store.");
         expect(report).not.toContain("exposed-value");
         expect(report).not.toContain(".env.production");

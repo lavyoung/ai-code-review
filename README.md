@@ -167,6 +167,10 @@ analyzers:
 
 也可使用 `SARIF_ANALYZER_ENABLED=true`、`SARIF_REPORT_PATH=reports/review.sarif`，或 `--sarif-enabled true --sarif-report reports/review.sarif`。启用时报告必须在评审命令之前生成；缺失或不符合 SARIF 2.1.0 的报告会使必需分析器以退出码 `104` 失败。
 
+## 发现指纹与去重
+
+每条可输出发现都有稳定的 24 位十六进制指纹。它由安全 diff 分块、行号、类别和规范化标题生成，不包含完整 diff、密钥、敏感路径、证据正文或模型描述。相同运行中来自多个分析器的等价发现会合并为一条，并保留全部受控来源与最高验证状态。该指纹可作为后续人工反馈、误报率统计和跨运行关联的安全键。
+
 ## 在其他 GitHub 仓库中使用
 
 本项目提供 GitHub Composite Action。调用方必须先 checkout PR 的完整 Git 历史，并为工作流授予最小必要权限：
