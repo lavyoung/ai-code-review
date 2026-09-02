@@ -52,7 +52,12 @@ describe("reviewCodeChangeUseCase", () => {
                 timeoutMs: 1_000,
                 failureMode: "fail",
             }],
-            analyzerBudget: { totalTimeoutMs: 1_000, maxConcurrency: 1, maxAiRequestCount: 0 },
+            analyzerBudget: {
+                totalTimeoutMs: 1_000,
+                maxConcurrency: 1,
+                maxAiRequestCount: 0,
+                maxModelInputChars: 10_000,
+            },
             findingVerifiers: [deterministicAnalyzerFindingVerifier],
         });
 

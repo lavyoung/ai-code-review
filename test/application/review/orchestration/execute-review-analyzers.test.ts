@@ -7,7 +7,12 @@ import {
 import { executeReviewAnalyzers } from "../../../../src/application/review/orchestration/execute-review-analyzers.js";
 import { StaticReviewAnalyzerRegistry } from "../../../../src/application/review/orchestration/static-review-analyzer-registry.js";
 
-const budget = { totalTimeoutMs: 1_000, maxConcurrency: 2, maxAiRequestCount: 2 };
+const budget = {
+    totalTimeoutMs: 1_000,
+    maxConcurrency: 2,
+    maxAiRequestCount: 2,
+    maxModelInputChars: 10_000,
+};
 
 const codeChange = {
     diff: "",
@@ -197,5 +202,51 @@ describe("executeReviewAnalyzers", () => {
             timeoutMs: 1_000,
             failureMode: "fail",
         }], registry, budget)).rejects.toBeInstanceOf(ReviewAnalyzerExecutionError);
+    });
+
+    it("applies the model input budget only to sanitized AI requests", async () => {
+        const aiAnalyze = vi.fn().mockResolvedValue({ summary: "AI.", findings: [] });
+        const localAnalyze = vi.fn().mockResolvedValue({ summary: "Local.", findings: [] });
+        const registry = new StaticReviewAnalyzerRegistry([
+            createAnalyzer(aiAnalyze),
+            {
+                identity: { kind: "secret-scan" as const, id: "secret-scan" },
+                capabilities: {
+                    inputAccess: "trusted-raw-local" as const,
+                    supportsChangedOnly: true,
+                    supportsRepositoryScan: false,
+                },
+                analyze: localAnalyze,
+            },
+        ]);
+        const largeInput = {
+            rawCodeChange: { fileChanges: [] },
+            codeChange: {
+                ...codeChange,
+                files: [
+                    { path: "src/first.ts", status: "modified" as const },
+                    { path: "src/second.ts", status: "modified" as const },
+                ],
+                chunks: [
+                    { id: "first", path: "src/first.ts", content: "a".repeat(80) },
+                    { id: "second", path: "src/second.ts", content: "b".repeat(80) },
+                ],
+            },
+        };
+
+        await executeReviewAnalyzers(largeInput, [{
+            analyzerId: "deepseek",
+            required: true,
+            timeoutMs: 1_000,
+            failureMode: "fail",
+        }, {
+            analyzerId: "secret-scan",
+            required: true,
+            timeoutMs: 1_000,
+            failureMode: "fail",
+        }], registry, { ...budget, maxModelInputChars: 140 });
+
+        expect(aiAnalyze.mock.calls[0]?.[0].codeChange.chunks).toHaveLength(1);
+        expect(localAnalyze.mock.calls[0]?.[0].codeChange.chunks).toHaveLength(2);
     });
 });

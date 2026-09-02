@@ -108,9 +108,10 @@ execution:
   total_timeout_ms: 300000
   max_analyzer_concurrency: 3
   max_ai_request_count: 8
+  max_model_input_chars: 60000
 ```
 
-对应环境变量为 `REVIEW_TOTAL_ANALYZER_TIMEOUT_MS`、`REVIEW_MAX_ANALYZER_CONCURRENCY` 和 `REVIEW_MAX_AI_REQUEST_COUNT`。超出 AI 请求预算或必需分析器不可用时，流水线会以非零退出码结束；建议性分析器失败只会进入脱敏运行摘要。
+对应环境变量为 `REVIEW_TOTAL_ANALYZER_TIMEOUT_MS`、`REVIEW_MAX_ANALYZER_CONCURRENCY`、`REVIEW_MAX_AI_REQUEST_COUNT` 和 `REVIEW_MAX_MODEL_INPUT_CHARS`。其中 `max_model_input_chars` 是每个远程 AI 分析器可见的安全 JSON diff 字符上限，默认 `60000`；超出时只保留按 diff 顺序排列的前缀分块。本地 TypeScript、SARIF 和密钥扫描器不受该上限影响。超出 AI 请求预算或必需分析器不可用时，流水线会以非零退出码结束；建议性分析器失败只会进入脱敏运行摘要。
 
 临时覆盖时可使用：
 
@@ -118,7 +119,8 @@ execution:
 ai-code-review review --provider local --event manual --target main \
   --total-analyzer-timeout-ms 300000 \
   --max-analyzer-concurrency 3 \
-  --max-ai-request-count 8
+  --max-ai-request-count 8 \
+  --max-model-input-chars 60000
 ```
 
 ## TypeScript 确定性检查

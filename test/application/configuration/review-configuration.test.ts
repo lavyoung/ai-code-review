@@ -18,6 +18,7 @@ describe("resolveReviewConfiguration", () => {
             totalTimeoutMs: 300_000,
             maxAnalyzerConcurrency: 3,
             maxAiRequestCount: 8,
+            maxModelInputChars: 60_000,
         });
         expect(configuration.analyzers.typescript).toEqual({
             enabled: false,
@@ -50,6 +51,7 @@ describe("resolveReviewConfiguration", () => {
                 totalTimeoutMs: 60_000,
                 maxAnalyzerConcurrency: 1,
                 maxAiRequestCount: 2,
+                maxModelInputChars: 10_000,
                 typeScriptEnabled: false,
                 typeScriptTimeoutMs: 30_000,
             },
@@ -62,6 +64,7 @@ describe("resolveReviewConfiguration", () => {
                 REVIEW_TOTAL_ANALYZER_TIMEOUT_MS: "90000",
                 REVIEW_MAX_ANALYZER_CONCURRENCY: "2",
                 REVIEW_MAX_AI_REQUEST_COUNT: "4",
+                REVIEW_MAX_MODEL_INPUT_CHARS: "20000",
                 TYPESCRIPT_ANALYZER_ENABLED: "true",
                 SECRET_SCAN_ANALYZER_ENABLED: "false",
                 TYPESCRIPT_ANALYZER_TIMEOUT_MS: "60000",
@@ -85,6 +88,7 @@ describe("resolveReviewConfiguration", () => {
                 totalTimeoutMs: 120_000,
                 maxAnalyzerConcurrency: 3,
                 maxAiRequestCount: 6,
+                maxModelInputChars: 30_000,
                 typeScriptEnabled: true,
                 typeScriptTimeoutMs: 90_000,
                 secretScanEnabled: true,
@@ -114,6 +118,7 @@ describe("resolveReviewConfiguration", () => {
                 totalTimeoutMs: 120_000,
                 maxAnalyzerConcurrency: 3,
                 maxAiRequestCount: 6,
+                maxModelInputChars: 30_000,
             },
             analyzers: {
                 typescript: {

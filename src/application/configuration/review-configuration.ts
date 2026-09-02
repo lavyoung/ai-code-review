@@ -22,6 +22,8 @@ export interface ReviewConfiguration {
         totalTimeoutMs: number;
         maxAnalyzerConcurrency: number;
         maxAiRequestCount: number;
+        /** 单个远程 AI 分析器可接收的安全 JSON diff 字符上限。 */
+        maxModelInputChars: number;
     };
     analyzers: {
         deepseek: {

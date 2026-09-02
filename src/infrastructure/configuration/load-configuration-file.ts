@@ -19,6 +19,7 @@ export interface ConfigurationFileOverride {
     totalTimeoutMs?: number;
     maxAnalyzerConcurrency?: number;
     maxAiRequestCount?: number;
+    maxModelInputChars?: number;
     typeScriptEnabled?: boolean;
     typeScriptTimeoutMs?: number;
     sarifEnabled?: boolean;
@@ -57,6 +58,7 @@ const configurationFileSchema = z.object({
         total_timeout_ms: z.number().int().positive().optional(),
         max_analyzer_concurrency: z.number().int().positive().optional(),
         max_ai_request_count: z.number().int().positive().optional(),
+        max_model_input_chars: z.number().int().min(1_024).optional(),
     }).strict().optional(),
     analyzers: z.object({
         deepseek: z.object({
@@ -132,6 +134,9 @@ export const loadConfigurationFile = async (
         ...(configuration.execution?.max_ai_request_count === undefined
             ? {}
             : { maxAiRequestCount: configuration.execution.max_ai_request_count }),
+        ...(configuration.execution?.max_model_input_chars === undefined
+            ? {}
+            : { maxModelInputChars: configuration.execution.max_model_input_chars }),
         ...(configuration.analyzers?.typescript?.enabled === undefined
             ? {}
             : { typeScriptEnabled: configuration.analyzers.typescript.enabled }),

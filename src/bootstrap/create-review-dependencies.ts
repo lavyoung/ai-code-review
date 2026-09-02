@@ -78,6 +78,7 @@ export const createReviewDependencies = (
             totalTimeoutMs: configuration.execution.totalTimeoutMs,
             maxConcurrency: configuration.execution.maxAnalyzerConcurrency,
             maxAiRequestCount: configuration.execution.maxAiRequestCount,
+            maxModelInputChars: configuration.execution.maxModelInputChars,
         },
         findingVerifiers: [deterministicAnalyzerFindingVerifier],
     };

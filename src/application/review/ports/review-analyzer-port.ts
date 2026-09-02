@@ -55,6 +55,7 @@ export interface ReviewRunBudget {
     totalTimeoutMs: number;
     maxConcurrency: number;
     maxAiRequestCount: number;
+    maxModelInputChars: number;
 }
 
 /** 分析器的安全运行摘要，不包含输入或供应商响应正文。 */

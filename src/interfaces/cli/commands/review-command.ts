@@ -49,6 +49,7 @@ interface ReviewCommandOptions {
     totalAnalyzerTimeoutMs?: number;
     maxAnalyzerConcurrency?: number;
     maxAiRequestCount?: number;
+    maxModelInputChars?: number;
     typescriptEnabled?: boolean;
     sarifEnabled?: boolean;
     sarifReport?: string;
@@ -100,6 +101,8 @@ const reviewCommand = program
         parsePositiveInteger(value, "--max-analyzer-concurrency"))
     .option("--max-ai-request-count <count>", "Maximum AI analyzer requests", (value) =>
         parsePositiveInteger(value, "--max-ai-request-count"))
+    .option("--max-model-input-chars <count>", "Maximum safe JSON diff characters per AI analyzer", (value) =>
+        parsePositiveInteger(value, "--max-model-input-chars"))
     .option("--typescript-enabled <true|false>", "Enable the local TypeScript analyzer", (value) =>
         parseBoolean(value, "--typescript-enabled"))
     .option("--sarif-enabled <true|false>", "Enable the local SARIF analyzer", (value) =>
@@ -146,6 +149,9 @@ const reviewCommand = program
                     ...(options.maxAiRequestCount === undefined
                         ? {}
                         : { maxAiRequestCount: options.maxAiRequestCount }),
+                    ...(options.maxModelInputChars === undefined
+                        ? {}
+                        : { maxModelInputChars: options.maxModelInputChars }),
                     ...(options.typescriptEnabled === undefined
                         ? {}
                         : { typeScriptEnabled: options.typescriptEnabled }),

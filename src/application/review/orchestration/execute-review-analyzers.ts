@@ -1,4 +1,5 @@
 import type { ReviewChangeInput } from "../../../domain/review/model/code-change.js";
+import { boundSanitizedModelInput } from "../changes/bound-sanitized-model-input.js";
 import type { AnalyzerIdentity } from "../../../domain/review/model/analyzer-identity.js";
 import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
 import {
@@ -90,8 +91,14 @@ export const executeReviewAnalyzers = async (
 
             const startedAt = Date.now();
             try {
+                const codeChange = analyzer.capabilities.inputAccess === "sanitized-model-input"
+                    ? boundSanitizedModelInput(
+                        reviewInput.codeChange,
+                        budget.maxModelInputChars,
+                    )
+                    : reviewInput.codeChange;
                 const analysis = await analyzer.analyze({
-                    codeChange: reviewInput.codeChange,
+                    codeChange,
                     signal: AbortSignal.any([globalTimeout, AbortSignal.timeout(plan.timeoutMs)]),
                     ...(analyzer.capabilities.inputAccess === "trusted-raw-local"
                         ? { rawCodeChange: reviewInput.rawCodeChange }

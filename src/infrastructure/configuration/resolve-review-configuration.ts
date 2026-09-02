@@ -27,6 +27,7 @@ const configurationOverrideSchema = z.object({
     totalTimeoutMs: z.number().int().positive().optional(),
     maxAnalyzerConcurrency: z.number().int().positive().optional(),
     maxAiRequestCount: z.number().int().positive().optional(),
+    maxModelInputChars: z.number().int().min(1_024).optional(),
     typeScriptEnabled: z.boolean().optional(),
     typeScriptTimeoutMs: z.number().int().positive().optional(),
     sarifEnabled: z.boolean().optional(),
@@ -93,6 +94,9 @@ export const resolveReviewConfiguration = (
         maxAiRequestCount: sources.environment?.REVIEW_MAX_AI_REQUEST_COUNT === undefined
             ? undefined
             : Number(sources.environment.REVIEW_MAX_AI_REQUEST_COUNT),
+        maxModelInputChars: sources.environment?.REVIEW_MAX_MODEL_INPUT_CHARS === undefined
+            ? undefined
+            : Number(sources.environment.REVIEW_MAX_MODEL_INPUT_CHARS),
         typeScriptEnabled: parseBooleanEnvironmentValue(sources.environment?.TYPESCRIPT_ANALYZER_ENABLED),
         typeScriptTimeoutMs: sources.environment?.TYPESCRIPT_ANALYZER_TIMEOUT_MS === undefined
             ? undefined
@@ -217,6 +221,10 @@ export const resolveReviewConfiguration = (
                 ?? environment.maxAiRequestCount
                 ?? file.maxAiRequestCount
                 ?? 8,
+            maxModelInputChars: cli.maxModelInputChars
+                ?? environment.maxModelInputChars
+                ?? file.maxModelInputChars
+                ?? 60_000,
         },
         analyzers: {
             deepseek: {

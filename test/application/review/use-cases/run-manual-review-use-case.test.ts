@@ -25,7 +25,12 @@ const createAnalyzerDependencies = (analyze: ReturnType<typeof vi.fn>) => ({
         timeoutMs: 1_000,
         failureMode: "fail" as const,
     }],
-    analyzerBudget: { totalTimeoutMs: 1_000, maxConcurrency: 1, maxAiRequestCount: 1 },
+    analyzerBudget: {
+        totalTimeoutMs: 1_000,
+        maxConcurrency: 1,
+        maxAiRequestCount: 1,
+        maxModelInputChars: 10_000,
+    },
     findingVerifiers: [],
 });
 
