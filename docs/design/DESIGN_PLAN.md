@@ -1,5 +1,7 @@
 # ai-code-review 设计规划文档
 
+> 长期的可验证评审流水线、统一领域模型、端口边界和迁移方案见 [可验证 AI 代码评审架构](./REVIEW-QUALITY-ARCHITECTURE.md)。本文保留产品范围、平台接入和首期交付规划。
+
 ## 1. 背景
 
 团队在日常研发中会产生大量代码提交、分支合并和流水线构建。传统 Code Review 主要依赖人工完成，容易出现以下问题：
@@ -680,82 +682,46 @@ ai-code-review review \
 
 ```text
 src/
-  cli/
-    index.ts
-  config/
-    load-config.ts
-    resolve-env.ts
-  events/
-    review-event.test.ts
-    resolve-event.ts
-  providers/
-    local-git.ts
-    codeup.ts
-    github.ts
-    gitlab.ts
-  diff/
-    diff-resolver.ts
-    git-diff.ts
-  context/
-    context-loader.ts
-    rules-loader.ts
-  reviewer/
-    ai-reviewer.ts
-    prompt-builder.ts
-    result-parser.ts
-  policy/
-    policy-engine.ts
-  comments/
-    comment-planner.ts
-    review-comment.ts
-  notifiers/
-    notifier.ts
-    ci-log.ts
-    wecom.ts
-    generic-webhook.ts
-  reporters/
-    markdown-renderer.ts
-    json-renderer.ts
-```
-
-DDD 风格目录可进一步演进为：
-
-```text
-src/
   domain/
     review/
-      review-event.test.ts
-      code-change.ts
-      review-finding.ts
-      review-result.ts
-      review-policy.ts
-      review-comment.ts
-      review-policy-evaluator.ts
-      review-comment-planner.ts
+      model/
+        code-change.ts
+        review-comment.ts
+        review-event.ts
+        review-finding.ts
+        severity.ts
+      policy/
+        review-policy.ts
+        sensitive-content-policy.ts
   application/
-    run-review-use-case.ts
-    publish-notification-use-case.ts
-    publish-review-comment-use-case.ts
-    ports/
-      diff-provider.ts
-      ai-review-port.ts
-      notifier-port.ts
-      review-comment-port.ts
-      repository-provider.ts
+    review/
+      ports/
+      prompt/
+      errors/
+      use-cases/
+    delivery/
+      ports/
+      comments/
+      use-cases/
+    configuration/
   infrastructure/
-    git/
-    codeup/
-    github/
-    gitlab/
-    notifiers/
-    ai/
-    config/
+    ai/deepseek/
+    scm/
+      git/
+      github/
+      codeup/
+    notification/wecom/
+    configuration/
   interfaces/
     cli/
-    ci/
+      commands/
+      formatters/
+      index.ts
+  bootstrap/
+    create-review-dependencies.ts
 ```
 
-第一阶段建议直接采用 DDD 分层目录，避免后续平台扩展时再大规模搬迁。
+目录以评审和投递两个业务模块为核心；领域层不依赖外部平台，应用层只定义用例和端口，基础设施层实现 DeepSeek、SCM 与通知适配器。`bootstrap` 是唯一集中装配具体依赖的位置，CLI 入口只负责启动和参数处理。
 
 ## 13. MVP 实施计划
 

@@ -1,4 +1,4 @@
-import type { AiReviewFailureType } from "../../application/review-execution-error.js";
+import type { AiReviewFailureType } from "../../application/review/errors/review-execution-error.js";
 
 /**
  * CLI 对 CI 与调用方公开的稳定进程退出码。
@@ -11,6 +11,10 @@ export const CLI_EXIT_CODES = {
     INVALID_ARGUMENT: 101,
     INVALID_CONFIGURATION: 102,
     GIT_DIFF_FAILED: 103,
+    REQUIRED_ANALYZER_FAILED: 104,
+    REQUIRED_VERIFIER_FAILED: 105,
+    REVIEW_CONTRACT_FAILED: 106,
+    REVIEW_RECORDING_FAILED: 107,
     AI_REQUEST_FAILED: 110,
     AI_AUTHENTICATION_FAILED: 111,
     AI_RATE_LIMITED: 112,

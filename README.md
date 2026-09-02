@@ -99,6 +99,322 @@ GitHub Actions 中使用环境变量配置，并将密钥保存在仓库 Secret�
     REVIEW_OUTPUT_LANGUAGE: zh-CN
 ```
 
+## 分析器执行预算
+
+评审执行器会隔离建议性分析器失败，并为所有分析器实施总时限、并发数和 AI 请求数上限。配置优先级仍为 CLI 参数、环境变量、`ai-code-review.yml`、默认值；当前可通过环境变量或配置文件设置执行预算：
+
+```yaml
+execution:
+  total_timeout_ms: 300000
+  max_analyzer_concurrency: 3
+  max_ai_request_count: 8
+  max_model_input_chars: 60000
+```
+
+对应环境变量为 `REVIEW_TOTAL_ANALYZER_TIMEOUT_MS`、`REVIEW_MAX_ANALYZER_CONCURRENCY`、`REVIEW_MAX_AI_REQUEST_COUNT` 和 `REVIEW_MAX_MODEL_INPUT_CHARS`。其中 `max_model_input_chars` 是每个远程 AI 分析器可见的安全 JSON diff 字符上限，默认 `60000`；超出时只保留按 diff 顺序排列的前缀分块。本地 TypeScript、SARIF 和密钥扫描器不受该上限影响。超出 AI 请求预算或必需分析器不可用时，流水线会以非零退出码结束；建议性分析器失败只会进入脱敏运行摘要。
+
+内置 DeepSeek 分析器仅在网络请求失败、限流或超时时最多额外重试两次；认证、上下文限制、无效 JSON 和 Schema
+错误不会重试。三次最大调用数会预先计入 `max_ai_request_count` 预算，最终实际尝试次数会显示在评审摘要和脱敏运行记录中。建议性分析器失败时，摘要还会输出如
+`rate-limit` 的固定原因码，不输出服务响应或异常正文。每次实际评审会生成 `Run ID`；失败日志引用同一 ID，且 AI
+诊断会再次执行值与敏感路径脱敏。
+
+临时覆盖时可使用：
+
+```bash
+ai-code-review review --provider local --event manual --target main \
+  --total-analyzer-timeout-ms 300000 \
+  --max-analyzer-concurrency 3 \
+  --max-ai-request-count 8 \
+  --max-model-input-chars 60000
+```
+
+## TypeScript 确定性检查
+
+DeepSeek 默认启用以兼容现有工作流。若只需要确定性检查，可在任一配置来源中关闭它；关闭后不再要求 `DEEPSEEK_API_KEY`，但必须启用至少一个其他分析器：
+
+```yaml
+analyzers:
+  deepseek:
+    enabled: false
+  typescript:
+    enabled: true
+```
+
+等效环境变量为 `DEEPSEEK_ANALYZER_ENABLED=false`，Composite Action 输入为 `deepseek-enabled: "false"`。
+
+TypeScript 分析器在当前检出的提交上运行 `tsc --noEmit`，但只将能定位到本次新增 diff 行的诊断发布为发现项。它默认关闭；启用后，其已锚定诊断会标记为 `verified`，可按既有 `fail_on` 配置触发质量门禁。DeepSeek 发现仍为 `grounded`，不会单独阻断流水线。
+
+长期配置：
+
+```yaml
+analyzers:
+  typescript:
+    enabled: true
+    timeout_ms: 120000
+```
+
+也可使用环境变量 `TYPESCRIPT_ANALYZER_ENABLED=true`、`TYPESCRIPT_ANALYZER_TIMEOUT_MS=120000`，或临时指定：
+
+```bash
+ai-code-review review --provider local --event manual --target main --typescript-enabled true
+```
+
+启用它的仓库必须提供可用的 `tsconfig.json`；配置不可读取或 TypeScript 无法生成文件诊断时，该必需分析器将以退出码 `104` 失败，避免错误地将检查失效视为“没有问题”。
+
+## TypeScript AST 检查
+
+TypeScript AST 分析器只解析当前已提交 diff 中的新增 `.ts`/`.tsx` 行，不读取工作区文件，因此未提交改动不会混入结论。首个规则只识别
+AST 可直接证明的 `eval(...)` 调用；它产生的发现带有 `ast` 验证证据并标记为 `verified`，可进入既有质量门禁。它不会提升任何
+AI 发现的验证状态。
+
+```yaml
+analyzers:
+  typescript_ast:
+    enabled: true
+```
+
+也可使用 `TYPESCRIPT_AST_ANALYZER_ENABLED=true` 或 `--typescript-ast-enabled true`。GitHub Composite Action 对应输入为
+`typescript-ast-enabled: "true"`。该分析器内部使用官方 TypeScript 6 兼容 API 与当前 TypeScript 7 构建并存，避免依赖 TS7
+尚未稳定的编译器 API。
+
+## 受控沙箱测试结果
+
+工具不会在宿主机直接执行仓库测试脚本。若 CI 已在网络、权限和资源都受控的独立沙箱中执行测试，可将其失败结果作为已签名 JSON
+文件传入；只有签名有效、`sourceRevision` 与当前 `HEAD` 一致、且失败位置属于本次新增行的事件才会产生 `verified` 发现。
+
+```yaml
+analyzers:
+  sandbox_tests:
+    enabled: true
+    report_path: artifacts/sandbox-test-result.json
+```
+
+```bash
+SANDBOX_TEST_ANALYZER_ENABLED=true \
+SANDBOX_TEST_REPORT_PATH=artifacts/sandbox-test-result.json \
+SANDBOX_TEST_SIGNING_SECRET=<ci-secret> \
+ai-code-review review --provider local --event manual --target main
+```
+
+签名密钥只能通过环境变量或 CI Secret 提供。报告必须是以下结构，`signature` 为 `v1=HMAC-SHA256(JSON.stringify(payload))`
+；失败码和报告路径不会进入评论、通知或日志：
+
+```json
+{
+  "payload": {
+    "schemaVersion": "v1",
+    "sourceRevision": "<40-character-lowercase-commit-sha>",
+    "failures": [
+      {
+        "file": "src/example.ts",
+        "line": 42,
+        "failureCode": "ASSERTION_FAILED"
+      }
+    ]
+  },
+  "signature": "v1=<64-character-hex-hmac>"
+}
+```
+
+GitHub Composite Action 对应输入为 `sandbox-test-enabled` 和 `sandbox-test-report`；将 `SANDBOX_TEST_SIGNING_SECRET` 作为
+job Secret 传入。签名无效、报告过大、版本不匹配或无法读取时，必需分析器以退出码 `104` 失败，而不会将其误报为“无测试失败”。
+
+## 高置信度密钥扫描
+
+本地密钥扫描器只读取已提交 diff 的新增行，并只识别具有明确格式的凭据（例如服务 API key、GitHub token、AWS access key ID 或私钥头）。它默认关闭；启用后原始 diff 仅在本地扫描器中短暂使用，输出则只包含已脱敏锚点和通用修复建议。敏感文件会继续从扫描、日志、评论和模型输入中排除。
+
+```yaml
+analyzers:
+  secret_scan:
+    enabled: true
+```
+
+等效环境变量为 `SECRET_SCAN_ANALYZER_ENABLED=true`，或临时指定：
+
+```bash
+ai-code-review review --provider local --event manual --target main --secret-scan-enabled true
+```
+
+GitHub Composite Action 的输入为 `secret-scan-enabled: "true"`。扫描器产生的发现标记为 `verified`、严重级别为 `critical`，因此会遵循现有 `fail_on` 质量门禁；绝不输出匹配到的凭据值或敏感文件路径。
+
+## SARIF 确定性检查
+
+已生成 SARIF 2.1.0 报告的工具（如 CodeQL、Semgrep 或 ESLint 的 SARIF 输出）可通过本地文件接入。报告中的结果同样只在其位置对应本次新增 diff 行时才发布，并会标记为 `verified`：
+
+```yaml
+analyzers:
+  sarif:
+    enabled: true
+    report_path: reports/review.sarif
+```
+
+也可使用 `SARIF_ANALYZER_ENABLED=true`、`SARIF_REPORT_PATH=reports/review.sarif`，或 `--sarif-enabled true --sarif-report reports/review.sarif`。启用时报告必须在评审命令之前生成；缺失或不符合 SARIF 2.1.0 的报告会使必需分析器以退出码 `104` 失败。
+
+## 发现指纹与去重
+
+每条可输出发现都有稳定的 24 位十六进制指纹。它由安全 diff 分块、行号、类别和规范化标题生成，不包含完整
+diff、密钥、敏感路径、证据正文或模型描述。相同运行中来自多个分析器的等价发现会合并为一条，并保留全部受控来源与最高验证状态。该指纹可作为后续人工反馈、误报率统计和同一变更重跑时的
+AI 建议抑制键。
+
+## 发现处置与误报治理
+
+报告固定分为三个区域：
+
+- **Confirmed findings**：由 TypeScript、AST、SARIF、密钥扫描或受控测试等确定性来源验证的 `verified` 缺陷；只有这一类可触发质量门禁。
+- **AI suggestions for review**：DeepSeek 的 `grounded` 建议；它们已锚定到本次 diff，但尚未被确定性验证，永远不会阻断流水线。
+- **Suppressed candidates**：证据缺失、位置不匹配、依赖 `[REDACTED]` 脱敏占位符，或被有效人工误报反馈命中的候选项；仅输出安全原因码和数量。
+
+模型不得依据 `[REDACTED]` 推导语法、配置、依赖或业务缺陷。编译、包清单、工作流语法和文档链接等机械结论应由确定性分析器或 CI
+检查产生，而不是由 AI 直接判定。
+
+## 脱敏运行记录
+
+可选记录器会把每次运行写入本地 JSONL 文件，内容仅包括 `runId`、质量门禁结果、严重级别、分析器运行摘要和发现指纹；不保存代码、文件路径、描述、证据或密钥。每行都含有
+`recordType`，用于区分 `review-run` 和 `finding-feedback` 事件。适合在 CI 中作为 artifact 上传，也可与组织级质量存储并行启用：
+
+```yaml
+recording:
+  local_path: .ai-code-review/runs.jsonl
+```
+
+也可使用 `REVIEW_RUN_RECORD_PATH=.ai-code-review/runs.jsonl`，或 `--run-record-path .ai-code-review/runs.jsonl`。Composite Action 对应输入为 `run-record-path`。记录失败只会输出 `Review record: failed`，不会影响评审、通知或质量门禁。
+
+### 组织级质量存储
+
+组织受控服务可接收跨仓库的脱敏运行记录和人工反馈。启用时必须使用 HTTPS；`QUALITY_STORE_SIGNING_SECRET` 只能通过 CI Secret
+或环境变量注入，绝不能写入 YAML、命令行或日志：
+
+```yaml
+recording:
+  quality_store:
+    enabled: true
+    endpoint_url: https://quality.example.com/api/v1/review-events
+```
+
+```bash
+QUALITY_STORE_ENABLED=true \
+QUALITY_STORE_ENDPOINT_URL=https://quality.example.com/api/v1/review-events \
+QUALITY_STORE_SIGNING_SECRET=<secret> \
+ai-code-review review --provider local --event manual --target main
+```
+
+CLI 也可覆盖普通配置：`--quality-store-enabled true --quality-store-endpoint https://…`；签名密钥始终只从
+`QUALITY_STORE_SIGNING_SECRET` 读取。每个事件以 JSON `POST` 到 `endpoint_url`，并携带 `X-AICR-Event-Type`、
+`X-AICR-Event-Id`、`X-AICR-Timestamp` 和 `X-AICR-Signature`。签名算法是 `v1=HMAC-SHA256(timestamp + "." + requestBody)`
+；接收方必须校验签名、限制时间窗，并按事件 ID 幂等去重。远程存储失败同样只输出脱敏的 `Review record: failed`，不影响质量门禁。
+
+## 人工发现反馈
+
+使用评审输出中的 24 位发现指纹记录固定状态，不接收自由文本、路径、代码或密钥。反馈会追加到同一个 JSONL 记录文件；`--run-id` 可选，用于关联一次评审运行：
+
+```bash
+ai-code-review feedback \
+  --fingerprint 0123456789abcdef01234567 \
+  --status false-positive \
+  --run-id 5ff86dc0-213b-4dc0-9490-ad8a8d15e99a \
+  --expires-at 2026-12-31T00:00:00Z \
+  --run-record-path .ai-code-review/runs.jsonl
+```
+
+可选状态为 `accepted`、`false-positive`、`not-applicable` 和 `fixed`。本地 JSONL 记录中最新的、未到期的 `false-positive` 或
+`not-applicable` 反馈，会抑制同一指纹的 **AI advisory**；后续记录 `accepted` 或 `fixed` 会撤销该抑制。`verified` 发现永不受反馈抑制。
+`--expires-at` 仅适用于可抑制状态。
+
+未配置本地记录路径或组织级质量存储时命令以退出码 `102` 结束；写入失败时输出 `Finding feedback: failed` 并以退出码 `107`
+结束。组织存储只接收指纹和固定状态，支持跨仓库聚合；不得将其用于未经人工审核的规则自动调整。当前自动抑制读取本地
+JSONL；组织级存储需实现同一读取端口后才能参与跨仓库抑制。
+
+## 本地质量指标
+
+`metrics` 只读取上述脱敏 JSONL 并输出 JSON 聚合值：运行数、质量门禁次数、发现数、分析器状态、尝试次数与耗时、反馈覆盖率、误报率和可关联反馈的平均处理耗时。
+
+```bash
+ai-code-review metrics --run-record-path .ai-code-review/runs.jsonl
+```
+
+同一指纹有多次反馈时，指标以最新状态为准；只有能匹配本记录中发现指纹的反馈才参与覆盖率和误报率，无法关联的事件单独计数。平均处理耗时只统计同时提供 `runId` 且该运行确实包含该指纹的反馈。命令不输出原始记录、路径、代码、描述、证据或密钥。未配置路径时退出码为 `102`；文件不可读、包含非安全 JSON 或不符合事件协议时退出码为 `107`。
+
+## 在其他 GitHub 仓库中使用
+
+本项目提供 GitHub Composite Action。调用方必须先 checkout PR 的完整 Git 历史，并为工作流授予最小必要权限：
+
+```yaml
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+concurrency:
+  group: ai-code-review-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: lavyoung/ai-code-review@<trusted-commit-sha>
+        with:
+          output-language: zh-CN
+          comment-enabled: "true"
+          typescript-enabled: "true"
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+```
+
+将 `<trusted-commit-sha>` 替换为已审核的完整提交 SHA。发布不可变版本标签后也可以使用标签引用；完整 SHA 更适合生产环境。调用方在仓库 Secret 中配置 `DEEPSEEK_API_KEY`，`GITHUB_TOKEN` 由 Action 自动使用。
+
+建议保留上面的 `concurrency` 配置：同一 PR 新提交会取消旧评审。Action 发布评论前还会校验 PR 当前 `head SHA`；若运行已过期，会显示为 `skipped`，不会覆盖新版本的摘要评论。
+
+若 `ai-code-review` Action 仓库为 **公开仓库**，调用方不需要额外配置访问权限；若它是 **私有仓库**，还需在 `ai-code-review`
+仓库的 **Settings → Actions → General → Access** 中允许同一用户或组织下的私有仓库访问。公开发布前，请确认提交历史、Release
+附件与示例中均不含密钥或其他敏感信息。
+
+若工作流已在前一步生成 SARIF 报告，可将其作为本地输入交给 Action：
+
+```yaml
+      - uses: lavyoung/ai-code-review@<trusted-commit-sha>
+        with:
+          sarif-enabled: "true"
+          sarif-report: reports/review.sarif
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+```
+
+报告必须由此前步骤在当前工作区生成；Action 不会上传报告，也不会输出其中未映射到本次变更的路径、内容或结果。
+
+## 作为 npm CLI 使用
+
+发布后，包名为 `@lavyoung/ai-code-review`，发布 Registry 固定为 GitHub Packages。使用该包的项目先在 `.npmrc` 中配置 scope：
+
+```ini
+@lavyoung:registry=https://npm.pkg.github.com
+```
+
+本地安装 GitHub Packages 时，使用具有 `read:packages` 权限的 GitHub Personal Access Token（classic）登录：
+
+```bash
+npm login --scope=@lavyoung --auth-type=legacy --registry=https://npm.pkg.github.com
+npm install --save-dev @lavyoung/ai-code-review@0.1.0
+```
+
+安装后可在本地、CodeUp Flow 或 GitLab CI 中统一调用：
+
+```bash
+npx ai-code-review review --provider local --event manual --target main
+```
+
+在 CI 中，将 Registry 凭据保存为 Secret，并通过 `NODE_AUTH_TOKEN` 注入；不要将 Token 写入 `.npmrc` 或日志。
+
 ## 配置示例
 
 ```yaml
@@ -132,17 +448,17 @@ notifiers:
 
 | 平台 | 状态 | 说明 |
 | --- | --- | --- |
-| Local Git | Planned | 用于本地调试和通用 CI 场景 |
-| CodeUp | Planned | 优先支持云效 CodeUp / Flow |
-| GitHub | Planned | 后续支持 GitHub Actions 和 Pull Request |
+| Local Git | Supported | 用于本地调试和通用 CI 场景 |
+| CodeUp | Supported | 支持 Merge Request 范围与可更新的摘要评论 |
+| GitHub | Supported | 支持 GitHub Actions、Pull Request 与可更新的摘要评论 |
 | GitLab | Planned | 后续支持 GitLab CI 和 Merge Request |
 
 ## 通知支持计划
 
 | 通知渠道 | 状态 | 说明 |
 | --- | --- | --- |
-| 企业微信 | Planned | 第一阶段优先支持 |
-| CI Log | Planned | 第一阶段优先支持 |
+| 企业微信 | Supported | 支持 Markdown 通知与脱敏投递状态 |
+| CI Log | Supported | 输出脱敏评审结果、分析器与投递状态 |
 | 通用 Webhook | Planned | 用于对接内部系统 |
 | 钉钉 | Planned | 后续扩展 |
 | 飞书 | Planned | 后续扩展 |
@@ -157,4 +473,3 @@ notifiers:
 ## 项目定位
 
 `ai-code-review` 是一个面向工程团队的 AI Review 自动化工具。它更关注流水线集成、评审结果分发和多平台适配，而不是提供单一平台专用机器人。
-

@@ -1,15 +1,23 @@
 {
-  "name": "ai-code-review",
-  "version": "1.0.0",
+  "name": "@lavyoung/ai-code-review",
+  "version": "0.1.0",
   "description": "AI-powered code review workflow for push, pull request, merge request, and CI pipelines.",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
+  "bin": {
+    "ai-code-review": "./dist/interfaces/cli/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "tsx src/interfaces/cli/index.ts",
+    "prebuild": "node scripts/clean-dist.mjs",
     "build": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "start": "node dist/interfaces/cli/index.js",
+    "prepack": "npm run build",
+    "package:check": "npm pack --dry-run"
   },
   "repository": {
     "type": "git",
@@ -22,17 +30,23 @@
     "url": "https://github.com/lavyoung/ai-code-review/issues"
   },
   "homepage": "https://github.com/lavyoung/ai-code-review#readme",
-  "private": "true",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "dependencies": {
+    "@typescript/typescript6": "^6.0.2",
     "commander": "^15.0.0",
+    "typescript": "^7.0.2",
     "yaml": "^2.9.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
     "tsx": "^4.23.13",
-    "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   }
 }
