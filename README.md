@@ -3,9 +3,12 @@
 面向 Git 提交差异的 AI 代码评审 CLI 与 GitHub Composite Action。它只评审明确的已提交范围，生成可更新的摘要评论、脱敏 CI
 日志和机器可处理的结构化结果；它不替代人工 Code Review。
 
+项目的核心原则是：以基础确定性分析提供证据，由 AI 综合审查改动影响、潜在缺陷、边界与设计风险，并为人工 reviewer
+汇总成一份统一结果。完整约束见[项目军规](docs/design/PROJECT_CHARTER.md)。
+
 ## 你会得到什么
 
-- DeepSeek 语义评审，以及可选的 TypeScript、TypeScript AST、SARIF、受控测试结果和高置信度密钥扫描。
+- DeepSeek 语义评审，以及可选的 TypeScript、TypeScript AST、Java AST、SARIF、受控测试结果和高置信度密钥扫描。
 - 三类清晰的结果：可阻断的已验证缺陷、供人工判断的 AI 建议、以及安全抑制的候选项。
 - GitHub Pull Request 与 CodeUp Merge Request 的可更新摘要评论；企业微信通知和 CI 日志。
 - 不记录完整 diff、密钥、敏感文件路径或敏感文件内容。
@@ -76,11 +79,15 @@ analyzers:
     timeout_ms: 120000
   typescript_ast:
     enabled: false
+  java_ast:
+    enabled: false
   secret_scan:
     enabled: false
   sarif:
     enabled: false
     report_path: reports/review.sarif
+    # Optional: only a report with this sidecar and a matching public key can gate CI.
+    attestation_path: reports/review.sarif.attestation.json
   sandbox_tests:
     enabled: false
     report_path: artifacts/sandbox-test-result.json
@@ -110,33 +117,84 @@ recording:
 
 ### 常用环境变量
 
-| 用途                 | 环境变量                                                                                                                                                                  |
-|----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| DeepSeek             | `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`、`DEEPSEEK_TIMEOUT_MS`、`REVIEW_OUTPUT_LANGUAGE`                                                                                     |
-| 质量门禁             | `REVIEW_SEVERITY_THRESHOLD`、`REVIEW_FAIL_ON`                                                                                                                             |
-| 执行预算             | `REVIEW_TOTAL_ANALYZER_TIMEOUT_MS`、`REVIEW_MAX_ANALYZER_CONCURRENCY`、`REVIEW_MAX_AI_REQUEST_COUNT`、`REVIEW_MAX_MODEL_INPUT_CHARS`                                      |
-| TypeScript           | `TYPESCRIPT_ANALYZER_ENABLED`、`TYPESCRIPT_ANALYZER_TIMEOUT_MS`、`TYPESCRIPT_AST_ANALYZER_ENABLED`                                                                        |
-| 其他分析器           | `SARIF_ANALYZER_ENABLED`、`SARIF_REPORT_PATH`、`SECRET_SCAN_ANALYZER_ENABLED`、`SANDBOX_TEST_ANALYZER_ENABLED`、`SANDBOX_TEST_REPORT_PATH`、`SANDBOX_TEST_SIGNING_SECRET` |
-| GitHub / CodeUp 评论 | `GITHUB_COMMENT_ENABLED`、`GITHUB_COMMENT_FAIL_ON_ERROR`、`GITHUB_TOKEN`、`CODEUP_COMMENT_ENABLED`、`CODEUP_COMMENT_FAIL_ON_ERROR`、`CODEUP_TOKEN`                        |
-| 企业微信             | `WECOM_ENABLED`、`WECOM_FAIL_ON_ERROR`、`WECOM_WEBHOOK_URL`                                                                                                               |
-| 质量记录             | `REVIEW_RUN_RECORD_PATH`、`QUALITY_STORE_ENABLED`、`QUALITY_STORE_ENDPOINT_URL`、`QUALITY_STORE_SIGNING_SECRET`                                                           |
+| 用途                 | 环境变量                                                                                                                                                                                                                             |
+|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| DeepSeek             | `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`、`DEEPSEEK_TIMEOUT_MS`、`REVIEW_OUTPUT_LANGUAGE`                                                                                                                                                |
+| 质量门禁             | `REVIEW_SEVERITY_THRESHOLD`、`REVIEW_FAIL_ON`                                                                                                                                                                                        |
+| 执行预算             | `REVIEW_TOTAL_ANALYZER_TIMEOUT_MS`、`REVIEW_MAX_ANALYZER_CONCURRENCY`、`REVIEW_MAX_AI_REQUEST_COUNT`、`REVIEW_MAX_MODEL_INPUT_CHARS`                                                                                                 |
+| TypeScript / Java    | `TYPESCRIPT_ANALYZER_ENABLED`、`TYPESCRIPT_ANALYZER_TIMEOUT_MS`、`TYPESCRIPT_AST_ANALYZER_ENABLED`、`JAVA_AST_ANALYZER_ENABLED`                                                                                                      |
+| 其他分析器           | `SARIF_ANALYZER_ENABLED`、`SARIF_REPORT_PATH`、`SARIF_ATTESTATION_PATH`、`SARIF_VERIFICATION_PUBLIC_KEY`、`SECRET_SCAN_ANALYZER_ENABLED`、`SANDBOX_TEST_ANALYZER_ENABLED`、`SANDBOX_TEST_REPORT_PATH`、`SANDBOX_TEST_SIGNING_SECRET` |
+| GitHub / CodeUp 评论 | `GITHUB_COMMENT_ENABLED`、`GITHUB_COMMENT_FAIL_ON_ERROR`、`GITHUB_TOKEN`、`CODEUP_COMMENT_ENABLED`、`CODEUP_COMMENT_FAIL_ON_ERROR`、`CODEUP_TOKEN`                                                                                   |
+| 企业微信             | `WECOM_ENABLED`、`WECOM_FAIL_ON_ERROR`、`WECOM_WEBHOOK_URL`                                                                                                                                                                          |
+| 质量记录             | `REVIEW_RUN_RECORD_PATH`、`QUALITY_STORE_ENABLED`、`QUALITY_STORE_ENDPOINT_URL`、`QUALITY_STORE_SIGNING_SECRET`                                                                                                                      |
 
 所有布尔环境变量只接受 `true` 或 `false`。`REVIEW_FAIL_ON` 使用逗号分隔，例如 `critical,high`。评审文本的语言使用 BCP 47
 标签，如 `zh-CN`、`zh-TW`、`en`、`ja`、`ko`；固定 JSON 字段、严重级别和 Markdown 协议不随语言改变。
 
 ## 分析器与质量门禁
 
-| 分析器         | 默认值 | 结论类型   | 说明                                                     |
-|----------------|--------|------------|----------------------------------------------------------|
-| DeepSeek       | 开启   | `grounded` | 已锚定本次 diff 的 AI 建议，仅供人工评审，不阻断流水线。 |
-| TypeScript     | 关闭   | `verified` | 只输出能可靠定位到新增 diff 行的 `tsc` 诊断。            |
-| TypeScript AST | 关闭   | `verified` | 当前规则可靠识别新增 TypeScript 行中的 `eval(...)`。     |
-| SARIF          | 关闭   | `verified` | 仅采纳已生成的 SARIF 2.1.0 报告中定位到新增行的结果。    |
-| 密钥扫描       | 关闭   | `verified` | 只扫描新增行中的高置信度凭据，不输出凭据或敏感路径。     |
-| 受控测试结果   | 关闭   | `verified` | 仅接受签名有效、提交一致、定位到新增行的外部沙箱结果。   |
+| 分析器         | 默认值 | 结论类型                             | 说明                                                                                                             |
+|----------------|--------|--------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| DeepSeek       | 开启   | `grounded`                           | 已锚定本次 diff 的 AI 建议，仅供人工评审，不阻断流水线。                                                         |
+| TypeScript     | 关闭   | `verified`                           | 只输出能可靠定位到新增 diff 行的 `tsc` 诊断。                                                                    |
+| TypeScript AST | 关闭   | `verified`                           | 当前规则可靠识别新增 TypeScript 行中的 `eval(...)`。                                                             |
+| Java AST       | 关闭   | `grounded`                           | 只解析新增 Java 行，不执行 Maven 或 Gradle；当前识别直接的 `Runtime.getRuntime().exec(...)` 调用，必须人工确认。 |
+| SARIF          | 关闭   | 默认 `grounded`；经证明后 `verified` | 仅采纳 SARIF 2.1.0 报告中定位到新增行的结果；没有有效证明时不可触发门禁。                                        |
+| 密钥扫描       | 关闭   | `verified`                           | 只扫描新增行中的高置信度凭据，不输出凭据或敏感路径。                                                             |
+| 受控测试结果   | 关闭   | `verified`                           | 仅接受签名有效、提交一致、定位到新增行的外部沙箱结果。                                                           |
 
 只有 `verified` 发现可以根据 `review.fail_on` 触发质量门禁；DeepSeek 的 `grounded` 建议不会单独阻断流水线。所有分析器共享总时限、并发数、AI
 请求数和模型输入大小预算。DeepSeek 对网络、限流和超时错误最多额外重试两次；认证、JSON、Schema、内容过滤与上下文限制错误不会重试。
+
+### Java 语法检查
+
+启用 `java_ast` 后，固定版本的 Java 解析器只在本地解析已提交 diff 的新增 `.java` 行；它不读取未提交工作区、不启动 JDK，也不执行
+Maven、Gradle 或仓库脚本：
+
+```yaml
+analyzers:
+  java_ast:
+    enabled: true
+```
+
+也可使用 `JAVA_AST_ANALYZER_ENABLED=true` 或 `--java-ast-enabled true`。Java AST 的结果是已锚定的
+advisory，不能直接触发门禁；需要语义、字节码或安全数据流证据时，可由 PMD、SpotBugs、CodeQL 等工具生成 SARIF 并导入。 GitHub
+Actions 中以无 Secret 的 CodeQL 扫描 Java
+并导入建议结果，可参考[Java CodeQL 与 SARIF 导入指南](docs/guides/java-codeql.md)。
+
+### SARIF 信任边界
+
+普通 SARIF 是 **可定位的外部建议**：报告可能来自任意工具或 PR 产物，因此默认只显示为 `grounded`，不会阻断流水线。若需要将某个
+受控工具的结果作为门禁，必须同时提供 `SARIF_ATTESTATION_PATH` 与 `SARIF_VERIFICATION_PUBLIC_KEY`。证明将报告原始内容的
+SHA-256 和完整 Git `HEAD` 绑定，并由 Ed25519 私钥签名；任何内容、提交或签名不匹配都会让必需的 SARIF 分析失败，不能静默升级。
+
+私钥 `SARIF_SIGNING_PRIVATE_KEY` 只能放在隔离的可信分析任务中，评审任务只需要公钥 `SARIF_VERIFICATION_PUBLIC_KEY`。两者都是
+Base64 编码的 DER：私钥为 PKCS#8，公钥为 SPKI。可用 Node.js 22+ 生成一对密钥，并立即将私钥保存到 CI Secret：
+
+```bash
+node --input-type=module -e "import {generateKeyPairSync} from 'node:crypto'; const k=generateKeyPairSync('ed25519'); console.log('SARIF_SIGNING_PRIVATE_KEY='+k.privateKey.export({format:'der',type:'pkcs8'}).toString('base64')); console.log('SARIF_VERIFICATION_PUBLIC_KEY='+k.publicKey.export({format:'der',type:'spki'}).toString('base64'))"
+```
+
+可信任务在 **不执行来自 PR 的脚本、且私钥未暴露给不可信任务**的前提下，生成 SARIF 后执行：
+
+```bash
+SARIF_SIGNING_PRIVATE_KEY=<ci-secret> \
+  ai-code-review attest-sarif \
+  --report reports/java.sarif \
+  --output reports/java.sarif.attestation.json
+```
+
+之后的评审任务配置报告、证明与公钥：
+
+```bash
+SARIF_ANALYZER_ENABLED=true
+SARIF_REPORT_PATH=reports/java.sarif
+SARIF_ATTESTATION_PATH=reports/java.sarif.attestation.json
+SARIF_VERIFICATION_PUBLIC_KEY=<public-key>
+```
+
+签名只证明报告由持有私钥的任务产出，不会自动证明 PMD、SpotBugs 或 CodeQL 的规则配置正确。不要在会 checkout 或执行外部 Fork
+PR 代码的同一任务中注入私钥；这会破坏该信任边界。
 
 评审输出固定分为：
 
@@ -190,7 +248,9 @@ jobs:
 `pull_request` 事件。对 Fork PR 应保留无密钥的常规 CI；待专门的安全事件适配完成后，再启用带 Secret 的评审。
 
 Composite Action 输入包括 `output-language`、`comment-enabled`、`deepseek-enabled`、`typescript-enabled`、
-`typescript-ast-enabled`、`sarif-enabled` / `sarif-report`、`secret-scan-enabled`、`sandbox-test-enabled` /
+`typescript-ast-enabled`、`java-ast-enabled`、`sarif-enabled` / `sarif-report` / `sarif-attestation`、
+`secret-scan-enabled`、
+`sandbox-test-enabled` /
 `sandbox-test-report`、`run-record-path`、`quality-store-enabled` / `quality-store-endpoint` 和 `max-model-input-chars`。
 
 若 Action 仓库是公开仓库，调用方无需额外访问设置；若是私有仓库，需要在 Action 仓库的 **Settings → Actions → General →

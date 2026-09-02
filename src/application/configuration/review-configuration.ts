@@ -36,6 +36,10 @@ export interface ReviewConfiguration {
         typescriptAst: {
             enabled: boolean;
         };
+        javaAst: {
+            /** 只解析已提交 Java diff 中可由语法直接证明的模式，不执行构建工具。 */
+            enabled: boolean;
+        };
         sandboxTests: {
             enabled: boolean;
             /** 受控沙箱产生的签名结果文件；禁止输出路径或原始内容。 */
@@ -46,6 +50,10 @@ export interface ReviewConfiguration {
         sarif: {
             enabled: boolean;
             reportPath?: string;
+            /** 可选签名证明文件；只有其验证通过时，SARIF 发现才可参与质量门禁。 */
+            attestationPath?: string;
+            /** 仅由环境变量或 CI 变量注入，禁止写入配置文件与日志。 */
+            verificationPublicKey?: string;
         };
         secretScan: {
             enabled: boolean;

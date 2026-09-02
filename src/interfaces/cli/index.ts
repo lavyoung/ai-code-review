@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { Command, CommanderError } from "commander";
-import packageMetadata from "../../../package.json" with { type: "json" };
-import { configureReviewCommand } from "./commands/review-command.js";
-import { configureFeedbackCommand } from "./commands/feedback-command.js";
-import { configureMetricsCommand } from "./commands/metrics-command.js";
-import { CLI_EXIT_CODES } from "./exit-code.js";
+import {Command, CommanderError} from "commander";
+import packageMetadata from "../../../package.json" with {type: "json"};
+import {configureReviewCommand} from "./commands/review-command.js";
+import {configureFeedbackCommand} from "./commands/feedback-command.js";
+import {configureMetricsCommand} from "./commands/metrics-command.js";
+import {configureAttestSarifCommand} from "./commands/attest-sarif-command.js";
+import {CLI_EXIT_CODES} from "./exit-code.js";
 
 const program = new Command();
 
@@ -17,6 +18,7 @@ program
 configureReviewCommand(program);
 configureFeedbackCommand(program);
 configureMetricsCommand(program);
+configureAttestSarifCommand(program);
 program.exitOverride();
 
 try {

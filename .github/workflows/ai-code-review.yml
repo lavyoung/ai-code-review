@@ -11,6 +11,7 @@ permissions:
   contents: read
   issues: write
   pull-requests: write
+  security-events: write
 
 concurrency:
   group: ai-code-review-pr-${{ github.event.pull_request.number }}
@@ -29,10 +30,55 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
 
+      # This is a deterministic evidence stage within the same AI Code Review
+      # run. It only reads committed Java source and never executes Maven,
+      # Gradle, tests, or other PR-provided scripts.
+      - name: Detect Java source
+        id: java
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-tree -r --name-only HEAD | grep -Eq '\.java$'; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Initialize Java CodeQL evidence
+        if: steps.java.outputs.enabled == 'true'
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java
+          build-mode: none
+
+      - name: Analyze Java source
+        if: steps.java.outputs.enabled == 'true'
+        uses: github/codeql-action/analyze@v4
+        with:
+          output: ${{ github.workspace }}/sarif-results
+          upload: never
+
+      - name: Locate Java SARIF evidence
+        if: steps.java.outputs.enabled == 'true'
+        id: sarif
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          reports=("$GITHUB_WORKSPACE"/sarif-results/*.sarif)
+          if [[ ${#reports[@]} -ne 1 ]]; then
+            echo "Expected exactly one Java CodeQL SARIF report." >&2
+            exit 1
+          fi
+          printf 'path=%s\n' "${reports[0]}" >> "$GITHUB_OUTPUT"
+
       - name: Review pull request
-        uses: lavyoung/ai-code-review@1cd53d1ce68b55f77c31b3e9beb7f662d52a4eb1
+        uses: lavyoung/ai-code-review@be89867ee4c316060f7a99cd14188ab3c2d18496
         with:
           output-language: zh-CN
           comment-enabled: "true"
+          java-ast-enabled: ${{ steps.java.outputs.enabled }}
+          sarif-enabled: ${{ steps.java.outputs.enabled }}
+          sarif-report: ${{ steps.sarif.outputs.path }}
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

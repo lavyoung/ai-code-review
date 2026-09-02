@@ -18,7 +18,7 @@ describe("verifyDeterministicAnalyzerFinding", () => {
     it("upgrades an anchored finding from a deterministic analyzer", () => {
         expect(verifyDeterministicAnalyzerFinding({
             ...groundedFinding,
-            analyzer: { kind: "typecheck", id: "typescript" },
+            analyzer: {kind: "typecheck", id: "typescript", verificationEligible: true},
         })).toMatchObject({
             verificationStatus: "verified",
             disposition: "defect",
@@ -39,7 +39,7 @@ describe("verifyDeterministicAnalyzerFinding", () => {
     it("records AST evidence for a trusted AST analyzer", () => {
         expect(verifyDeterministicAnalyzerFinding({
             ...groundedFinding,
-            analyzer: {kind: "ast", id: "typescript-ast"},
+            analyzer: {kind: "ast", id: "typescript-ast", verificationEligible: true},
         })).toMatchObject({
             verificationStatus: "verified",
             verificationMethods: ["diff-anchor", "evidence-match", "ast", "deterministic-analyzer"],
@@ -49,10 +49,20 @@ describe("verifyDeterministicAnalyzerFinding", () => {
     it("records test execution evidence for a trusted test analyzer", () => {
         expect(verifyDeterministicAnalyzerFinding({
             ...groundedFinding,
-            analyzer: {kind: "test", id: "sandbox-test"},
+            analyzer: {kind: "test", id: "sandbox-test", verificationEligible: true},
         })).toMatchObject({
             verificationStatus: "verified",
             verificationMethods: ["diff-anchor", "evidence-match", "test-execution", "deterministic-analyzer"],
+        });
+    });
+
+    it("keeps a syntactic analyzer advisory until it has trusted semantic evidence", () => {
+        expect(verifyDeterministicAnalyzerFinding({
+            ...groundedFinding,
+            analyzer: {kind: "ast", id: "java-ast"},
+        })).toEqual({
+            ...groundedFinding,
+            analyzer: {kind: "ast", id: "java-ast"},
         });
     });
 });

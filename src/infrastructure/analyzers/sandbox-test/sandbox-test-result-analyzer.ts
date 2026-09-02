@@ -1,7 +1,5 @@
-import {execFile} from "node:child_process";
 import {createHmac, timingSafeEqual} from "node:crypto";
 import {readFile} from "node:fs/promises";
-import {promisify} from "node:util";
 import {z} from "zod";
 import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
 import type {ReviewCandidate} from "../../../domain/review/model/review-candidate.js";
@@ -11,8 +9,8 @@ import type {
     AnalyzerIdentity,
     ReviewAnalyzer,
 } from "../../../application/review/ports/review-analyzer-port.js";
+import type {CommittedRevisionProvider} from "../../scm/git/committed-revision-provider.js";
 
-const execFileAsync = promisify(execFile);
 const MAX_REPORT_BYTES = 2 * 1024 * 1024;
 
 const sandboxFailureSchema = z.object({
@@ -40,25 +38,8 @@ export interface SandboxedTestResultAnalyzerConfiguration {
     signingSecret: string;
 }
 
-/** 抽象当前已检出提交，避免测试结果与待评审提交不一致。 */
-export interface CommittedRevisionProvider {
-    resolve(signal: AbortSignal): Promise<string>;
-}
-
-const createGitRevisionProvider = (workingDirectory: string): CommittedRevisionProvider => ({
-    async resolve(signal: AbortSignal): Promise<string> {
-        const {stdout} = await execFileAsync("git", ["rev-parse", "HEAD"], {
-            cwd: workingDirectory,
-            encoding: "utf8",
-            signal,
-        });
-        const revision = stdout.trim().toLowerCase();
-        if (!/^[a-f0-9]{40}$/.test(revision)) {
-            throw new Error("Committed test result revision was invalid.");
-        }
-        return revision;
-    },
-});
+/** 供沙箱测试适配器测试使用的已检出提交端口。 */
+export type {CommittedRevisionProvider} from "../../scm/git/committed-revision-provider.js";
 
 const hasValidSignature = (payload: SandboxTestPayload, signature: string, secret: string): boolean => {
     const expected = Buffer.from(`v1=${createHmac("sha256", secret)
@@ -76,7 +57,11 @@ const hasValidSignature = (payload: SandboxTestPayload, signature: string, secre
  * 失败事件，因此宿主机不需要假装拥有网络或文件系统隔离能力。
  */
 export class SandboxedTestResultAnalyzer implements ReviewAnalyzer {
-    public readonly identity: AnalyzerIdentity = {kind: "test", id: "sandbox-test"};
+    public readonly identity: AnalyzerIdentity = {
+        kind: "test",
+        id: "sandbox-test",
+        verificationEligible: true,
+    };
 
     public readonly capabilities = {
         inputAccess: "sanitized-model-input" as const,
@@ -135,7 +120,3 @@ export class SandboxedTestResultAnalyzer implements ReviewAnalyzer {
         return report.payload;
     }
 }
-
-/** 为唯一的装配边界创建当前提交解析器。 */
-export const createCommittedRevisionProvider = (workingDirectory: string): CommittedRevisionProvider =>
-    createGitRevisionProvider(workingDirectory);

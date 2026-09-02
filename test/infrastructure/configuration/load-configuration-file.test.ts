@@ -1,6 +1,6 @@
-import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
-import { loadConfigurationFile } from "../../../src/infrastructure/configuration/load-configuration-file.js";
+import {fileURLToPath} from "node:url";
+import {describe, expect, it} from "vitest";
+import {loadConfigurationFile} from "../../../src/infrastructure/configuration/load-configuration-file.js";
 
 const fixturePath = (name: string): string => fileURLToPath(
     new URL(`../../fixtures/${name}`, import.meta.url),
@@ -17,6 +17,7 @@ describe("loadConfigurationFile", () => {
                 timeoutMs: 10_000,
                 typeScriptEnabled: true,
                 typeScriptTimeoutMs: 30_000,
+                javaAstEnabled: true,
                 wecomEnabled: false,
                 wecomFailOnError: false,
                 githubCommentEnabled: false,

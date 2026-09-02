@@ -23,7 +23,7 @@ const codeChange = {
 describe("reviewCodeChangeUseCase", () => {
     it("lets an anchored deterministic result participate in the quality gate", async () => {
         const analyzer = {
-            identity: { kind: "typecheck" as const, id: "typescript" },
+            identity: {kind: "typecheck" as const, id: "typescript", verificationEligible: true},
             capabilities: {
                 inputAccess: "trusted-raw-local" as const,
                 supportsChangedOnly: true,
@@ -68,7 +68,7 @@ describe("reviewCodeChangeUseCase", () => {
         expect(result.findings).toEqual([expect.objectContaining({
             verificationStatus: "verified",
             disposition: "defect",
-            analyzer: { kind: "typecheck", id: "typescript" },
+            analyzer: {kind: "typecheck", id: "typescript", verificationEligible: true},
             verificationMethods: ["diff-anchor", "source-range", "evidence-match", "deterministic-analyzer"],
         })]);
         expect(result.policy).toEqual({ highestSeverity: "critical", shouldFail: true });

@@ -1,10 +1,10 @@
-import { execFile } from "node:child_process";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
-import { promisify } from "node:util";
-import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
-import type { ReviewCandidate } from "../../../domain/review/model/review-candidate.js";
-import { findAddedLineEvidence } from "../../../domain/review/policy/find-added-line-evidence.js";
+import {execFile} from "node:child_process";
+import {createRequire} from "node:module";
+import {dirname, join} from "node:path";
+import {promisify} from "node:util";
+import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
+import type {ReviewCandidate} from "../../../domain/review/model/review-candidate.js";
+import {findAddedLineEvidence} from "../../../domain/review/policy/find-added-line-evidence.js";
 import {
     redactSensitiveFilePaths,
     redactSensitiveValues,
@@ -116,7 +116,11 @@ const parseDiagnostics = (output: string): ParsedDiagnostic[] => output.split(/\
  * 离开适配器，从而避免把历史问题或敏感文件路径发布为本次评审结果。
  */
 export class TypeScriptReviewAnalyzer implements ReviewAnalyzer {
-    public readonly identity: AnalyzerIdentity = { kind: "typecheck", id: "typescript" };
+    public readonly identity: AnalyzerIdentity = {
+        kind: "typecheck",
+        id: "typescript",
+        verificationEligible: true,
+    };
 
     public readonly capabilities = {
         inputAccess: "trusted-raw-local" as const,

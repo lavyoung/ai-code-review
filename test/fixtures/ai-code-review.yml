@@ -13,6 +13,8 @@ analyzers:
   typescript:
     enabled: true
     timeout_ms: 30000
+  java_ast:
+    enabled: true
 
 notifiers:
   wecom:

@@ -1,7 +1,7 @@
-import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
-import type { ReviewCandidate } from "../../../domain/review/model/review-candidate.js";
-import type { RawCodeChange } from "../../../domain/review/model/code-change.js";
-import { findAddedLineEvidence } from "../../../domain/review/policy/find-added-line-evidence.js";
+import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
+import type {ReviewCandidate} from "../../../domain/review/model/review-candidate.js";
+import type {RawCodeChange} from "../../../domain/review/model/code-change.js";
+import {findAddedLineEvidence} from "../../../domain/review/policy/find-added-line-evidence.js";
 import {
     containsHighConfidenceSecret,
     isSensitiveFile,
@@ -51,7 +51,11 @@ const findAddedSecretLineNumbers = (diff: string): number[] => {
  * 原始值和敏感路径永不出现在候选项；每项仅通过已脱敏 diff 中的锚点对外发布。
  */
 export class SecretScanReviewAnalyzer implements ReviewAnalyzer {
-    public readonly identity: AnalyzerIdentity = { kind: "secret-scan", id: "secret-scan" };
+    public readonly identity: AnalyzerIdentity = {
+        kind: "secret-scan",
+        id: "secret-scan",
+        verificationEligible: true,
+    };
 
     public readonly capabilities = {
         inputAccess: "trusted-raw-local" as const,

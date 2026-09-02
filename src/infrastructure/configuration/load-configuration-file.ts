@@ -20,10 +20,12 @@ export interface ConfigurationFileOverride {
     typeScriptEnabled?: boolean;
     typeScriptTimeoutMs?: number;
     typeScriptAstEnabled?: boolean;
+    javaAstEnabled?: boolean;
     sandboxTestEnabled?: boolean;
     sandboxTestReportPath?: string;
     sarifEnabled?: boolean;
     sarifReportPath?: string;
+    sarifAttestationPath?: string;
     secretScanEnabled?: boolean;
     deepSeekEnabled?: boolean;
     reviewRunRecordPath?: string;
@@ -73,6 +75,9 @@ const configurationFileSchema = z.object({
         typescript_ast: z.object({
             enabled: z.boolean().optional(),
         }).strict().optional(),
+        java_ast: z.object({
+            enabled: z.boolean().optional(),
+        }).strict().optional(),
         sandbox_tests: z.object({
             enabled: z.boolean().optional(),
             report_path: z.string().trim().min(1).optional(),
@@ -80,6 +85,7 @@ const configurationFileSchema = z.object({
         sarif: z.object({
             enabled: z.boolean().optional(),
             report_path: z.string().trim().min(1).optional(),
+            attestation_path: z.string().trim().min(1).optional(),
         }).strict().optional(),
         secret_scan: z.object({
             enabled: z.boolean().optional(),
@@ -162,6 +168,9 @@ export const loadConfigurationFile = async (
         ...(configuration.analyzers?.typescript_ast?.enabled === undefined
             ? {}
             : {typeScriptAstEnabled: configuration.analyzers.typescript_ast.enabled}),
+        ...(configuration.analyzers?.java_ast?.enabled === undefined
+            ? {}
+            : {javaAstEnabled: configuration.analyzers.java_ast.enabled}),
         ...(configuration.analyzers?.sandbox_tests?.enabled === undefined
             ? {}
             : {sandboxTestEnabled: configuration.analyzers.sandbox_tests.enabled}),
@@ -174,6 +183,9 @@ export const loadConfigurationFile = async (
         ...(configuration.analyzers?.sarif?.report_path === undefined
             ? {}
             : { sarifReportPath: configuration.analyzers.sarif.report_path }),
+        ...(configuration.analyzers?.sarif?.attestation_path === undefined
+            ? {}
+            : {sarifAttestationPath: configuration.analyzers.sarif.attestation_path}),
         ...(configuration.analyzers?.secret_scan?.enabled === undefined
             ? {}
             : { secretScanEnabled: configuration.analyzers.secret_scan.enabled }),

@@ -18,7 +18,9 @@ const deterministicAnalyzerKinds = new Set([
 export const verifyDeterministicAnalyzerFinding = (
     finding: ValidatedFinding,
 ): ValidatedFinding => {
-    if (finding.analyzer === undefined || !deterministicAnalyzerKinds.has(finding.analyzer.kind)) {
+    if (finding.analyzer === undefined
+        || finding.analyzer.verificationEligible !== true
+        || !deterministicAnalyzerKinds.has(finding.analyzer.kind)) {
         return finding;
     }
 

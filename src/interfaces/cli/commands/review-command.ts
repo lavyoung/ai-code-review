@@ -50,10 +50,12 @@ interface ReviewCommandOptions {
     maxModelInputChars?: number;
     typescriptEnabled?: boolean;
     typescriptAstEnabled?: boolean;
+    javaAstEnabled?: boolean;
     sandboxTestEnabled?: boolean;
     sandboxTestReport?: string;
     sarifEnabled?: boolean;
     sarifReport?: string;
+    sarifAttestation?: string;
     secretScanEnabled?: boolean;
     deepseekEnabled?: boolean;
     runRecordPath?: string;
@@ -110,12 +112,15 @@ const reviewCommand = program
         parseBoolean(value, "--typescript-enabled"))
     .option("--typescript-ast-enabled <true|false>", "Enable the local TypeScript AST analyzer", (value) =>
         parseBoolean(value, "--typescript-ast-enabled"))
+    .option("--java-ast-enabled <true|false>", "Enable the local Java AST analyzer", (value) =>
+        parseBoolean(value, "--java-ast-enabled"))
     .option("--sandbox-test-enabled <true|false>", "Enable signed sandbox test result analysis", (value) =>
         parseBoolean(value, "--sandbox-test-enabled"))
     .option("--sandbox-test-report <path>", "Signed sandbox test result report path")
     .option("--sarif-enabled <true|false>", "Enable the local SARIF analyzer", (value) =>
         parseBoolean(value, "--sarif-enabled"))
     .option("--sarif-report <path>", "Path to a SARIF 2.1.0 report")
+    .option("--sarif-attestation <path>", "Path to a signed SARIF attestation")
     .option("--secret-scan-enabled <true|false>", "Enable the local high-confidence secret scanner", (value) =>
         parseBoolean(value, "--secret-scan-enabled"))
     .option("--deepseek-enabled <true|false>", "Enable the DeepSeek semantic analyzer", (value) =>
@@ -169,6 +174,9 @@ const reviewCommand = program
                     ...(options.typescriptAstEnabled === undefined
                         ? {}
                         : {typeScriptAstEnabled: options.typescriptAstEnabled}),
+                    ...(options.javaAstEnabled === undefined
+                        ? {}
+                        : {javaAstEnabled: options.javaAstEnabled}),
                     ...(options.sandboxTestEnabled === undefined
                         ? {}
                         : {sandboxTestEnabled: options.sandboxTestEnabled}),
@@ -177,6 +185,9 @@ const reviewCommand = program
                         : {sandboxTestReportPath: options.sandboxTestReport}),
                     ...(options.sarifEnabled === undefined ? {} : { sarifEnabled: options.sarifEnabled }),
                     ...(options.sarifReport === undefined ? {} : { sarifReportPath: options.sarifReport }),
+                    ...(options.sarifAttestation === undefined
+                        ? {}
+                        : {sarifAttestationPath: options.sarifAttestation}),
                     ...(options.secretScanEnabled === undefined
                         ? {}
                         : { secretScanEnabled: options.secretScanEnabled }),
