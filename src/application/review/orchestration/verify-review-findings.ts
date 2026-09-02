@@ -1,7 +1,7 @@
-import type { CodeChange } from "../../../domain/review/model/code-change.js";
-import type { ValidatedFinding } from "../../../domain/review/model/review-candidate.js";
-import type { FindingVerifier } from "../ports/finding-verifier-port.js";
-import { ReviewVerifierExecutionError } from "../errors/review-execution-error.js";
+import type {CodeChange} from "../../../domain/review/model/code-change.js";
+import type {ValidatedFinding} from "../../../domain/review/model/review-candidate.js";
+import type {FindingVerifier} from "../ports/finding-verifier-port.js";
+import {ReviewVerifierExecutionError} from "../errors/review-execution-error.js";
 
 const preserveFindingIdentity = (
     finding: ValidatedFinding,
@@ -11,6 +11,9 @@ const preserveFindingIdentity = (
     verificationStatus: finding.verificationStatus === "verified" || verified.verificationStatus === "verified"
         ? "verified"
         : "grounded",
+    disposition: finding.disposition === "defect" || verified.disposition === "defect"
+        ? "defect"
+        : "advisory",
     verificationMethods: [...new Set([...finding.verificationMethods, ...verified.verificationMethods])],
 });
 

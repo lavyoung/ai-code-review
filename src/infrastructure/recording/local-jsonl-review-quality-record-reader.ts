@@ -32,8 +32,13 @@ const recordedFindingSchema = z.object({
     fingerprint: z.string().regex(/^[a-f0-9]{24}$/),
     severity: z.enum(["info", "low", "medium", "high", "critical"]),
     verificationStatus: z.enum(["grounded", "verified"]),
+    disposition: z.enum(["advisory", "defect"]).optional(),
     analyzerIds: z.array(z.string()),
-});
+}).transform(({disposition, verificationStatus, ...finding}) => ({
+    ...finding,
+    verificationStatus,
+    disposition: disposition ?? (verificationStatus === "verified" ? "defect" : "advisory"),
+}));
 
 const reviewRunRecordSchema = z.object({
     schemaVersion: z.literal("v1"),
@@ -54,9 +59,11 @@ const feedbackRecordSchema = z.object({
     status: z.enum(["accepted", "false-positive", "not-applicable", "fixed"]),
     recordedAt: z.string().datetime(),
     runId: z.string().uuid().optional(),
-}).transform(({ runId, ...record }) => ({
+    expiresAt: z.string().datetime().optional(),
+}).transform(({runId, expiresAt, ...record}) => ({
     ...record,
     ...(runId === undefined ? {} : { runId }),
+    ...(expiresAt === undefined ? {} : {expiresAt}),
 }));
 
 const qualityRecordSchema = z.union([reviewRunRecordSchema, feedbackRecordSchema]);

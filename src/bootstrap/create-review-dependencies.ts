@@ -33,6 +33,9 @@ import type {ReviewQualityStore} from "../application/review/ports/review-run-re
 import {LocalJsonlReviewRunRecorder} from "../infrastructure/recording/local-jsonl-review-run-recorder.js";
 import {HttpReviewQualityStore} from "../infrastructure/recording/http-review-quality-store.js";
 import {CompositeReviewQualityStore} from "../infrastructure/recording/composite-review-quality-store.js";
+import {
+    LocalJsonlFindingSuppressionReader
+} from "../infrastructure/recording/local-jsonl-finding-suppression-reader.js";
 
 /** CLI 运行时的外部平台上下文无效时抛出，避免接口层依赖具体平台错误类型。 */
 export class ReviewPlatformContextError extends Error {
@@ -128,6 +131,9 @@ export const createReviewDependencies = (
             maxModelInputChars: configuration.execution.maxModelInputChars,
         },
         findingVerifiers: [deterministicAnalyzerFindingVerifier],
+        ...(configuration.recording.localPath === undefined
+            ? {}
+            : {findingSuppressionPort: new LocalJsonlFindingSuppressionReader(configuration.recording.localPath)}),
     };
 };
 

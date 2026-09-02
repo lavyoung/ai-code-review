@@ -4,6 +4,9 @@ import type {AnalyzerIdentity} from "./analyzer-identity.js";
 /** 候选发现项被锚定或验证后的状态。 */
 export type FindingVerificationStatus = "grounded" | "verified";
 
+/** 对外呈现的处置级别；AI 建议不能伪装为已确认缺陷。 */
+export type FindingDisposition = "advisory" | "defect";
+
 /** AI 或其他分析器提出、尚未验证的评审候选项。 */
 export interface ReviewCandidate extends ReviewFinding {
     /** 执行器写入的来源；模型或外部工具不得自行声明。 */
@@ -21,6 +24,8 @@ export interface ValidatedFinding extends ReviewFinding {
     chunkId: string;
     evidence: string;
     verificationStatus: FindingVerificationStatus;
+    /** `verified` 的确定性结果才可作为 `defect` 处置。 */
+    disposition: FindingDisposition;
     verificationMethods: FindingVerificationMethod[];
     analyzer?: AnalyzerIdentity;
     /** 产生或确认同一发现的受控分析器来源。 */
@@ -42,7 +47,9 @@ export type CandidateSuppressionReason =
     | "unknown-chunk"
     | "location-mismatch"
     | "missing-evidence"
-    | "evidence-mismatch";
+    | "evidence-mismatch"
+    | "redacted-dependency"
+    | "feedback-suppressed";
 
 /** 验证步骤对候选项的安全结果。 */
 export interface CandidateValidationResult {

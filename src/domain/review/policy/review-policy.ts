@@ -1,5 +1,5 @@
-import type { ValidatedFinding } from "../model/review-candidate.js";
-import type { Severity } from "../model/severity.js";
+import type {ValidatedFinding} from "../model/review-candidate.js";
+import type {Severity} from "../model/severity.js";
 
 const severityRanks: Record<Severity, number> = {
     info: 0,
@@ -38,6 +38,7 @@ export const evaluateReviewPolicy = (
     return {
         highestSeverity,
         shouldFail: findings.some((finding) => finding.verificationStatus === "verified"
+            && finding.disposition === "defect"
             && failOn.includes(finding.severity)),
     };
 };

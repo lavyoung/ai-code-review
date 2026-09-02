@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import {describe, expect, it, vi} from "vitest";
 import {
     createSanitizedFindingFeedback,
     recordFindingFeedbackUseCase,
@@ -23,6 +23,16 @@ describe("finding feedback recording", () => {
         });
         expect(JSON.stringify(feedback)).not.toContain(".env");
         expect(JSON.stringify(feedback)).not.toContain("token=");
+    });
+
+    it("preserves an optional suppression expiry without storing free text", () => {
+        const feedback = createSanitizedFindingFeedback({
+            fingerprint: "0123456789abcdef01234567",
+            status: "false-positive",
+            expiresAt: "2026-10-02T00:00:00.000Z",
+        }, "2026-09-02T00:00:00.000Z", "40e4c6ec-8be2-4de2-9d5e-54cda88a3cf0");
+
+        expect(feedback.expiresAt).toBe("2026-10-02T00:00:00.000Z");
     });
 
     it("returns a safe delivery status when persistence succeeds or fails", async () => {

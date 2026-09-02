@@ -25,6 +25,7 @@ export const verifyDeterministicAnalyzerFinding = (
     return {
         ...finding,
         verificationStatus: "verified",
+        disposition: "defect",
         verificationMethods: [
             ...finding.verificationMethods,
             ...(finding.analyzer.kind === "ast" ? ["ast" as const] : []),

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { verifyReviewFindings } from "../../../../src/application/review/orchestration/verify-review-findings.js";
-import { ReviewVerifierExecutionError } from "../../../../src/application/review/errors/review-execution-error.js";
+import {describe, expect, it} from "vitest";
+import {verifyReviewFindings} from "../../../../src/application/review/orchestration/verify-review-findings.js";
+import {ReviewVerifierExecutionError} from "../../../../src/application/review/errors/review-execution-error.js";
 
 const codeChange = {
     diff: "",
@@ -17,6 +17,7 @@ const finding = {
     chunkId: "chunk-1",
     evidence: "+const enabled = true;",
     verificationStatus: "grounded" as const,
+    disposition: "advisory" as const,
     verificationMethods: ["diff-anchor", "evidence-match"],
     analyzer: { kind: "ai" as const, id: "deepseek" },
 };
@@ -30,6 +31,7 @@ describe("verifyReviewFindings", () => {
                 severity: "critical",
                 title: "Rewritten finding",
                 verificationStatus: "verified",
+                disposition: "defect",
                 verificationMethods: ["deterministic-analyzer"],
             }),
         }]);
@@ -37,6 +39,7 @@ describe("verifyReviewFindings", () => {
         expect(result).toEqual([{
             ...finding,
             verificationStatus: "verified",
+            disposition: "defect",
             verificationMethods: ["diff-anchor", "evidence-match", "deterministic-analyzer"],
         }]);
     });

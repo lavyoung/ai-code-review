@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { evaluateReviewPolicy } from "../../../../src/domain/review/policy/review-policy.js";
+import {describe, expect, it} from "vitest";
+import {evaluateReviewPolicy} from "../../../../src/domain/review/policy/review-policy.js";
 
 describe("evaluateReviewPolicy", () => {
     it("returns no highest severity and does not fail when there are no findings", () => {
@@ -18,6 +18,7 @@ describe("evaluateReviewPolicy", () => {
                 chunkId: "chunk-1",
                 evidence: "+const medium = true;",
                 verificationStatus: "grounded",
+                disposition: "advisory",
             },
             {
                 severity: "critical",
@@ -26,6 +27,7 @@ describe("evaluateReviewPolicy", () => {
                 chunkId: "chunk-2",
                 evidence: "+throw new Error();",
                 verificationStatus: "verified",
+                disposition: "defect",
             },
         ], ["critical"])).toEqual({
             highestSeverity: "critical",

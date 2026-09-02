@@ -252,7 +252,20 @@ analyzers:
 
 ## 发现指纹与去重
 
-每条可输出发现都有稳定的 24 位十六进制指纹。它由安全 diff 分块、行号、类别和规范化标题生成，不包含完整 diff、密钥、敏感路径、证据正文或模型描述。相同运行中来自多个分析器的等价发现会合并为一条，并保留全部受控来源与最高验证状态。该指纹可作为后续人工反馈、误报率统计和跨运行关联的安全键。
+每条可输出发现都有稳定的 24 位十六进制指纹。它由安全 diff 分块、行号、类别和规范化标题生成，不包含完整
+diff、密钥、敏感路径、证据正文或模型描述。相同运行中来自多个分析器的等价发现会合并为一条，并保留全部受控来源与最高验证状态。该指纹可作为后续人工反馈、误报率统计和同一变更重跑时的
+AI 建议抑制键。
+
+## 发现处置与误报治理
+
+报告固定分为三个区域：
+
+- **Confirmed findings**：由 TypeScript、AST、SARIF、密钥扫描或受控测试等确定性来源验证的 `verified` 缺陷；只有这一类可触发质量门禁。
+- **AI suggestions for review**：DeepSeek 的 `grounded` 建议；它们已锚定到本次 diff，但尚未被确定性验证，永远不会阻断流水线。
+- **Suppressed candidates**：证据缺失、位置不匹配、依赖 `[REDACTED]` 脱敏占位符，或被有效人工误报反馈命中的候选项；仅输出安全原因码和数量。
+
+模型不得依据 `[REDACTED]` 推导语法、配置、依赖或业务缺陷。编译、包清单、工作流语法和文档链接等机械结论应由确定性分析器或 CI
+检查产生，而不是由 AI 直接判定。
 
 ## 脱敏运行记录
 
@@ -299,11 +312,17 @@ ai-code-review feedback \
   --fingerprint 0123456789abcdef01234567 \
   --status false-positive \
   --run-id 5ff86dc0-213b-4dc0-9490-ad8a8d15e99a \
+  --expires-at 2026-12-31T00:00:00Z \
   --run-record-path .ai-code-review/runs.jsonl
 ```
 
-可选状态为 `accepted`、`false-positive`、`not-applicable` 和 `fixed`。未配置本地记录路径或组织级质量存储时命令以退出码
-`102` 结束；写入失败时输出 `Finding feedback: failed` 并以退出码 `107` 结束。组织存储只接收指纹和固定状态，支持跨仓库聚合；不得将其用于未经人工审核的规则自动调整。
+可选状态为 `accepted`、`false-positive`、`not-applicable` 和 `fixed`。本地 JSONL 记录中最新的、未到期的 `false-positive` 或
+`not-applicable` 反馈，会抑制同一指纹的 **AI advisory**；后续记录 `accepted` 或 `fixed` 会撤销该抑制。`verified` 发现永不受反馈抑制。
+`--expires-at` 仅适用于可抑制状态。
+
+未配置本地记录路径或组织级质量存储时命令以退出码 `102` 结束；写入失败时输出 `Finding feedback: failed` 并以退出码 `107`
+结束。组织存储只接收指纹和固定状态，支持跨仓库聚合；不得将其用于未经人工审核的规则自动调整。当前自动抑制读取本地
+JSONL；组织级存储需实现同一读取端口后才能参与跨仓库抑制。
 
 ## 本地质量指标
 

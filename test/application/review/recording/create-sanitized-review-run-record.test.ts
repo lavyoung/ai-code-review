@@ -21,6 +21,7 @@ describe("createSanitizedReviewRunRecord", () => {
                 chunkId: "chunk-1",
                 evidence: "+token: exposed-value",
                 verificationStatus: "verified",
+                disposition: "defect",
                 verificationMethods: ["diff-anchor"],
                 analyzers: [{ kind: "secret-scan", id: "secret-scanner" }],
             }],
@@ -46,6 +47,7 @@ describe("createSanitizedReviewRunRecord", () => {
                 fingerprint: "0123456789abcdef01234567",
                 severity: "high",
                 verificationStatus: "verified",
+                disposition: "defect",
                 analyzerIds: ["secret-scan:secret-scanner"],
             }],
         });

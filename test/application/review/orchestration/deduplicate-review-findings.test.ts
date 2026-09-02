@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { deduplicateReviewFindings } from "../../../../src/application/review/orchestration/deduplicate-review-findings.js";
+import {describe, expect, it} from "vitest";
+import {
+    deduplicateReviewFindings
+} from "../../../../src/application/review/orchestration/deduplicate-review-findings.js";
 
 const baseFinding = {
     fingerprint: "initial-fingerprint",
@@ -12,6 +14,7 @@ const baseFinding = {
     chunkId: "chunk-1",
     evidence: "+const value: number = 'invalid';",
     verificationStatus: "grounded" as const,
+    disposition: "advisory" as const,
     verificationMethods: ["diff-anchor", "evidence-match"],
     analyzer: { kind: "ai" as const, id: "deepseek" },
     analyzers: [{ kind: "ai" as const, id: "deepseek" }],
@@ -25,6 +28,7 @@ describe("deduplicateReviewFindings", () => {
                 ...baseFinding,
                 description: "The TypeScript compiler confirmed the assignment.",
                 verificationStatus: "verified" as const,
+                disposition: "defect" as const,
                 verificationMethods: ["diff-anchor", "evidence-match", "deterministic-analyzer"],
                 analyzer: { kind: "typecheck" as const, id: "typescript" },
                 analyzers: [{ kind: "typecheck" as const, id: "typescript" }],
@@ -34,6 +38,7 @@ describe("deduplicateReviewFindings", () => {
         expect(result).toHaveLength(1);
         expect(result[0]).toMatchObject({
             verificationStatus: "verified",
+            disposition: "defect",
             analyzers: [
                 { kind: "ai", id: "deepseek" },
                 { kind: "typecheck", id: "typescript" },

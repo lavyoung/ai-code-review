@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { validateReviewCandidates } from "../../../../src/domain/review/policy/validate-review-candidates.js";
+import {describe, expect, it} from "vitest";
+import {validateReviewCandidates} from "../../../../src/domain/review/policy/validate-review-candidates.js";
 
 const codeChange = {
     diff: "@@ -0,0 +10,2 @@\n+const enabled = true;\n+run(enabled);",
@@ -38,6 +38,7 @@ describe("validateReviewCandidates", () => {
             chunkId: "chunk-1",
             evidence: "+run(enabled);",
             verificationStatus: "grounded",
+            disposition: "advisory",
             verificationMethods: ["diff-anchor", "source-range", "evidence-match"],
         })]);
         expect(result.suppressedCounts).toEqual({ "location-mismatch": 1 });
@@ -74,6 +75,42 @@ describe("validateReviewCandidates", () => {
 
         expect(result.findings).toEqual([expect.objectContaining({
             verificationMethods: ["diff-anchor", "evidence-match"],
+        })]);
+    });
+
+    it("suppresses an AI conclusion that depends on a redaction placeholder", () => {
+        const result = validateReviewCandidates([{
+            severity: "high",
+            title: "Invalid API key check",
+            description: "The [REDACTED] value causes a syntax error.",
+            chunkId: "chunk-1",
+            evidence: "+const enabled = true;",
+            analyzer: {kind: "ai", id: "deepseek"},
+        }], codeChange);
+
+        expect(result.findings).toEqual([]);
+        expect(result.suppressedCounts).toEqual({"redacted-dependency": 1});
+    });
+
+    it("keeps redacted evidence from a deterministic secret scanner", () => {
+        const result = validateReviewCandidates([{
+            severity: "critical",
+            title: "Credential detected",
+            description: "A high-confidence credential pattern was added.",
+            chunkId: "chunk-1",
+            evidence: "+const enabled = [REDACTED];",
+            analyzer: {kind: "secret-scan", id: "secret-scanner"},
+        }], {
+            ...codeChange,
+            chunks: [{
+                ...codeChange.chunks[0],
+                content: "@@ -0,0 +10,1 @@\n+const enabled = [REDACTED];",
+            }],
+        });
+
+        expect(result.findings).toEqual([expect.objectContaining({
+            evidence: "+const enabled = [REDACTED];",
+            disposition: "advisory",
         })]);
     });
 });

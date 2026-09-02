@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import {randomUUID} from "node:crypto";
 import type {
     FindingFeedbackStatus,
     ReviewFeedbackPort,
@@ -10,6 +10,7 @@ export interface RecordFindingFeedbackCommand {
     fingerprint: string;
     status: FindingFeedbackStatus;
     runId?: string;
+    expiresAt?: string;
 }
 
 /** 创建不含自由文本或仓库数据的人工反馈事件。 */
@@ -25,6 +26,7 @@ export const createSanitizedFindingFeedback = (
     status: command.status,
     recordedAt,
     ...(command.runId === undefined ? {} : { runId: command.runId }),
+    ...(command.expiresAt === undefined ? {} : {expiresAt: command.expiresAt}),
 });
 
 /** 反馈记录失败不会泄露底层存储细节。 */

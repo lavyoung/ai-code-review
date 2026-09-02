@@ -1,5 +1,5 @@
 import type {Severity} from "../../../domain/review/model/severity.js";
-import type {FindingVerificationStatus} from "../../../domain/review/model/review-candidate.js";
+import type {FindingDisposition, FindingVerificationStatus,} from "../../../domain/review/model/review-candidate.js";
 import type {AnalyzerFailureReason} from "./review-analyzer-port.js";
 
 /** 可持久化的安全发现摘要，不含路径、文本、diff 或证据内容。 */
@@ -7,6 +7,7 @@ export interface SanitizedRecordedFinding {
     fingerprint: string;
     severity: Severity;
     verificationStatus: FindingVerificationStatus;
+    disposition: FindingDisposition;
     analyzerIds: string[];
 }
 
@@ -46,6 +47,8 @@ export interface SanitizedFindingFeedback {
     status: FindingFeedbackStatus;
     recordedAt: string;
     runId?: string;
+    /** 可选到期时间；只允许对 AI 建议产生临时抑制。 */
+    expiresAt?: string;
 }
 
 /** 可被安全质量度量读取的本地或远程事件联合类型。 */

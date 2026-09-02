@@ -1,5 +1,5 @@
-import type { ValidatedFinding } from "../../../domain/review/model/review-candidate.js";
-import { createFindingFingerprint } from "../../../domain/review/policy/create-finding-fingerprint.js";
+import type {ValidatedFinding} from "../../../domain/review/model/review-candidate.js";
+import {createFindingFingerprint} from "../../../domain/review/policy/create-finding-fingerprint.js";
 
 const uniqueAnalyzers = (findings: readonly ValidatedFinding[]) => Array.from(new Map(
     findings.flatMap((finding) => finding.analyzers).map((analyzer) => [
@@ -32,6 +32,9 @@ export const deduplicateReviewFindings = (
             verificationStatus: duplicates.some((finding) => finding.verificationStatus === "verified")
                 ? "verified"
                 : "grounded",
+            disposition: duplicates.some((finding) => finding.disposition === "defect")
+                ? "defect"
+                : "advisory",
             verificationMethods: [...new Set(duplicates.flatMap((finding) => finding.verificationMethods))],
         };
     });

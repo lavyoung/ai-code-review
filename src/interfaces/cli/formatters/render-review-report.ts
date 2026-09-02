@@ -91,6 +91,10 @@ const formatFinding = (finding: ValidatedFinding, index: number): string => {
     return `${index + 1}. [${finding.verificationStatus}] [${finding.severity}] ${redactText(finding.title)}${formatLocation(finding)}\n   ${redactText(finding.description)}${suggestion}\n   Fingerprint: \`${finding.fingerprint}\``;
 };
 
+const formatFindings = (findings: readonly ValidatedFinding[], emptyMessage: string): string => findings.length === 0
+    ? emptyMessage
+    : findings.map(formatFinding).join("\n\n");
+
 const countFindingsByVerificationStatus = (
     findings: readonly ValidatedFinding[],
 ): Record<ValidatedFinding["verificationStatus"], number> => findings.reduce(
@@ -120,9 +124,10 @@ export const renderReviewReport = (
     } = input.result;
     const status = policy.shouldFail ? "QUALITY GATE FAILED" : "PASSED";
     const verificationCounts = countFindingsByVerificationStatus(validatedFindings);
-    const findings = validatedFindings.length === 0
-        ? "No actionable findings."
-        : validatedFindings.map(formatFinding).join("\n\n");
+    const confirmedFindings = validatedFindings.filter((finding) => finding.disposition === "defect");
+    const advisoryFindings = validatedFindings.filter((finding) => finding.disposition === "advisory");
+    const suppressedCandidateCount = Object.values(input.result.suppressedCandidateCounts)
+        .reduce((total, count) => total + count, 0);
 
     return [
         "## AI Code Review",
@@ -134,8 +139,7 @@ export const renderReviewReport = (
         `- Findings: ${validatedFindings.length}`,
         `- Verified findings: ${verificationCounts.verified}`,
         `- Grounded findings: ${verificationCounts.grounded}`,
-        `- Filtered candidates: ${Object.values(input.result.suppressedCandidateCounts)
-            .reduce((total, count) => total + count, 0)}`,
+        `- Suppressed candidates: ${suppressedCandidateCount}`,
         ...(formatAnalyzerRuns(input.result.analyzerRuns) === undefined
             ? []
             : [`- Analyzer status: ${formatAnalyzerRuns(input.result.analyzerRuns)}`]),
@@ -147,9 +151,23 @@ export const renderReviewReport = (
         "",
         redactText(analysis.summary),
         "",
-        "### Findings",
+        "### Confirmed findings",
         "",
-        findings,
+        formatFindings(confirmedFindings, "No confirmed findings."),
+        "",
+        "### AI suggestions for review",
+        "",
+        "These suggestions are anchored to the diff but have not been deterministically verified; they do not represent confirmed defects and never affect the quality gate.",
+        "",
+        formatFindings(advisoryFindings, "No AI suggestions requiring review."),
+        "",
+        "### Suppressed candidates",
+        "",
+        suppressedCandidateCount === 0
+            ? "No candidates were suppressed."
+            : Object.entries(input.result.suppressedCandidateCounts)
+                .map(([reason, count]) => `- ${reason}: ${count}`)
+                .join("\n"),
         "",
         ...(input.includeDeliveryStatus === false
             ? []

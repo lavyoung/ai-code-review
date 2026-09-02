@@ -110,6 +110,7 @@ describe("renderReviewReport", () => {
                     evidence: "+token: [REDACTED]",
                     fingerprint: "0123456789abcdef01234567",
                     verificationStatus: "verified",
+                    disposition: "defect",
                     verificationMethods: ["diff-anchor", "evidence-match"],
                     analyzers: [],
                 }],
@@ -124,6 +125,8 @@ describe("renderReviewReport", () => {
         expect(report).toContain("## AI Code Review");
         expect(report).toContain("Status: QUALITY GATE FAILED");
         expect(report).toContain("[verified] [high] Authorization: Bearer [REDACTED]");
+        expect(report).toContain("### Confirmed findings");
+        expect(report).toContain("### AI suggestions for review");
         expect(report).toContain("Verified findings: 1");
         expect(report).toContain("Grounded findings: 0");
         expect(report).toContain("Fingerprint: `0123456789abcdef01234567`");
@@ -158,7 +161,7 @@ describe("renderReviewReport", () => {
 
         expect(report).toContain("Status: PASSED");
         expect(report).toContain("Highest severity: none");
-        expect(report).toContain("No actionable findings.");
+        expect(report).toContain("No confirmed findings.");
         expect(report).toContain("WeCom: disabled");
     });
 

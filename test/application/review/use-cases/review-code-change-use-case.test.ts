@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
-import { StaticReviewAnalyzerRegistry } from "../../../../src/application/review/orchestration/static-review-analyzer-registry.js";
-import { reviewCodeChangeUseCase } from "../../../../src/application/review/use-cases/review-code-change-use-case.js";
-import { deterministicAnalyzerFindingVerifier } from "../../../../src/application/review/verification/deterministic-analyzer-finding-verifier.js";
+import {describe, expect, it, vi} from "vitest";
+import {
+    StaticReviewAnalyzerRegistry
+} from "../../../../src/application/review/orchestration/static-review-analyzer-registry.js";
+import {reviewCodeChangeUseCase} from "../../../../src/application/review/use-cases/review-code-change-use-case.js";
+import {
+    deterministicAnalyzerFindingVerifier
+} from "../../../../src/application/review/verification/deterministic-analyzer-finding-verifier.js";
 
 const codeChange = {
     diff: "@@ -0,0 +1 @@\n+const value: number = 'invalid';",
@@ -63,9 +67,72 @@ describe("reviewCodeChangeUseCase", () => {
 
         expect(result.findings).toEqual([expect.objectContaining({
             verificationStatus: "verified",
+            disposition: "defect",
             analyzer: { kind: "typecheck", id: "typescript" },
             verificationMethods: ["diff-anchor", "source-range", "evidence-match", "deterministic-analyzer"],
         })]);
         expect(result.policy).toEqual({ highestSeverity: "critical", shouldFail: true });
+    });
+
+    it("suppresses only AI advisory findings recorded as false positives", async () => {
+        const analyzer = {
+            identity: {kind: "ai" as const, id: "deepseek"},
+            capabilities: {
+                inputAccess: "sanitized-model-input" as const,
+                supportsChangedOnly: true,
+                supportsRepositoryScan: false,
+            },
+            analyze: vi.fn().mockResolvedValue({
+                summary: "Suggestion found.",
+                findings: [{
+                    severity: "high",
+                    title: "Consider a guard",
+                    description: "The changed assignment needs a guard.",
+                    file: "src/example.ts",
+                    line: 1,
+                    chunkId: "chunk-1",
+                    evidence: "+const value: number = 'invalid';",
+                }],
+            }),
+        };
+
+        const initialResult = await reviewCodeChangeUseCase({
+            reviewInput: {rawCodeChange: {fileChanges: []}, codeChange},
+            failOn: ["critical"],
+        }, {
+            reviewAnalyzerRegistry: new StaticReviewAnalyzerRegistry([analyzer]),
+            analyzerPlans: [{analyzerId: "deepseek", required: true, timeoutMs: 1_000, failureMode: "fail"}],
+            analyzerBudget: {
+                totalTimeoutMs: 1_000,
+                maxConcurrency: 1,
+                maxAiRequestCount: 1,
+                maxModelInputChars: 10_000
+            },
+            findingVerifiers: [deterministicAnalyzerFindingVerifier],
+        });
+        const fingerprint = initialResult.findings[0]?.fingerprint;
+        if (fingerprint === undefined) {
+            throw new Error("Expected an AI advisory fingerprint.");
+        }
+
+        const suppressedResult = await reviewCodeChangeUseCase({
+            reviewInput: {rawCodeChange: {fileChanges: []}, codeChange},
+            failOn: ["critical"],
+        }, {
+            reviewAnalyzerRegistry: new StaticReviewAnalyzerRegistry([analyzer]),
+            analyzerPlans: [{analyzerId: "deepseek", required: true, timeoutMs: 1_000, failureMode: "fail"}],
+            analyzerBudget: {
+                totalTimeoutMs: 1_000,
+                maxConcurrency: 1,
+                maxAiRequestCount: 1,
+                maxModelInputChars: 10_000
+            },
+            findingVerifiers: [deterministicAnalyzerFindingVerifier],
+            findingSuppressionPort: {getActiveSuppressedFingerprints: vi.fn().mockResolvedValue([fingerprint])},
+        });
+
+        expect(suppressedResult.findings).toEqual([]);
+        expect(suppressedResult.suppressedCandidateCounts).toEqual({"feedback-suppressed": 1});
+        expect(suppressedResult.policy).toEqual({highestSeverity: null, shouldFail: false});
     });
 });

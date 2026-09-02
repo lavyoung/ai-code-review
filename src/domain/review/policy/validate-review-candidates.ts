@@ -1,11 +1,11 @@
-import type { CodeChange, DiffChunk } from "../model/code-change.js";
+import type {CodeChange, DiffChunk} from "../model/code-change.js";
 import type {
     CandidateSuppressionReason,
     CandidateValidationResult,
     ReviewCandidate,
     ValidatedFinding,
 } from "../model/review-candidate.js";
-import { createFindingFingerprint } from "./create-finding-fingerprint.js";
+import {createFindingFingerprint} from "./create-finding-fingerprint.js";
 
 const suppress = (
     suppressedCounts: CandidateValidationResult["suppressedCounts"],
@@ -29,6 +29,14 @@ const hasMatchingLocation = (candidate: ReviewCandidate, chunk: DiffChunk): bool
 };
 
 /**
+ * `[REDACTED]` 表示模型无法获得原始值，不能作为推导语法、配置或业务结论的依据。
+ * 高置信度密钥扫描由确定性分析器承担，因此只抑制 AI 产生的此类候选。
+ */
+const dependsOnRedactedPlaceholder = (candidate: ReviewCandidate): boolean => candidate.analyzer?.kind === "ai"
+    && [candidate.title, candidate.description, candidate.suggestion, candidate.evidence]
+        .some((value) => value?.includes("[REDACTED]") ?? false);
+
+/**
  * 仅保留能够映射到当前已脱敏变更块、且证据文本真实存在的候选项。
  *
  * 此验证不尝试证明业务结论正确；它只建立可追溯性，因此结果状态为
@@ -43,6 +51,11 @@ export const validateReviewCandidates = (
     const suppressedCounts: CandidateValidationResult["suppressedCounts"] = {};
 
     for (const candidate of candidates) {
+        if (dependsOnRedactedPlaceholder(candidate)) {
+            suppress(suppressedCounts, "redacted-dependency");
+            continue;
+        }
+
         if (candidate.chunkId === undefined) {
             suppress(suppressedCounts, "missing-chunk-reference");
             continue;
@@ -76,6 +89,7 @@ export const validateReviewCandidates = (
             chunkId: candidate.chunkId,
             evidence: candidate.evidence,
             verificationStatus: "grounded",
+            disposition: "advisory",
             verificationMethods: [
                 "diff-anchor",
                 ...(candidate.line === undefined ? [] : ["source-range" as const]),

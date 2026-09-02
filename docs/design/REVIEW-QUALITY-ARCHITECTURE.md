@@ -209,7 +209,9 @@ interface FindingVerification {
 }
 ```
 
-`ReviewCandidate` 不是对用户可见的最终对象。完成安全、变更锚定和证据一致性检查的 `grounded` 发现可以进入摘要评论；获得确定性工具或可执行验证的 `verified` 发现可以参与门禁。`suppressed` 候选项只保留脱敏计数、分类和原因码。
+`ReviewCandidate` 不是对用户可见的最终对象。完成安全、变更锚定和证据一致性检查的 `grounded` 发现只能以 `advisory` 进入“AI
+suggestions for review”区域；获得确定性工具或可执行验证的 `verified` 发现以 `defect` 进入“Confirmed findings”区域并可参与门禁。
+`suppressed` 候选项只保留脱敏计数、分类和原因码。
 
 状态聚合规则固定为：安全拒绝、找不到变更块、范围越界、证据摘要不一致或重复冲突时为 `suppressed`；仅完成锚定和证据一致性时为 `grounded`；任一适用的确定性验证通过时为 `verified`。单个验证器返回的是一条 `VerificationEvidence`，应用层负责聚合为 `FindingVerification`。
 
@@ -381,7 +383,8 @@ interface ReviewDecision {
 3. 评论、通知和 CI 日志是否投递；投递失败按各渠道重试与阻断策略处理。
 4. 将稳定、脱敏的 `ReviewDecision` 映射为既有三位退出码。
 
-门禁资格固定为：`finding.verification.status === "verified"` 且发现严重级别命中仓库、分支和事件的 `fail_on_verified` 策略。`grounded` 的 AI 语义发现可评论、可通知，但绝不因模型置信度或单独的项目开关而阻断流水线。
+门禁资格固定为：`finding.verification.status === "verified"` 且 `finding.disposition === "defect"`，并且发现严重级别命中仓库、分支和事件的
+`fail_on_verified` 策略。`grounded` 的 AI 语义发现只能以 `advisory` 形式评论、可通知，但绝不因模型置信度或单独的项目开关而阻断流水线。
 
 摘要评论仍是唯一的首期平台评论形式。它包含评审范围、分析器状态、已验证发现统计、门禁结果和投递状态。它不输出被过滤的敏感路径、内容或完整证据片段。
 
@@ -424,7 +427,9 @@ interface ReviewDecision {
 
 ## 9. 反馈与质量度量
 
-系统需要支持人工对最终发现项记录：`accepted`、`false-positive`、`not-applicable`、`fixed`。反馈不直接修改模型输出，而是形成审计记录和聚合指标。
+系统需要支持人工对最终发现项记录：`accepted`、`false-positive`、`not-applicable`、`fixed`。反馈不直接修改模型输出，而是形成审计记录和聚合指标。最新且未到期的
+`false-positive` 与 `not-applicable` 反馈可以抑制同一指纹的 AI `advisory`；`accepted` 或 `fixed` 反馈撤销抑制。确定性
+`verified` 缺陷、密钥扫描和受控测试结果永不受此机制抑制。
 
 评论不是反馈的真相来源。跨仓库质量度量的生产实现是组织受控的 `ReviewQualityStore`：CLI/Action 通过签名 HTTPS
 事件提交脱敏运行记录和反馈，再由组织受控存储保存。当前协议固定为向配置的 HTTPS `endpoint_url` 发送 JSON `POST`，正文只能是版本化

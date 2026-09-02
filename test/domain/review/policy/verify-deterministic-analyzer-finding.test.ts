@@ -10,6 +10,7 @@ const groundedFinding = {
     chunkId: "chunk-1",
     evidence: "+const value: number = 'invalid';",
     verificationStatus: "grounded" as const,
+    disposition: "advisory" as const,
     verificationMethods: ["diff-anchor", "evidence-match"] as const,
 };
 
@@ -20,6 +21,7 @@ describe("verifyDeterministicAnalyzerFinding", () => {
             analyzer: { kind: "typecheck", id: "typescript" },
         })).toMatchObject({
             verificationStatus: "verified",
+            disposition: "defect",
             verificationMethods: ["diff-anchor", "evidence-match", "deterministic-analyzer"],
         });
     });

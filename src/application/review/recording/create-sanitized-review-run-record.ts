@@ -24,6 +24,7 @@ export const createSanitizedReviewRunRecord = (
         fingerprint: finding.fingerprint,
         severity: finding.severity,
         verificationStatus: finding.verificationStatus,
+        disposition: finding.disposition,
         analyzerIds: finding.analyzers.map((analyzer) => `${analyzer.kind}:${analyzer.id}`),
     })),
 });

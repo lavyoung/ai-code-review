@@ -31,6 +31,7 @@ ${JSON.stringify(STRUCTURED_REVIEW_CONTRACT.outputSchema)}
 Use this example shape:
 ${JSON.stringify(STRUCTURED_REVIEW_OUTPUT_EXAMPLE)}
 For every finding, chunkId and evidence are required. chunkId must exactly match one provided chunk id. evidence must be a short literal excerpt copied exactly from that chunk, including the diff line prefix. Do not report a finding if you cannot provide both.
+The literal placeholder [REDACTED] means that a value is unavailable. Never infer a syntax, configuration, dependency, or business defect from that placeholder. Do not report compiler, package manifest, workflow syntax, or documentation-link failures unless an explicit diagnostic for that failure is present in the supplied diff.
 When no actionable issue is found, return {"summary":"No actionable issues found.","findings":[]}.`,
     user: `Review these committed, sanitized diff chunks.\n\n<chunks>\n${JSON.stringify(codeChange.chunks)}\n</chunks>`,
 });

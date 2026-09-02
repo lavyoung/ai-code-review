@@ -17,6 +17,7 @@ interface FeedbackCommandOptions {
     fingerprint: string;
     status: FindingFeedbackStatus;
     runId?: string;
+    expiresAt?: string;
     config?: string;
     runRecordPath?: string;
     qualityStoreEnabled?: boolean;
@@ -49,6 +50,15 @@ const parseRunId = (value: string): string => {
     return normalized;
 };
 
+const parseFutureTimestamp = (value: string): string => {
+    const timestamp = Date.parse(value);
+    if (Number.isNaN(timestamp) || timestamp <= Date.now()) {
+        throw new InvalidArgumentError("--expires-at must be a future ISO 8601 timestamp.");
+    }
+
+    return new Date(timestamp).toISOString();
+};
+
 /** 注册人工反馈命令；它只接收稳定指纹和固定状态。 */
 export const configureFeedbackCommand = (program: Command): void => {
     const feedbackCommand = program
@@ -57,6 +67,7 @@ export const configureFeedbackCommand = (program: Command): void => {
         .requiredOption("--fingerprint <fingerprint>", "Finding fingerprint", parseFingerprint)
         .requiredOption("--status <status>", "Feedback status", parseFeedbackStatus)
         .option("--run-id <run-id>", "Optional review run identifier", parseRunId)
+        .option("--expires-at <timestamp>", "Optional expiry for false-positive or not-applicable suppression", parseFutureTimestamp)
         .option("--config <path>", "Configuration file path")
         .option("--run-record-path <path>", "Append feedback to a JSONL review record")
         .option("--quality-store-enabled <true|false>", "Enable the signed organization quality store", (value) =>
@@ -65,6 +76,14 @@ export const configureFeedbackCommand = (program: Command): void => {
             })())
         .option("--quality-store-endpoint <https-url>", "Organization quality store HTTPS endpoint")
         .action(async (options: FeedbackCommandOptions) => {
+            if (options.expiresAt !== undefined
+                && options.status !== "false-positive"
+                && options.status !== "not-applicable") {
+                console.error("--expires-at is only valid with false-positive or not-applicable feedback.");
+                process.exitCode = CLI_EXIT_CODES.INVALID_ARGUMENT;
+                return;
+            }
+
             let qualityStore;
             try {
                 const configuration = await resolveCliReviewConfiguration({
@@ -94,6 +113,7 @@ export const configureFeedbackCommand = (program: Command): void => {
                     fingerprint: options.fingerprint,
                     status: options.status,
                     ...(options.runId === undefined ? {} : { runId: options.runId }),
+                    ...(options.expiresAt === undefined ? {} : {expiresAt: options.expiresAt}),
                 }),
                 qualityStore,
             );
