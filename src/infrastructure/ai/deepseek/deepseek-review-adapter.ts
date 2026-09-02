@@ -1,19 +1,20 @@
-import { z } from "zod";
-import type { ReviewConfiguration } from "../../../application/configuration/review-configuration.js";
-import { buildStructuredReviewPrompt } from "../../../application/review/prompt/build-structured-review-prompt.js";
-import type { AiReviewPort } from "../../../application/review/ports/ai-review-port.js";
+import {z} from "zod";
+import type {ReviewConfiguration} from "../../../application/configuration/review-configuration.js";
+import {
+    STRUCTURED_REVIEW_CONTRACT,
+    type StructuredReviewAnalysis,
+} from "../../../application/review/contracts/structured-review-contract.js";
+import {buildStructuredReviewPrompt} from "../../../application/review/prompt/build-structured-review-prompt.js";
+import type {AiReviewPort} from "../../../application/review/ports/ai-review-port.js";
 import type {
     AnalysisRequest,
     AnalyzerCapabilities,
     AnalyzerIdentity,
 } from "../../../application/review/ports/review-analyzer-port.js";
-import { AiReviewFailure } from "../../../application/review/errors/review-execution-error.js";
-import type { CodeChange } from "../../../domain/review/model/code-change.js";
-import type {
-    ReviewAnalysis,
-} from "../../../domain/review/model/review-finding.js";
-import type { ReviewCandidate } from "../../../domain/review/model/review-candidate.js";
-import { SEVERITIES } from "../../../domain/review/model/severity.js";
+import {AiReviewFailure} from "../../../application/review/errors/review-execution-error.js";
+import type {CodeChange} from "../../../domain/review/model/code-change.js";
+import type {ReviewAnalysis,} from "../../../domain/review/model/review-finding.js";
+import type {ReviewCandidate} from "../../../domain/review/model/review-candidate.js";
 import {
     isSensitiveFile,
     redactSensitiveFilePaths,
@@ -22,24 +23,6 @@ import {
 
 const DEEPSEEK_CHAT_COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
 const MAX_OUTPUT_TOKENS = 4_096;
-
-const reviewFindingSchema = z.object({
-    severity: z.enum(SEVERITIES),
-    title: z.string().trim().min(1),
-    description: z.string().trim().min(1),
-    file: z.string().trim().min(1).optional(),
-    line: z.number().int().positive().optional(),
-    category: z.string().trim().min(1).optional(),
-    suggestion: z.string().trim().min(1).optional(),
-    confidence: z.number().min(0).max(1).optional(),
-    chunkId: z.string().trim().min(1).optional(),
-    evidence: z.string().trim().min(1).max(500).optional(),
-});
-
-const reviewAnalysisSchema = z.object({
-    summary: z.string().trim().min(1),
-    findings: z.array(reviewFindingSchema).max(20),
-});
 
 const chatCompletionSchema = z.object({
     choices: z.array(z.object({
@@ -103,7 +86,7 @@ const isTimeoutError = (error: unknown): boolean => error instanceof Error
     && (error.name === "AbortError" || error.name === "TimeoutError");
 
 const toReviewFinding = (
-    finding: z.infer<typeof reviewFindingSchema>,
+    finding: StructuredReviewAnalysis["findings"][number],
 ): ReviewCandidate => ({
     severity: finding.severity,
     title: finding.title,
@@ -283,9 +266,9 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
             );
         }
 
-        let analysis: z.infer<typeof reviewAnalysisSchema>;
+        let analysis: StructuredReviewAnalysis;
         try {
-            analysis = reviewAnalysisSchema.parse(output);
+            analysis = STRUCTURED_REVIEW_CONTRACT.parse(output);
         } catch (error) {
             throw new AiReviewFailure("invalid-schema", "DeepSeek review output schema was invalid.", error);
         }
