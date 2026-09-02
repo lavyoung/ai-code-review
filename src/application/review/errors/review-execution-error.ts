@@ -60,3 +60,14 @@ export class ReviewAnalyzerExecutionError extends Error {
         this.name = "ReviewAnalyzerExecutionError";
     }
 }
+
+/** 必需验证器无法完成时抛出的应用错误。 */
+export class ReviewVerifierExecutionError extends Error {
+    public constructor(
+        public readonly verifierId: string,
+        cause: unknown,
+    ) {
+        super("Unable to complete required review verifier.", { cause });
+        this.name = "ReviewVerifierExecutionError";
+    }
+}

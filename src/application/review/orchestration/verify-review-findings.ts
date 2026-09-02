@@ -1,6 +1,7 @@
 import type { CodeChange } from "../../../domain/review/model/code-change.js";
 import type { ValidatedFinding } from "../../../domain/review/model/review-candidate.js";
 import type { FindingVerifier } from "../ports/finding-verifier-port.js";
+import { ReviewVerifierExecutionError } from "../errors/review-execution-error.js";
 
 const preserveFindingIdentity = (
     finding: ValidatedFinding,
@@ -18,7 +19,10 @@ export const verifyReviewFindings = (
     findings: readonly ValidatedFinding[],
     codeChange: CodeChange,
     verifiers: readonly FindingVerifier[],
-): ValidatedFinding[] => findings.map((finding) => verifiers.reduce(
-    (current, verifier) => preserveFindingIdentity(current, verifier.verify(current, codeChange)),
-    finding,
-));
+): ValidatedFinding[] => findings.map((finding) => verifiers.reduce((current, verifier) => {
+    try {
+        return preserveFindingIdentity(current, verifier.verify(current, codeChange));
+    } catch (error) {
+        throw new ReviewVerifierExecutionError(verifier.id, error);
+    }
+}, finding));

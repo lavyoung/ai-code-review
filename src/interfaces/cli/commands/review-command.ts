@@ -30,6 +30,7 @@ import {
     AiReviewExecutionError,
     DiffResolutionError,
     ReviewAnalyzerExecutionError,
+    ReviewVerifierExecutionError,
 } from "../../../application/review/errors/review-execution-error.js";
 import { publishNotificationUseCase } from "../../../application/delivery/use-cases/publish-notification-use-case.js";
 import { createSanitizedReviewRunRecord } from "../../../application/review/recording/create-sanitized-review-run-record.js";
@@ -366,6 +367,12 @@ const reviewCommand = program
             if (error instanceof ReviewAnalyzerExecutionError) {
                 console.error("Required review analyzer error. Check the enabled analyzer configuration.");
                 process.exitCode = CLI_EXIT_CODES.REQUIRED_ANALYZER_FAILED;
+                return;
+            }
+
+            if (error instanceof ReviewVerifierExecutionError) {
+                console.error("Required review verifier error. Check the enabled verifier configuration.");
+                process.exitCode = CLI_EXIT_CODES.REQUIRED_VERIFIER_FAILED;
                 return;
             }
 
