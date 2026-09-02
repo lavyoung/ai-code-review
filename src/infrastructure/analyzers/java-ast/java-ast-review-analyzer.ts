@@ -1,4 +1,4 @@
-import * as ts from "@typescript/typescript6";
+import {parser} from "@lezer/java";
 import type {RawCodeChange} from "../../../domain/review/model/code-change.js";
 import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
 import type {ReviewCandidate} from "../../../domain/review/model/review-candidate.js";
@@ -21,9 +21,9 @@ const isTrustedLocalRequest = (request: AnalysisRequest): request is AnalysisReq
     rawCodeChange: RawCodeChange;
 } => "rawCodeChange" in request;
 
-const isTypeScriptSource = (path: string): boolean => /\.tsx?$/iu.test(path) && !/\.d\.ts$/iu.test(path);
+const isJavaSource = (path: string): boolean => /\.java$/iu.test(path);
 
-/** 仅提取已提交 diff 的新增源代码行，绝不将其返回到适配器外部。 */
+/** 只返回已提交 diff 的新增 Java 源码行；原始内容不会离开本地分析器。 */
 const findAddedLines = (diff: string): AddedLine[] => {
     const addedLines: AddedLine[] = [];
     let newLineNumber: number | undefined;
@@ -48,41 +48,41 @@ const findAddedLines = (diff: string): AddedLine[] => {
     return addedLines;
 };
 
-/** 仅接受单行中可由 TypeScript AST 完整识别的直接 `eval(...)` 调用。 */
-const containsDirectEvalCall = (path: string, source: string): boolean => {
-    const sourceFile = ts.createSourceFile(
-        path,
-        source,
-        ts.ScriptTarget.Latest,
-        true,
-        path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-    );
-    let found = false;
-    const visit = (node: ts.Node): void => {
-        if (ts.isCallExpression(node)
-            && ts.isIdentifier(node.expression)
-            && node.expression.text === "eval") {
-            found = true;
-            return;
+/**
+ * 使用 Java 语法解析器验证新增语句，再识别直接的 `Runtime.getRuntime().exec(...)` 调用。
+ *
+ * 此规则只证明语法形状，不能证明 `Runtime` 的运行时类型，因此结果保持 advisory，不能
+ * 直接触发质量门禁。
+ */
+const containsDirectRuntimeExecCall = (source: string): boolean => {
+    const wrappedSource = `class ReviewTarget {
+    void review() throws Exception {
+        ${source}
+    }
+}`;
+    const cursor = parser.parse(wrappedSource).cursor();
+    do {
+        if (cursor.name === "⚠") {
+            return false;
         }
-        ts.forEachChild(node, visit);
-    };
-    visit(sourceFile);
-    return found;
+        if (cursor.name === "MethodInvocation"
+            && wrappedSource.slice(cursor.from, cursor.to).replaceAll(/\s/gu, "")
+                .startsWith("Runtime.getRuntime().exec(")) {
+            return true;
+        }
+    } while (cursor.next());
+
+    return false;
 };
 
 /**
- * 对新增 TypeScript 行执行受限 AST 规则检查。
+ * 对已提交 Java diff 执行受限语法检查，不读取工作区、不执行 Maven、Gradle 或 Java 代码。
  *
- * 该分析器只识别语法树可直接证明的 `eval(...)` 调用；不读取工作区文件，因而
- * 不会将未提交改动混入评审范围。原始 diff 仅在本地用于解析，输出仍由安全 diff 锚定。
+ * 发现始终锚定到新增行，并保持为 advisory；语义性 Java 缺陷应由可信的编译器、SARIF 或
+ * 字节码分析报告提供证据后再进入质量门禁。
  */
-export class TypeScriptAstReviewAnalyzer implements ReviewAnalyzer {
-    public readonly identity: AnalyzerIdentity = {
-        kind: "ast",
-        id: "typescript-ast",
-        verificationEligible: true,
-    };
+export class JavaAstReviewAnalyzer implements ReviewAnalyzer {
+    public readonly identity: AnalyzerIdentity = {kind: "ast", id: "java-ast"};
 
     public readonly capabilities = {
         inputAccess: "trusted-raw-local" as const,
@@ -92,15 +92,15 @@ export class TypeScriptAstReviewAnalyzer implements ReviewAnalyzer {
 
     public async analyze(request: AnalysisRequest): Promise<ReviewAnalysis> {
         if (!isTrustedLocalRequest(request)) {
-            throw new Error("TypeScript AST analysis requires trusted raw local input.");
+            throw new Error("Java AST analysis requires trusted raw local input.");
         }
 
         const findings = request.rawCodeChange.fileChanges.flatMap((fileChange): ReviewCandidate[] => {
-            if (isSensitiveFile(fileChange.file) || !isTypeScriptSource(fileChange.file.path)) {
+            if (isSensitiveFile(fileChange.file) || !isJavaSource(fileChange.file.path)) {
                 return [];
             }
             return findAddedLines(fileChange.diff).flatMap((addedLine) => {
-                if (!containsDirectEvalCall(fileChange.file.path, addedLine.content)) {
+                if (!containsDirectRuntimeExecCall(addedLine.content)) {
                     return [];
                 }
                 const located = findAddedLineEvidence(request.codeChange, fileChange.file.path, addedLine.line);
@@ -109,9 +109,9 @@ export class TypeScriptAstReviewAnalyzer implements ReviewAnalyzer {
                 }
                 return [{
                     severity: "high",
-                    title: "Unsafe eval call",
-                    description: "A direct eval call was added to TypeScript code.",
-                    suggestion: "Replace eval with a constrained parser or an explicit implementation.",
+                    title: "Runtime command execution introduced",
+                    description: "A direct Runtime.getRuntime().exec call was added to Java code.",
+                    suggestion: "Validate command construction and prefer a constrained process execution boundary.",
                     category: "security",
                     file: fileChange.file.path,
                     line: addedLine.line,
@@ -122,7 +122,7 @@ export class TypeScriptAstReviewAnalyzer implements ReviewAnalyzer {
         });
 
         return {
-            summary: `TypeScript AST completed with ${findings.length} verified candidate(s).`,
+            summary: `Java AST completed with ${findings.length} advisory candidate(s).`,
             findings,
         };
     }

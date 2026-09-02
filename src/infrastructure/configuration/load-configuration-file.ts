@@ -20,6 +20,7 @@ export interface ConfigurationFileOverride {
     typeScriptEnabled?: boolean;
     typeScriptTimeoutMs?: number;
     typeScriptAstEnabled?: boolean;
+    javaAstEnabled?: boolean;
     sandboxTestEnabled?: boolean;
     sandboxTestReportPath?: string;
     sarifEnabled?: boolean;
@@ -71,6 +72,9 @@ const configurationFileSchema = z.object({
             timeout_ms: z.number().int().positive().optional(),
         }).strict().optional(),
         typescript_ast: z.object({
+            enabled: z.boolean().optional(),
+        }).strict().optional(),
+        java_ast: z.object({
             enabled: z.boolean().optional(),
         }).strict().optional(),
         sandbox_tests: z.object({
@@ -162,6 +166,9 @@ export const loadConfigurationFile = async (
         ...(configuration.analyzers?.typescript_ast?.enabled === undefined
             ? {}
             : {typeScriptAstEnabled: configuration.analyzers.typescript_ast.enabled}),
+        ...(configuration.analyzers?.java_ast?.enabled === undefined
+            ? {}
+            : {javaAstEnabled: configuration.analyzers.java_ast.enabled}),
         ...(configuration.analyzers?.sandbox_tests?.enabled === undefined
             ? {}
             : {sandboxTestEnabled: configuration.analyzers.sandbox_tests.enabled}),

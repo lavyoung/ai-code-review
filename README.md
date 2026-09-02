@@ -5,7 +5,7 @@
 
 ## 你会得到什么
 
-- DeepSeek 语义评审，以及可选的 TypeScript、TypeScript AST、SARIF、受控测试结果和高置信度密钥扫描。
+- DeepSeek 语义评审，以及可选的 TypeScript、TypeScript AST、Java AST、SARIF、受控测试结果和高置信度密钥扫描。
 - 三类清晰的结果：可阻断的已验证缺陷、供人工判断的 AI 建议、以及安全抑制的候选项。
 - GitHub Pull Request 与 CodeUp Merge Request 的可更新摘要评论；企业微信通知和 CI 日志。
 - 不记录完整 diff、密钥、敏感文件路径或敏感文件内容。
@@ -76,6 +76,8 @@ analyzers:
     timeout_ms: 120000
   typescript_ast:
     enabled: false
+  java_ast:
+    enabled: false
   secret_scan:
     enabled: false
   sarif:
@@ -115,7 +117,7 @@ recording:
 | DeepSeek             | `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`、`DEEPSEEK_TIMEOUT_MS`、`REVIEW_OUTPUT_LANGUAGE`                                                                                     |
 | 质量门禁             | `REVIEW_SEVERITY_THRESHOLD`、`REVIEW_FAIL_ON`                                                                                                                             |
 | 执行预算             | `REVIEW_TOTAL_ANALYZER_TIMEOUT_MS`、`REVIEW_MAX_ANALYZER_CONCURRENCY`、`REVIEW_MAX_AI_REQUEST_COUNT`、`REVIEW_MAX_MODEL_INPUT_CHARS`                                      |
-| TypeScript           | `TYPESCRIPT_ANALYZER_ENABLED`、`TYPESCRIPT_ANALYZER_TIMEOUT_MS`、`TYPESCRIPT_AST_ANALYZER_ENABLED`                                                                        |
+| TypeScript / Java    | `TYPESCRIPT_ANALYZER_ENABLED`、`TYPESCRIPT_ANALYZER_TIMEOUT_MS`、`TYPESCRIPT_AST_ANALYZER_ENABLED`、`JAVA_AST_ANALYZER_ENABLED`                                           |
 | 其他分析器           | `SARIF_ANALYZER_ENABLED`、`SARIF_REPORT_PATH`、`SECRET_SCAN_ANALYZER_ENABLED`、`SANDBOX_TEST_ANALYZER_ENABLED`、`SANDBOX_TEST_REPORT_PATH`、`SANDBOX_TEST_SIGNING_SECRET` |
 | GitHub / CodeUp 评论 | `GITHUB_COMMENT_ENABLED`、`GITHUB_COMMENT_FAIL_ON_ERROR`、`GITHUB_TOKEN`、`CODEUP_COMMENT_ENABLED`、`CODEUP_COMMENT_FAIL_ON_ERROR`、`CODEUP_TOKEN`                        |
 | 企业微信             | `WECOM_ENABLED`、`WECOM_FAIL_ON_ERROR`、`WECOM_WEBHOOK_URL`                                                                                                               |
@@ -126,17 +128,33 @@ recording:
 
 ## 分析器与质量门禁
 
-| 分析器         | 默认值 | 结论类型   | 说明                                                     |
-|----------------|--------|------------|----------------------------------------------------------|
-| DeepSeek       | 开启   | `grounded` | 已锚定本次 diff 的 AI 建议，仅供人工评审，不阻断流水线。 |
-| TypeScript     | 关闭   | `verified` | 只输出能可靠定位到新增 diff 行的 `tsc` 诊断。            |
-| TypeScript AST | 关闭   | `verified` | 当前规则可靠识别新增 TypeScript 行中的 `eval(...)`。     |
-| SARIF          | 关闭   | `verified` | 仅采纳已生成的 SARIF 2.1.0 报告中定位到新增行的结果。    |
-| 密钥扫描       | 关闭   | `verified` | 只扫描新增行中的高置信度凭据，不输出凭据或敏感路径。     |
-| 受控测试结果   | 关闭   | `verified` | 仅接受签名有效、提交一致、定位到新增行的外部沙箱结果。   |
+| 分析器         | 默认值 | 结论类型   | 说明                                                                                                             |
+|----------------|--------|------------|------------------------------------------------------------------------------------------------------------------|
+| DeepSeek       | 开启   | `grounded` | 已锚定本次 diff 的 AI 建议，仅供人工评审，不阻断流水线。                                                         |
+| TypeScript     | 关闭   | `verified` | 只输出能可靠定位到新增 diff 行的 `tsc` 诊断。                                                                    |
+| TypeScript AST | 关闭   | `verified` | 当前规则可靠识别新增 TypeScript 行中的 `eval(...)`。                                                             |
+| Java AST       | 关闭   | `grounded` | 只解析新增 Java 行，不执行 Maven 或 Gradle；当前识别直接的 `Runtime.getRuntime().exec(...)` 调用，必须人工确认。 |
+| SARIF          | 关闭   | `verified` | 仅采纳已生成的 SARIF 2.1.0 报告中定位到新增行的结果。                                                            |
+| 密钥扫描       | 关闭   | `verified` | 只扫描新增行中的高置信度凭据，不输出凭据或敏感路径。                                                             |
+| 受控测试结果   | 关闭   | `verified` | 仅接受签名有效、提交一致、定位到新增行的外部沙箱结果。                                                           |
 
 只有 `verified` 发现可以根据 `review.fail_on` 触发质量门禁；DeepSeek 的 `grounded` 建议不会单独阻断流水线。所有分析器共享总时限、并发数、AI
 请求数和模型输入大小预算。DeepSeek 对网络、限流和超时错误最多额外重试两次；认证、JSON、Schema、内容过滤与上下文限制错误不会重试。
+
+### Java 语法检查
+
+启用 `java_ast` 后，固定版本的 Java 解析器只在本地解析已提交 diff 的新增 `.java` 行；它不读取未提交工作区、不启动 JDK，也不执行
+Maven、Gradle 或仓库脚本：
+
+```yaml
+analyzers:
+  java_ast:
+    enabled: true
+```
+
+也可使用 `JAVA_AST_ANALYZER_ENABLED=true` 或 `--java-ast-enabled true`。Java AST 的结果是已锚定的
+advisory，不能直接触发门禁；需要语义、字节码或安全数据流证据时，应由无 Secret 的 Java CI 运行 PMD、SpotBugs、CodeQL 等工具并通过
+SARIF 提供结果。
 
 评审输出固定分为：
 
@@ -190,7 +208,8 @@ jobs:
 `pull_request` 事件。对 Fork PR 应保留无密钥的常规 CI；待专门的安全事件适配完成后，再启用带 Secret 的评审。
 
 Composite Action 输入包括 `output-language`、`comment-enabled`、`deepseek-enabled`、`typescript-enabled`、
-`typescript-ast-enabled`、`sarif-enabled` / `sarif-report`、`secret-scan-enabled`、`sandbox-test-enabled` /
+`typescript-ast-enabled`、`java-ast-enabled`、`sarif-enabled` / `sarif-report`、`secret-scan-enabled`、
+`sandbox-test-enabled` /
 `sandbox-test-report`、`run-record-path`、`quality-store-enabled` / `quality-store-endpoint` 和 `max-model-input-chars`。
 
 若 Action 仓库是公开仓库，调用方无需额外访问设置；若是私有仓库，需要在 Action 仓库的 **Settings → Actions → General →

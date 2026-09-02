@@ -50,6 +50,7 @@ interface ReviewCommandOptions {
     maxModelInputChars?: number;
     typescriptEnabled?: boolean;
     typescriptAstEnabled?: boolean;
+    javaAstEnabled?: boolean;
     sandboxTestEnabled?: boolean;
     sandboxTestReport?: string;
     sarifEnabled?: boolean;
@@ -110,6 +111,8 @@ const reviewCommand = program
         parseBoolean(value, "--typescript-enabled"))
     .option("--typescript-ast-enabled <true|false>", "Enable the local TypeScript AST analyzer", (value) =>
         parseBoolean(value, "--typescript-ast-enabled"))
+    .option("--java-ast-enabled <true|false>", "Enable the local Java AST analyzer", (value) =>
+        parseBoolean(value, "--java-ast-enabled"))
     .option("--sandbox-test-enabled <true|false>", "Enable signed sandbox test result analysis", (value) =>
         parseBoolean(value, "--sandbox-test-enabled"))
     .option("--sandbox-test-report <path>", "Signed sandbox test result report path")
@@ -169,6 +172,9 @@ const reviewCommand = program
                     ...(options.typescriptAstEnabled === undefined
                         ? {}
                         : {typeScriptAstEnabled: options.typescriptAstEnabled}),
+                    ...(options.javaAstEnabled === undefined
+                        ? {}
+                        : {javaAstEnabled: options.javaAstEnabled}),
                     ...(options.sandboxTestEnabled === undefined
                         ? {}
                         : {sandboxTestEnabled: options.sandboxTestEnabled}),

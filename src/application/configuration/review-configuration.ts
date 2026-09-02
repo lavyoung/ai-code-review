@@ -36,6 +36,10 @@ export interface ReviewConfiguration {
         typescriptAst: {
             enabled: boolean;
         };
+        javaAst: {
+            /** 只解析已提交 Java diff 中可由语法直接证明的模式，不执行构建工具。 */
+            enabled: boolean;
+        };
         sandboxTests: {
             enabled: boolean;
             /** 受控沙箱产生的签名结果文件；禁止输出路径或原始内容。 */

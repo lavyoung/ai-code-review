@@ -76,7 +76,11 @@ const hasValidSignature = (payload: SandboxTestPayload, signature: string, secre
  * 失败事件，因此宿主机不需要假装拥有网络或文件系统隔离能力。
  */
 export class SandboxedTestResultAnalyzer implements ReviewAnalyzer {
-    public readonly identity: AnalyzerIdentity = {kind: "test", id: "sandbox-test"};
+    public readonly identity: AnalyzerIdentity = {
+        kind: "test",
+        id: "sandbox-test",
+        verificationEligible: true,
+    };
 
     public readonly capabilities = {
         inputAccess: "sanitized-model-input" as const,

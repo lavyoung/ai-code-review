@@ -1,15 +1,19 @@
-import { readFile } from "node:fs/promises";
-import { isAbsolute, relative } from "node:path";
-import { fileURLToPath } from "node:url";
-import { z } from "zod";
-import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
-import type { ReviewCandidate } from "../../../domain/review/model/review-candidate.js";
-import { findAddedLineEvidence } from "../../../domain/review/policy/find-added-line-evidence.js";
+import {readFile} from "node:fs/promises";
+import {isAbsolute, relative} from "node:path";
+import {fileURLToPath} from "node:url";
+import {z} from "zod";
+import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
+import type {ReviewCandidate} from "../../../domain/review/model/review-candidate.js";
+import {findAddedLineEvidence} from "../../../domain/review/policy/find-added-line-evidence.js";
 import {
     redactSensitiveFilePaths,
     redactSensitiveValues,
 } from "../../../domain/review/policy/sensitive-content-policy.js";
-import type { AnalysisRequest, AnalyzerIdentity, ReviewAnalyzer } from "../../../application/review/ports/review-analyzer-port.js";
+import type {
+    AnalysisRequest,
+    AnalyzerIdentity,
+    ReviewAnalyzer
+} from "../../../application/review/ports/review-analyzer-port.js";
 
 const sarifSchema = z.object({
     version: z.literal("2.1.0"),
@@ -56,7 +60,11 @@ const severityFor = (level: "error" | "warning" | "note" | "none" | undefined): 
 
 /** 将本地 SARIF 2.1.0 报告中的本次新增行诊断映射为统一确定性发现。 */
 export class SarifReviewAnalyzer implements ReviewAnalyzer {
-    public readonly identity: AnalyzerIdentity = { kind: "sast", id: "sarif" };
+    public readonly identity: AnalyzerIdentity = {
+        kind: "sast",
+        id: "sarif",
+        verificationEligible: true,
+    };
     public readonly capabilities = {
         inputAccess: "trusted-raw-local" as const,
         supportsChangedOnly: false,

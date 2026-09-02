@@ -25,6 +25,7 @@ describe("resolveReviewConfiguration", () => {
             timeoutMs: 120_000,
         });
         expect(configuration.analyzers.typescriptAst).toEqual({enabled: false});
+        expect(configuration.analyzers.javaAst).toEqual({enabled: false});
         expect(configuration.analyzers.sandboxTests).toEqual({enabled: false});
         expect(configuration.analyzers.deepseek).toEqual({ enabled: true });
         expect(configuration.analyzers.secretScan).toEqual({ enabled: false });
@@ -213,6 +214,26 @@ describe("resolveReviewConfiguration", () => {
             environment: {TYPESCRIPT_AST_ANALYZER_ENABLED: "true"},
             cli: {typeScriptAstEnabled: false},
         }).analyzers.typescriptAst).toEqual({enabled: false});
+    });
+
+    it("enables the Java AST analyzer through normal configuration precedence", () => {
+        expect(resolveReviewConfiguration({
+            file: {javaAstEnabled: false},
+            environment: {JAVA_AST_ANALYZER_ENABLED: "true"},
+            cli: {javaAstEnabled: false},
+        }).analyzers.javaAst).toEqual({enabled: false});
+    });
+
+    it("allows the Java AST analyzer to run without a DeepSeek API key", () => {
+        expect(resolveReviewConfiguration({
+            environment: {
+                DEEPSEEK_ANALYZER_ENABLED: "false",
+                JAVA_AST_ANALYZER_ENABLED: "true",
+            },
+        }).analyzers).toMatchObject({
+            deepseek: {enabled: false},
+            javaAst: {enabled: true},
+        });
     });
 
     it("requires a signed sandbox report when sandbox test analysis is enabled", () => {

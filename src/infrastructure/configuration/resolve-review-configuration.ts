@@ -30,6 +30,7 @@ const configurationOverrideSchema = z.object({
     typeScriptEnabled: z.boolean().optional(),
     typeScriptTimeoutMs: z.number().int().positive().optional(),
     typeScriptAstEnabled: z.boolean().optional(),
+    javaAstEnabled: z.boolean().optional(),
     sandboxTestEnabled: z.boolean().optional(),
     sandboxTestReportPath: z.string().trim().min(1).optional(),
     sarifEnabled: z.boolean().optional(),
@@ -108,6 +109,7 @@ export const resolveReviewConfiguration = (
         typeScriptAstEnabled: parseBooleanEnvironmentValue(
             sources.environment?.TYPESCRIPT_AST_ANALYZER_ENABLED,
         ),
+        javaAstEnabled: parseBooleanEnvironmentValue(sources.environment?.JAVA_AST_ANALYZER_ENABLED),
         sandboxTestEnabled: parseBooleanEnvironmentValue(
             sources.environment?.SANDBOX_TEST_ANALYZER_ENABLED,
         ),
@@ -188,6 +190,7 @@ export const resolveReviewConfiguration = (
         ?? environment.typeScriptAstEnabled
         ?? file.typeScriptAstEnabled
         ?? false;
+    const javaAstEnabled = cli.javaAstEnabled ?? environment.javaAstEnabled ?? file.javaAstEnabled ?? false;
     const sandboxTestEnabled = cli.sandboxTestEnabled
         ?? environment.sandboxTestEnabled
         ?? file.sandboxTestEnabled
@@ -216,7 +219,7 @@ export const resolveReviewConfiguration = (
         throw new Error("WECOM_WEBHOOK_URL must be set when WeCom notifications are enabled.");
     }
 
-    if (!deepSeekEnabled && !typeScriptEnabled && !typeScriptAstEnabled && !sandboxTestEnabled && !sarifEnabled && !secretScanEnabled) {
+    if (!deepSeekEnabled && !typeScriptEnabled && !typeScriptAstEnabled && !javaAstEnabled && !sandboxTestEnabled && !sarifEnabled && !secretScanEnabled) {
         throw new Error("At least one review analyzer must be enabled.");
     }
 
@@ -286,6 +289,9 @@ export const resolveReviewConfiguration = (
             },
             typescriptAst: {
                 enabled: typeScriptAstEnabled,
+            },
+            javaAst: {
+                enabled: javaAstEnabled,
             },
             sandboxTests: {
                 enabled: sandboxTestEnabled,

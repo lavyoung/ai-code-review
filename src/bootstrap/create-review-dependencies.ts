@@ -4,6 +4,7 @@ import {TypeScriptReviewAnalyzer} from "../infrastructure/analyzers/typescript/t
 import {
     TypeScriptAstReviewAnalyzer
 } from "../infrastructure/analyzers/typescript-ast/typescript-ast-review-analyzer.js";
+import {JavaAstReviewAnalyzer} from "../infrastructure/analyzers/java-ast/java-ast-review-analyzer.js";
 import {
     createCommittedRevisionProvider,
     SandboxedTestResultAnalyzer,
@@ -56,6 +57,9 @@ export const createReviewDependencies = (
     const typeScriptAstAnalyzer = configuration.analyzers.typescriptAst.enabled
         ? new TypeScriptAstReviewAnalyzer()
         : undefined;
+    const javaAstAnalyzer = configuration.analyzers.javaAst.enabled
+        ? new JavaAstReviewAnalyzer()
+        : undefined;
     const sandboxTestAnalyzer = configuration.analyzers.sandboxTests.enabled
     && configuration.analyzers.sandboxTests.reportPath !== undefined
     && configuration.analyzers.sandboxTests.signingSecret !== undefined
@@ -76,7 +80,7 @@ export const createReviewDependencies = (
     const secretScanAnalyzer = configuration.analyzers.secretScan.enabled
         ? new SecretScanReviewAnalyzer()
         : undefined;
-    const analyzers = [...(deepSeekAnalyzer === undefined ? [] : [deepSeekAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(typeScriptAstAnalyzer === undefined ? [] : [typeScriptAstAnalyzer]), ...(sandboxTestAnalyzer === undefined ? [] : [sandboxTestAnalyzer]), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer]), ...(secretScanAnalyzer === undefined ? [] : [secretScanAnalyzer])];
+    const analyzers = [...(deepSeekAnalyzer === undefined ? [] : [deepSeekAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(typeScriptAstAnalyzer === undefined ? [] : [typeScriptAstAnalyzer]), ...(javaAstAnalyzer === undefined ? [] : [javaAstAnalyzer]), ...(sandboxTestAnalyzer === undefined ? [] : [sandboxTestAnalyzer]), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer]), ...(secretScanAnalyzer === undefined ? [] : [secretScanAnalyzer])];
     if (analyzers.length === 0) {
         throw new Error("At least one review analyzer must be enabled.");
     }
@@ -101,6 +105,15 @@ export const createReviewDependencies = (
     if (typeScriptAstAnalyzer !== undefined) {
         analyzerPlans.push({
             analyzerId: typeScriptAstAnalyzer.identity.id,
+            required: true,
+            timeoutMs: 10_000,
+            retryCount: 0,
+            failureMode: "fail",
+        });
+    }
+    if (javaAstAnalyzer !== undefined) {
+        analyzerPlans.push({
+            analyzerId: javaAstAnalyzer.identity.id,
             required: true,
             timeoutMs: 10_000,
             retryCount: 0,
