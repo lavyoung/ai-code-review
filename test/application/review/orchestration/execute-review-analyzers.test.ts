@@ -1,11 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import {describe, expect, it, vi} from "vitest";
 import {
-    AiReviewFailure,
     AiReviewExecutionError,
+    AiReviewFailure,
     ReviewAnalyzerExecutionError,
 } from "../../../../src/application/review/errors/review-execution-error.js";
-import { executeReviewAnalyzers } from "../../../../src/application/review/orchestration/execute-review-analyzers.js";
-import { StaticReviewAnalyzerRegistry } from "../../../../src/application/review/orchestration/static-review-analyzer-registry.js";
+import {executeReviewAnalyzers} from "../../../../src/application/review/orchestration/execute-review-analyzers.js";
+import {
+    StaticReviewAnalyzerRegistry
+} from "../../../../src/application/review/orchestration/static-review-analyzer-registry.js";
 
 const budget = {
     totalTimeoutMs: 1_000,
@@ -64,6 +66,10 @@ describe("executeReviewAnalyzers", () => {
 
         expect(result.analysis).toMatchObject({ summary: "Completed." });
         expect(result.runs.map((run) => run.status).sort()).toEqual(["completed", "degraded"]);
+        expect(result.runs).toContainEqual(expect.objectContaining({
+            analyzer: {kind: "ai", id: "optional-linter"},
+            failureReason: "not-registered",
+        }));
     });
 
     it("preserves classified AI failures for required analyzers", async () => {
@@ -117,6 +123,7 @@ describe("executeReviewAnalyzers", () => {
         expect(result.runs).toEqual([expect.objectContaining({
             status: "degraded",
             attempts: 1,
+            failureReason: "authentication",
         })]);
     });
 

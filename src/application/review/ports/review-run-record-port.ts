@@ -1,5 +1,6 @@
-import type { Severity } from "../../../domain/review/model/severity.js";
-import type { FindingVerificationStatus } from "../../../domain/review/model/review-candidate.js";
+import type {Severity} from "../../../domain/review/model/severity.js";
+import type {FindingVerificationStatus} from "../../../domain/review/model/review-candidate.js";
+import type {AnalyzerFailureReason} from "./review-analyzer-port.js";
 
 /** 可持久化的安全发现摘要，不含路径、文本、diff 或证据内容。 */
 export interface SanitizedRecordedFinding {
@@ -21,6 +22,7 @@ export interface SanitizedReviewRunRecord {
         analyzerId: string;
         status: "completed" | "degraded" | "failed";
         attempts: number;
+        failureReason?: AnalyzerFailureReason;
         durationMs: number;
     }>;
     findings: SanitizedRecordedFinding[];

@@ -1,12 +1,16 @@
-import type { CodeChange, RawCodeChange } from "../../../domain/review/model/code-change.js";
-import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
-import type { AnalyzerIdentity } from "../../../domain/review/model/analyzer-identity.js";
+import type {CodeChange, RawCodeChange} from "../../../domain/review/model/code-change.js";
+import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
+import type {AnalyzerIdentity} from "../../../domain/review/model/analyzer-identity.js";
+import type {AiReviewFailureType} from "../errors/review-execution-error.js";
 
 /** 分析器的规范化身份；具体供应商名称不进入领域策略。 */
 export type { AnalyzerIdentity } from "../../../domain/review/model/analyzer-identity.js";
 
 /** 分析器可请求的安全输入等级。 */
 export type AnalyzerInputAccess = "sanitized-model-input" | "trusted-raw-local";
+
+/** 可安全持久化和输出的分析器失败原因码。 */
+export type AnalyzerFailureReason = AiReviewFailureType | "not-registered" | "execution";
 
 /** 分析器的调度和安全能力声明。 */
 export interface AnalyzerCapabilities {
@@ -66,6 +70,8 @@ export interface AnalyzerRun {
     status: "completed" | "degraded" | "failed";
     /** 本分析器实际执行的次数；未注册而跳过的计划为 0。 */
     attempts: number;
+    /** 仅包含稳定、脱敏的失败类别；绝不保存适配器错误正文。 */
+    failureReason?: AnalyzerFailureReason;
     durationMs: number;
 }
 

@@ -1,17 +1,17 @@
-import type { ReviewChangeInput } from "../../../domain/review/model/code-change.js";
-import { boundSanitizedModelInput } from "../changes/bound-sanitized-model-input.js";
-import type { AnalyzerIdentity } from "../../../domain/review/model/analyzer-identity.js";
-import type { ReviewAnalysis } from "../../../domain/review/model/review-finding.js";
+import type {ReviewChangeInput} from "../../../domain/review/model/code-change.js";
+import {boundSanitizedModelInput} from "../changes/bound-sanitized-model-input.js";
+import type {AnalyzerIdentity} from "../../../domain/review/model/analyzer-identity.js";
+import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
 import {
-    AiReviewFailure,
     AiReviewExecutionError,
+    AiReviewFailure,
     ReviewAnalyzerExecutionError,
 } from "../errors/review-execution-error.js";
 import type {
     AnalyzerExecutionPlan,
     AnalyzerRun,
-    ReviewRunBudget,
     ReviewAnalyzerRegistry,
+    ReviewRunBudget,
 } from "../ports/review-analyzer-port.js";
 
 /** 多分析器执行后可供评审用例消费的安全结果。 */
@@ -44,6 +44,13 @@ const getRetryCount = (plan: AnalyzerExecutionPlan): number => {
 const isRetryableFailure = (error: unknown, signal: AbortSignal): boolean => !signal.aborted
     && error instanceof AiReviewFailure
     && RETRYABLE_AI_FAILURE_TYPES.has(error.failureType);
+
+/** 将任意适配器异常收敛为可安全出现在报告与运行记录中的原因码。 */
+const getSafeFailureReason = (
+    error: unknown,
+): NonNullable<AnalyzerRun["failureReason"]> => error instanceof AiReviewFailure
+    ? error.failureType
+    : "execution";
 
 const mergeAnalyses = (analyses: readonly CompletedAnalysis[]): ReviewAnalysis => ({
     summary: analyses.length === 1
@@ -100,6 +107,7 @@ export const executeReviewAnalyzers = async (
                     analyzer: { kind: "ai", id: plan.analyzerId },
                     status: "degraded",
                     attempts: 0,
+                    failureReason: "not-registered",
                     durationMs: 0,
                 });
                 continue;
@@ -169,6 +177,7 @@ export const executeReviewAnalyzers = async (
                     analyzer: analyzer.identity,
                     status: "degraded",
                     attempts,
+                    failureReason: getSafeFailureReason(error),
                     durationMs,
                 });
             }

@@ -1,5 +1,5 @@
-import type { ReviewExecutionResult } from "../use-cases/review-code-change-use-case.js";
-import type { SanitizedReviewRunRecord } from "../ports/review-run-record-port.js";
+import type {ReviewExecutionResult} from "../use-cases/review-code-change-use-case.js";
+import type {SanitizedReviewRunRecord} from "../ports/review-run-record-port.js";
 
 /** 将评审执行结果投影为可安全保存和后续反馈关联的运行记录。 */
 export const createSanitizedReviewRunRecord = (
@@ -17,6 +17,7 @@ export const createSanitizedReviewRunRecord = (
         analyzerId: `${run.analyzer.kind}:${run.analyzer.id}`,
         status: run.status,
         attempts: run.attempts,
+        ...(run.failureReason === undefined ? {} : {failureReason: run.failureReason}),
         durationMs: run.durationMs,
     })),
     findings: result.findings.map((finding) => ({

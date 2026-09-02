@@ -113,7 +113,9 @@ execution:
 
 对应环境变量为 `REVIEW_TOTAL_ANALYZER_TIMEOUT_MS`、`REVIEW_MAX_ANALYZER_CONCURRENCY`、`REVIEW_MAX_AI_REQUEST_COUNT` 和 `REVIEW_MAX_MODEL_INPUT_CHARS`。其中 `max_model_input_chars` 是每个远程 AI 分析器可见的安全 JSON diff 字符上限，默认 `60000`；超出时只保留按 diff 顺序排列的前缀分块。本地 TypeScript、SARIF 和密钥扫描器不受该上限影响。超出 AI 请求预算或必需分析器不可用时，流水线会以非零退出码结束；建议性分析器失败只会进入脱敏运行摘要。
 
-内置 DeepSeek 分析器仅在网络请求失败、限流或超时时最多额外重试两次；认证、上下文限制、无效 JSON 和 Schema 错误不会重试。三次最大调用数会预先计入 `max_ai_request_count` 预算，最终实际尝试次数会显示在评审摘要和脱敏运行记录中。
+内置 DeepSeek 分析器仅在网络请求失败、限流或超时时最多额外重试两次；认证、上下文限制、无效 JSON 和 Schema
+错误不会重试。三次最大调用数会预先计入 `max_ai_request_count` 预算，最终实际尝试次数会显示在评审摘要和脱敏运行记录中。建议性分析器失败时，摘要还会输出如
+`rate-limit` 的固定原因码，不输出服务响应或异常正文。
 
 临时覆盖时可使用：
 

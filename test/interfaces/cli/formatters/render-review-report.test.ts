@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import {describe, expect, it} from "vitest";
 import {
-    renderReviewReport,
     renderReviewDeliveryStatus,
+    renderReviewReport,
 } from "../../../../src/interfaces/cli/formatters/render-review-report.js";
 
 describe("renderReviewReport", () => {
@@ -28,15 +28,16 @@ describe("renderReviewReport", () => {
                 suppressedCandidateCounts: {},
                 analyzerRuns: [{
                     analyzer: { kind: "ai", id: "deepseek" },
-                    status: "completed",
+                    status: "degraded",
                     attempts: 2,
+                    failureReason: "rate-limit",
                     durationMs: 20,
                 }],
                 policy: { highestSeverity: null, shouldFail: false },
             },
         });
 
-        expect(report).toContain("Analyzer status: deepseek=completed (attempts: 2)");
+        expect(report).toContain("Analyzer status: deepseek=degraded (attempts: 2, reason: rate-limit)");
         expect(report).not.toContain("durationMs");
     });
 

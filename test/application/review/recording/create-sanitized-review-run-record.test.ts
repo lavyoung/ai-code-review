@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { createSanitizedReviewRunRecord } from "../../../../src/application/review/recording/create-sanitized-review-run-record.js";
+import {describe, expect, it} from "vitest";
+import {
+    createSanitizedReviewRunRecord
+} from "../../../../src/application/review/recording/create-sanitized-review-run-record.js";
 
 describe("createSanitizedReviewRunRecord", () => {
     it("records only feedback-safe identity, status, and analyzer metadata", () => {
@@ -49,5 +51,30 @@ describe("createSanitizedReviewRunRecord", () => {
         });
         expect(JSON.stringify(record)).not.toContain("exposed-value");
         expect(JSON.stringify(record)).not.toContain(".env.production");
+    });
+
+    it("records only the classified analyzer failure reason, never its error details", () => {
+        const record = createSanitizedReviewRunRecord("run-123", {
+            codeChange: {diff: "", files: [], chunks: [], excludedFileCount: 0, redactedValueCount: 0},
+            analysis: {summary: "", findings: []},
+            findings: [],
+            suppressedCandidateCounts: {},
+            analyzerRuns: [{
+                analyzer: {kind: "ai", id: "deepseek"},
+                status: "degraded",
+                attempts: 3,
+                failureReason: "rate-limit",
+                durationMs: 12,
+            }],
+            policy: {highestSeverity: null, shouldFail: false},
+        }, "2026-09-02T00:00:00.000Z");
+
+        expect(record.analyzerRuns).toEqual([{
+            analyzerId: "ai:deepseek",
+            status: "degraded",
+            attempts: 3,
+            failureReason: "rate-limit",
+            durationMs: 12,
+        }]);
     });
 });

@@ -1,12 +1,14 @@
-import type { ManualReviewResult } from "../../../application/review/use-cases/run-manual-review-use-case.js";
+import type {ManualReviewResult} from "../../../application/review/use-cases/run-manual-review-use-case.js";
 import {
     isSensitiveFile,
     redactSensitiveFilePaths,
     redactSensitiveValues,
 } from "../../../domain/review/policy/sensitive-content-policy.js";
-import type { ValidatedFinding } from "../../../domain/review/model/review-candidate.js";
-import type { NotificationDelivery } from "../../../application/delivery/use-cases/publish-notification-use-case.js";
-import type { ReviewCommentPublication } from "../../../application/delivery/use-cases/publish-review-comment-use-case.js";
+import type {ValidatedFinding} from "../../../domain/review/model/review-candidate.js";
+import type {NotificationDelivery} from "../../../application/delivery/use-cases/publish-notification-use-case.js";
+import type {
+    ReviewCommentPublication
+} from "../../../application/delivery/use-cases/publish-review-comment-use-case.js";
 
 /**
  * 渲染手动评审 CI 报告所需的接口层输入。
@@ -100,7 +102,9 @@ const formatAnalyzerRuns = (
     runs: ManualReviewResult["analyzerRuns"] | undefined,
 ): string | undefined => runs === undefined || runs.length === 0
     ? undefined
-    : runs.map((run) => `${run.analyzer.id}=${run.status} (attempts: ${run.attempts})`).join(", ");
+    : runs.map((run) => `${run.analyzer.id}=${run.status} (attempts: ${run.attempts}${run.failureReason === undefined
+        ? ""
+        : `, reason: ${run.failureReason}`})`).join(", ");
 
 /**
  * 将安全的手动评审结果渲染为 CI 与通知渠道可复用的 Markdown。

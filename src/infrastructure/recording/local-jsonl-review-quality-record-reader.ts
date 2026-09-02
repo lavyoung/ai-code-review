@@ -1,15 +1,32 @@
-import { readFile } from "node:fs/promises";
-import { z } from "zod";
-import type { ReviewQualityRecordReaderPort } from "../../application/review/ports/review-quality-record-reader-port.js";
-import type { SanitizedQualityRecord } from "../../application/review/ports/review-run-record-port.js";
+import {readFile} from "node:fs/promises";
+import {z} from "zod";
+import type {ReviewQualityRecordReaderPort} from "../../application/review/ports/review-quality-record-reader-port.js";
+import type {SanitizedQualityRecord} from "../../application/review/ports/review-run-record-port.js";
 
 const analyzerRunSchema = z.object({
     analyzerId: z.string(),
     status: z.enum(["completed", "degraded", "failed"]),
     // v1 早期记录未保存尝试次数，读取时按一次兼容处理。
     attempts: z.number().int().nonnegative().optional().default(1),
+    failureReason: z.enum([
+        "request",
+        "authentication",
+        "rate-limit",
+        "timeout",
+        "incomplete-response",
+        "invalid-json",
+        "invalid-schema",
+        "content-filtered",
+        "context-limit",
+        "unknown",
+        "not-registered",
+        "execution",
+    ]).optional(),
     durationMs: z.number().nonnegative(),
-});
+}).transform(({failureReason, ...run}) => ({
+    ...run,
+    ...(failureReason === undefined ? {} : {failureReason}),
+}));
 
 const recordedFindingSchema = z.object({
     fingerprint: z.string().regex(/^[a-f0-9]{24}$/),
