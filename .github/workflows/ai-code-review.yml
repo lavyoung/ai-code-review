@@ -30,7 +30,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Review pull request
-        uses: lavyoung/ai-code-review@782c2a7b381ff08bad2eec09844378c7eb9aa312
+        uses: lavyoung/ai-code-review@1cd53d1ce68b55f77c31b3e9beb7f662d52a4eb1
         with:
           output-language: zh-CN
           comment-enabled: "true"

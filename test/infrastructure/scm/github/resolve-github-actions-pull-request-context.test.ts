@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import {describe, expect, it, vi} from "vitest";
 import {
     GitHubActionsContextError,
     resolveGitHubActionsPullRequestContext,
@@ -19,22 +19,28 @@ const eventPayload = JSON.stringify({
 });
 
 describe("resolveGitHubActionsPullRequestContext", () => {
-    it("extracts only the PR range and repository metadata from the event payload", async () => {
-        const readPayload = vi.fn().mockResolvedValue(eventPayload);
+    it.each(["pull_request", "pull_request_target"])(
+        "extracts the PR range from a supported %s event",
+        async (eventName) => {
+            const readPayload = vi.fn().mockResolvedValue(eventPayload);
 
-        await expect(resolveGitHubActionsPullRequestContext(environment, readPayload))
-            .resolves.toEqual({
-                pullRequestNumber: "42",
-                repository: "octo-org/example-repository",
-                repositoryOwner: "octo-org",
-                repositoryName: "example-repository",
-                baseRef: "main",
-                baseSha: "base-sha",
-                headRef: "feature/review",
-                headSha: "head-sha",
-            });
-        expect(readPayload).toHaveBeenCalledWith("/runner/event.json");
-    });
+            await expect(resolveGitHubActionsPullRequestContext({
+                ...environment,
+                GITHUB_EVENT_NAME: eventName,
+            }, readPayload))
+                .resolves.toEqual({
+                    pullRequestNumber: "42",
+                    repository: "octo-org/example-repository",
+                    repositoryOwner: "octo-org",
+                    repositoryName: "example-repository",
+                    baseRef: "main",
+                    baseSha: "base-sha",
+                    headRef: "feature/review",
+                    headSha: "head-sha",
+                });
+            expect(readPayload).toHaveBeenCalledWith("/runner/event.json");
+        },
+    );
 
     it("rejects unsupported or malformed GitHub Actions events", async () => {
         await expect(resolveGitHubActionsPullRequestContext(
