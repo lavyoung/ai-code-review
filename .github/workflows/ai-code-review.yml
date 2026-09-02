@@ -1,7 +1,10 @@
 name: AI Code Review
 
+# This workflow is read from the trusted default branch. It never executes PR
+# scripts; the pinned action only reads the checked-out Git diff and posts a
+# summary. Build and test untrusted PR code in ci.yml, where no secrets exist.
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, reopened, synchronize]
 
 permissions:
@@ -23,25 +26,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      - name: Test
-        run: npm run test
-
       - name: Review pull request
-        uses: ./
+        uses: lavyoung/ai-code-review@782c2a7b381ff08bad2eec09844378c7eb9aa312
         with:
           output-language: zh-CN
           comment-enabled: "true"

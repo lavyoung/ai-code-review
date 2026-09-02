@@ -38,13 +38,13 @@
     "registry": "https://npm.pkg.github.com"
   },
   "dependencies": {
+    "@typescript/typescript6": "^6.0.2",
     "commander": "^15.0.0",
     "typescript": "^7.0.2",
     "yaml": "^2.9.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@typescript/typescript6": "^6.0.2",
     "@types/node": "^26.4.0",
     "tsx": "^4.23.13",
     "vitest": "^4.1.11"

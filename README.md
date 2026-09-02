@@ -356,7 +356,9 @@ jobs:
 
 建议保留上面的 `concurrency` 配置：同一 PR 新提交会取消旧评审。Action 发布评论前还会校验 PR 当前 `head SHA`；若运行已过期，会显示为 `skipped`，不会覆盖新版本的摘要评论。
 
-若本仓库为私有仓库，还需在 `ai-code-review` 仓库的 **Settings → Actions → General → Access** 中允许同一用户或组织下的私有仓库访问。外部仓库协作者可查看运行日志，因此不要在日志、评论或模型输入中输出密钥。
+若 `ai-code-review` Action 仓库为 **公开仓库**，调用方不需要额外配置访问权限；若它是 **私有仓库**，还需在 `ai-code-review`
+仓库的 **Settings → Actions → General → Access** 中允许同一用户或组织下的私有仓库访问。公开发布前，请确认提交历史、Release
+附件与示例中均不含密钥或其他敏感信息。
 
 若工作流已在前一步生成 SARIF 报告，可将其作为本地输入交给 Action：
 
