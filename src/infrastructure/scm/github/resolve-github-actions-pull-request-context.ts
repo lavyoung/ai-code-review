@@ -1,5 +1,10 @@
-import { readFile } from "node:fs/promises";
-import { z } from "zod";
+import {readFile} from "node:fs/promises";
+import {z} from "zod";
+
+const SUPPORTED_PULL_REQUEST_EVENTS = new Set([
+    "pull_request",
+    "pull_request_target",
+]);
 
 const pullRequestEventSchema = z.object({
     number: z.number().int().positive(),
@@ -42,16 +47,19 @@ export class GitHubActionsContextError extends Error {
 }
 
 /**
- * 从 GitHub Actions 的事件文件读取 PR 范围。
+ * 从 GitHub Actions 的 Pull Request 事件文件读取 PR 范围。
  *
+ * 支持 `pull_request` 与 `pull_request_target`：两者都使用相同的 PR 负载结构。
  * 只提取评审必需的公开 Git 元数据，不记录完整事件负载或文件路径。
  */
 export const resolveGitHubActionsPullRequestContext = async (
     environment: NodeJS.ProcessEnv,
     readPayload: GitHubEventPayloadReader = (path) => readFile(path, "utf8"),
 ): Promise<GitHubActionsPullRequestContext> => {
-    if (environment.GITHUB_EVENT_NAME !== "pull_request") {
-        throw new GitHubActionsContextError("GitHub Actions event must be pull_request.");
+    if (!SUPPORTED_PULL_REQUEST_EVENTS.has(environment.GITHUB_EVENT_NAME ?? "")) {
+        throw new GitHubActionsContextError(
+            "GitHub Actions event must be pull_request or pull_request_target.",
+        );
     }
 
     const eventPath = environment.GITHUB_EVENT_PATH?.trim();
