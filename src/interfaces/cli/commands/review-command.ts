@@ -55,6 +55,7 @@ interface ReviewCommandOptions {
     sandboxTestReport?: string;
     sarifEnabled?: boolean;
     sarifReport?: string;
+    sarifAttestation?: string;
     secretScanEnabled?: boolean;
     deepseekEnabled?: boolean;
     runRecordPath?: string;
@@ -119,6 +120,7 @@ const reviewCommand = program
     .option("--sarif-enabled <true|false>", "Enable the local SARIF analyzer", (value) =>
         parseBoolean(value, "--sarif-enabled"))
     .option("--sarif-report <path>", "Path to a SARIF 2.1.0 report")
+    .option("--sarif-attestation <path>", "Path to a signed SARIF attestation")
     .option("--secret-scan-enabled <true|false>", "Enable the local high-confidence secret scanner", (value) =>
         parseBoolean(value, "--secret-scan-enabled"))
     .option("--deepseek-enabled <true|false>", "Enable the DeepSeek semantic analyzer", (value) =>
@@ -183,6 +185,9 @@ const reviewCommand = program
                         : {sandboxTestReportPath: options.sandboxTestReport}),
                     ...(options.sarifEnabled === undefined ? {} : { sarifEnabled: options.sarifEnabled }),
                     ...(options.sarifReport === undefined ? {} : { sarifReportPath: options.sarifReport }),
+                    ...(options.sarifAttestation === undefined
+                        ? {}
+                        : {sarifAttestationPath: options.sarifAttestation}),
                     ...(options.secretScanEnabled === undefined
                         ? {}
                         : { secretScanEnabled: options.secretScanEnabled }),

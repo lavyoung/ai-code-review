@@ -25,6 +25,7 @@ export interface ConfigurationFileOverride {
     sandboxTestReportPath?: string;
     sarifEnabled?: boolean;
     sarifReportPath?: string;
+    sarifAttestationPath?: string;
     secretScanEnabled?: boolean;
     deepSeekEnabled?: boolean;
     reviewRunRecordPath?: string;
@@ -84,6 +85,7 @@ const configurationFileSchema = z.object({
         sarif: z.object({
             enabled: z.boolean().optional(),
             report_path: z.string().trim().min(1).optional(),
+            attestation_path: z.string().trim().min(1).optional(),
         }).strict().optional(),
         secret_scan: z.object({
             enabled: z.boolean().optional(),
@@ -181,6 +183,9 @@ export const loadConfigurationFile = async (
         ...(configuration.analyzers?.sarif?.report_path === undefined
             ? {}
             : { sarifReportPath: configuration.analyzers.sarif.report_path }),
+        ...(configuration.analyzers?.sarif?.attestation_path === undefined
+            ? {}
+            : {sarifAttestationPath: configuration.analyzers.sarif.attestation_path}),
         ...(configuration.analyzers?.secret_scan?.enabled === undefined
             ? {}
             : { secretScanEnabled: configuration.analyzers.secret_scan.enabled }),

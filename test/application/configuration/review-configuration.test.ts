@@ -184,6 +184,33 @@ describe("resolveReviewConfiguration", () => {
         }).analyzers.sarif).toEqual({ enabled: false });
     });
 
+    it("accepts a SARIF attestation path from normal precedence but verification key only from the environment", () => {
+        expect(resolveReviewConfiguration({
+            file: {
+                deepSeekEnabled: false,
+                sarifEnabled: true,
+                sarifReportPath: "file.sarif",
+                sarifAttestationPath: "file.attestation.json",
+            },
+            environment: {SARIF_VERIFICATION_PUBLIC_KEY: "sarif-verification-public-key"},
+            cli: {sarifAttestationPath: "cli.attestation.json"},
+        }).analyzers.sarif).toEqual({
+            enabled: true,
+            reportPath: "file.sarif",
+            attestationPath: "cli.attestation.json",
+            verificationPublicKey: "sarif-verification-public-key",
+        });
+
+        expect(() => resolveReviewConfiguration({
+            file: {
+                deepSeekEnabled: false,
+                sarifEnabled: true,
+                sarifReportPath: "file.sarif",
+                sarifAttestationPath: "file.attestation.json",
+            },
+        })).toThrow("SARIF_VERIFICATION_PUBLIC_KEY");
+    });
+
     it("allows DeepSeek to be disabled without an API key", () => {
         const configuration = resolveReviewConfiguration({
             environment: {

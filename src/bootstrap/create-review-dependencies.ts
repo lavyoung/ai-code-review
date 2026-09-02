@@ -5,10 +5,8 @@ import {
     TypeScriptAstReviewAnalyzer
 } from "../infrastructure/analyzers/typescript-ast/typescript-ast-review-analyzer.js";
 import {JavaAstReviewAnalyzer} from "../infrastructure/analyzers/java-ast/java-ast-review-analyzer.js";
-import {
-    createCommittedRevisionProvider,
-    SandboxedTestResultAnalyzer,
-} from "../infrastructure/analyzers/sandbox-test/sandbox-test-result-analyzer.js";
+import {SandboxedTestResultAnalyzer,} from "../infrastructure/analyzers/sandbox-test/sandbox-test-result-analyzer.js";
+import {createCommittedRevisionProvider} from "../infrastructure/scm/git/committed-revision-provider.js";
 import {SarifReviewAnalyzer} from "../infrastructure/analyzers/sarif/sarif-review-analyzer.js";
 import {SecretScanReviewAnalyzer} from "../infrastructure/analyzers/secret-scan/secret-scan-review-analyzer.js";
 import {StaticReviewAnalyzerRegistry} from "../application/review/orchestration/static-review-analyzer-registry.js";
@@ -69,7 +67,18 @@ export const createReviewDependencies = (
         }, createCommittedRevisionProvider(workingDirectory))
         : undefined;
     const sarifAnalyzer = configuration.analyzers.sarif.enabled && configuration.analyzers.sarif.reportPath !== undefined
-        ? new SarifReviewAnalyzer(workingDirectory, configuration.analyzers.sarif.reportPath)
+        ? new SarifReviewAnalyzer(
+            workingDirectory,
+            configuration.analyzers.sarif.reportPath,
+            configuration.analyzers.sarif.attestationPath !== undefined
+            && configuration.analyzers.sarif.verificationPublicKey !== undefined
+                ? {
+                    attestationPath: configuration.analyzers.sarif.attestationPath,
+                    verificationPublicKey: configuration.analyzers.sarif.verificationPublicKey,
+                    revisionProvider: createCommittedRevisionProvider(workingDirectory),
+                }
+                : undefined,
+        )
         : undefined;
     if (configuration.analyzers.sarif.enabled && sarifAnalyzer === undefined) {
         throw new Error("SARIF report path must be configured when the SARIF analyzer is enabled.");

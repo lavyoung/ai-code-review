@@ -1,5 +1,7 @@
 # 可验证 AI 代码评审架构
 
+> 产品目标与不可违反的统一入口约束见[项目军规：统一 AI 代码质量审查](./PROJECT_CHARTER.md)。本文的分层、验证和安全设计必须服务于该目标。
+
 ## 1. 决策摘要
 
 `ai-code-review` 采用**模块化单体（modular monolith）+ 六边形架构（ports and adapters）+ 可验证评审流水线**。
@@ -222,6 +224,7 @@ interface AnalyzerIdentity {
   kind: "ai" | "sast" | "linter" | "typecheck" | "test" | "secret-scan";
   id: string;                 // 例如 deepseek、codeql、eslint
   version?: string;
+   verificationEligible?: boolean; // 仅由 bootstrap 对受控确定性来源声明
 }
 
 type InputAccess = "trusted-raw-local" | "sanitized-model-input";
@@ -242,7 +245,9 @@ type VerificationMethod =
   | "human-feedback";
 ```
 
-外部静态分析结果优先通过 SARIF 2.1.0 适配到内部模型。SARIF 是交换格式，不是领域模型：项目的领域语义、门禁和评论协议不得依赖任何特定工具的字段。
+外部静态分析结果优先通过 SARIF 2.1.0 适配到内部模型。SARIF 是交换格式，不是领域模型：项目的领域语义、门禁和评论协议不得依赖任何特定工具的字段。普通
+SARIF 默认只产生 `grounded` 建议；只有报告 SHA-256、完整 `HEAD` 和 Ed25519 签名证明全部验证通过，且验证任务仅持有公钥时，SARIF
+适配器才可声明 `verificationEligible`。私钥必须位于不执行不可信 PR 代码的隔离可信任务，不能与验证任务共享。
 
 ## 6. 端口与适配器
 
@@ -534,9 +539,10 @@ AST 适配器使用官方 `@typescript/typescript6` 兼容 API，与 TS7 构建�
 `StructuredReviewContract` 是提示词示例、JSON Schema 导出和运行时 Zod 解析的共同来源，新的 AI 适配器不必重新定义评审输出形状。调度器只向声明
 `trusted-raw-local` 的已注册本地分析器传递原始已提交 diff；`ai` 身份分析器被强制限定为安全输入，并受每个请求的安全 JSON
 diff 字符预算约束，超限时仅接收按变更顺序截取的前缀分块。DeepSeek 对网络、限流和超时等瞬时错误最多额外尝试两次，预留请求数会先计入
-AI 预算；认证或结构化响应错误不重试。`DeepSeek` 仍只会产生 `grounded` 发现；已接入的本地 TypeScript 分析器、SARIF 2.1.0
-报告适配器和高置信度密钥扫描器只将本次新增 diff 行的确定性诊断升级为 `verified`
-并参与质量门禁。密钥扫描器只输出安全锚点与通用说明，敏感路径和原始值不离开本地边界。输出发现已具有仅基于安全定位与规范化语义的稳定指纹；同次运行的等价发现会合并来源与验证方法。可选
+AI 预算；认证或结构化响应错误不重试。`DeepSeek`、Java AST 与未证明的 SARIF 仍只会产生 `grounded` 发现；已接入的本地
+TypeScript 分析器、高置信度密钥扫描器，以及证明有效的 SARIF 报告才会将本次新增 diff 行的确定性诊断升级为 `verified`
+并参与质量门禁。SARIF 证明通过 Ed25519 公私钥分离绑定报告哈希和 `HEAD`
+：验证任务不能伪造证明，且任何报告或提交替换都会失败。密钥扫描器只输出安全锚点与通用说明，敏感路径和原始值不离开本地边界。输出发现已具有仅基于安全定位与规范化语义的稳定指纹；同次运行的等价发现会合并来源与验证方法。可选
 JSONL 记录器保存带类型标识的运行摘要，并可追加只含固定状态、指纹、运行 ID 与时间的人工反馈事件；本地指标命令只输出这些记录的脱敏聚合值，不提供跨仓库指标。GitHub
 示例工作流按 PR 编号串行运行，评论与通知失败都最多尝试三次并将最终脱敏状态写入 CI 日志。ESLint、CodeQL 与 Semgrep
 可沿用同一边界接入，不能通过伪造 AI 输出或配置开关绕过该边界。
@@ -552,7 +558,7 @@ JSONL 记录器保存带类型标识的运行摘要，并可追加只含固定�
    规则已实现；扩展规则前必须为每个规则定义独立、可机械验证的语义，不能以 AST 存在某段证据为由将任意 AI 结论提升为
    `verified`。受限测试执行当前通过签名的沙箱结果适配：宿主 CLI 不执行任意仓库命令，只有外部受控沙箱产生的 `v1` HMAC 报告、与当前
    `HEAD` 匹配并锚定到新增行的失败才能获得 `test-execution` 证据及 `verified` 状态。沙箱隔离、网络策略、最小 权限和报告签名密钥由
-   CI 平台负责；未部署该平台时能力保持禁用。
+   CI 平台负责；未部署该平台时能力保持禁用。SARIF 当前同样支持可选证明，但改用 Ed25519 公私钥分离，避免验证任务持有可伪造报告的共享密钥。
 
 每一步都必须有兼容测试和回归测试；不得在未完成相应验证前启用 AI-only 阻断。
 

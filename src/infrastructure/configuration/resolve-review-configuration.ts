@@ -35,6 +35,7 @@ const configurationOverrideSchema = z.object({
     sandboxTestReportPath: z.string().trim().min(1).optional(),
     sarifEnabled: z.boolean().optional(),
     sarifReportPath: z.string().trim().min(1).optional(),
+    sarifAttestationPath: z.string().trim().min(1).optional(),
     secretScanEnabled: z.boolean().optional(),
     deepSeekEnabled: z.boolean().optional(),
     reviewRunRecordPath: z.string().trim().min(1).optional(),
@@ -116,6 +117,7 @@ export const resolveReviewConfiguration = (
         sandboxTestReportPath: optionalEnvironmentSecret(sources.environment?.SANDBOX_TEST_REPORT_PATH),
         sarifEnabled: parseBooleanEnvironmentValue(sources.environment?.SARIF_ANALYZER_ENABLED),
         sarifReportPath: optionalEnvironmentSecret(sources.environment?.SARIF_REPORT_PATH),
+        sarifAttestationPath: optionalEnvironmentSecret(sources.environment?.SARIF_ATTESTATION_PATH),
         secretScanEnabled: parseBooleanEnvironmentValue(sources.environment?.SECRET_SCAN_ANALYZER_ENABLED),
         deepSeekEnabled: parseBooleanEnvironmentValue(sources.environment?.DEEPSEEK_ANALYZER_ENABLED),
         reviewRunRecordPath: optionalEnvironmentSecret(sources.environment?.REVIEW_RUN_RECORD_PATH),
@@ -156,6 +158,9 @@ export const resolveReviewConfiguration = (
     );
     const sandboxTestSigningSecret = z.string().trim().min(1).optional().parse(
         optionalEnvironmentSecret(sources.environment?.SANDBOX_TEST_SIGNING_SECRET),
+    );
+    const sarifVerificationPublicKey = z.string().trim().min(1).optional().parse(
+        optionalEnvironmentSecret(sources.environment?.SARIF_VERIFICATION_PUBLIC_KEY),
     );
     const wecomEnabled = cli.wecomEnabled
         ?? environment.wecomEnabled
@@ -201,6 +206,9 @@ export const resolveReviewConfiguration = (
         ?? file.secretScanEnabled
         ?? false;
     const sarifReportPath = cli.sarifReportPath ?? environment.sarifReportPath ?? file.sarifReportPath;
+    const sarifAttestationPath = cli.sarifAttestationPath
+        ?? environment.sarifAttestationPath
+        ?? file.sarifAttestationPath;
     const sandboxTestReportPath = cli.sandboxTestReportPath
         ?? environment.sandboxTestReportPath
         ?? file.sandboxTestReportPath;
@@ -225,6 +233,10 @@ export const resolveReviewConfiguration = (
 
     if (sarifEnabled && sarifReportPath === undefined) {
         throw new Error("A SARIF report path must be configured when the SARIF analyzer is enabled.");
+    }
+
+    if (sarifAttestationPath !== undefined && sarifVerificationPublicKey === undefined) {
+        throw new Error("SARIF_VERIFICATION_PUBLIC_KEY must be set when a SARIF attestation is configured.");
     }
 
     if (sandboxTestEnabled
@@ -303,6 +315,12 @@ export const resolveReviewConfiguration = (
                 ...(sarifReportPath === undefined
                     ? {}
                     : { reportPath: sarifReportPath }),
+                ...(sarifAttestationPath === undefined
+                    ? {}
+                    : {attestationPath: sarifAttestationPath}),
+                ...(sarifVerificationPublicKey === undefined
+                    ? {}
+                    : {verificationPublicKey: sarifVerificationPublicKey}),
             },
             secretScan: {
                 enabled: secretScanEnabled,

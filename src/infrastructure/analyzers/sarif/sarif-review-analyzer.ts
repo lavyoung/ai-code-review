@@ -14,6 +14,18 @@ import type {
     AnalyzerIdentity,
     ReviewAnalyzer
 } from "../../../application/review/ports/review-analyzer-port.js";
+import type {CommittedRevisionProvider} from "../../scm/git/committed-revision-provider.js";
+import {verifySarifAttestation} from "./sarif-attestation.js";
+
+const MAX_REPORT_BYTES = 10 * 1024 * 1024;
+const MAX_ATTESTATION_BYTES = 16 * 1024;
+
+/** 受控 SARIF 证明的配置；评审任务只持有可公开的 Ed25519 验证密钥。 */
+export interface SarifAttestationConfiguration {
+    attestationPath: string;
+    verificationPublicKey: string;
+    revisionProvider: CommittedRevisionProvider;
+}
 
 const sarifSchema = z.object({
     version: z.literal("2.1.0"),
@@ -60,21 +72,46 @@ const severityFor = (level: "error" | "warning" | "note" | "none" | undefined): 
 
 /** 将本地 SARIF 2.1.0 报告中的本次新增行诊断映射为统一确定性发现。 */
 export class SarifReviewAnalyzer implements ReviewAnalyzer {
-    public readonly identity: AnalyzerIdentity = {
-        kind: "sast",
-        id: "sarif",
-        verificationEligible: true,
-    };
+    public readonly identity: AnalyzerIdentity;
     public readonly capabilities = {
         inputAccess: "trusted-raw-local" as const,
         supportsChangedOnly: false,
         supportsRepositoryScan: true,
     };
 
-    public constructor(private readonly workingDirectory: string, private readonly reportPath: string) {}
+    public constructor(
+        private readonly workingDirectory: string,
+        private readonly reportPath: string,
+        private readonly attestation?: SarifAttestationConfiguration,
+    ) {
+        this.identity = {
+            kind: "sast",
+            id: "sarif",
+            ...(attestation === undefined ? {} : {verificationEligible: true}),
+        };
+    }
 
     public async analyze(request: AnalysisRequest): Promise<ReviewAnalysis> {
-        const report = sarifSchema.parse(JSON.parse(await readFile(this.reportPath, "utf8")));
+        const reportContent = await readFile(this.reportPath, "utf8");
+        if (Buffer.byteLength(reportContent, "utf8") > MAX_REPORT_BYTES) {
+            throw new Error("SARIF report exceeded the allowed size.");
+        }
+        if (this.attestation !== undefined) {
+            const [attestationContent, currentRevision] = await Promise.all([
+                readFile(this.attestation.attestationPath, "utf8"),
+                this.attestation.revisionProvider.resolve(request.signal),
+            ]);
+            if (Buffer.byteLength(attestationContent, "utf8") > MAX_ATTESTATION_BYTES) {
+                throw new Error("SARIF attestation exceeded the allowed size.");
+            }
+            verifySarifAttestation(
+                reportContent,
+                attestationContent,
+                currentRevision,
+                this.attestation.verificationPublicKey,
+            );
+        }
+        const report = sarifSchema.parse(JSON.parse(reportContent));
         const findings = report.runs.flatMap((run) => run.results ?? []).flatMap((result): ReviewCandidate[] => {
             const location = result.locations?.[0]?.physicalLocation;
             const line = location?.region?.startLine;
