@@ -15,13 +15,13 @@
 
 ## 当前支持范围
 
-| 场景                                     | 状态   | 说明                                               |
-|------------------------------------------|--------|----------------------------------------------------|
-| 本地 Git 手动评审                        | 支持   | 比较 `target...HEAD`，只包含已提交变更。           |
-| GitHub Actions Pull Request              | 支持   | 读取 `pull_request` 事件，支持可更新的摘要评论。   |
-| CodeUp Flow Merge Request                | 支持   | 通过 CodeUp API 定位当前 MR 和版本，支持摘要评论。 |
-| GitLab、Push、定时任务                   | 未实现 | CLI 会拒绝未实现的执行模式。                       |
-| 行级评论、通用 Webhook、钉钉、飞书、邮件 | 未实现 | 当前仅提供摘要评论、企业微信和 CI 日志。           |
+| 场景                                     | 状态   | 说明                                                                    |
+|------------------------------------------|--------|-------------------------------------------------------------------------|
+| 本地 Git 手动评审                        | 支持   | 比较 `target...HEAD`，只包含已提交变更。                                |
+| GitHub Actions Pull Request              | 支持   | 同仓库 PR 提供 AI 摘要评论；外部 Fork PR 仅运行无 Secret 的确定性审查。 |
+| CodeUp Flow Merge Request                | 支持   | 通过 CodeUp API 定位当前 MR 和版本，支持摘要评论。                      |
+| GitLab、Push、定时任务                   | 未实现 | CLI 会拒绝未实现的执行模式。                                            |
+| 行级评论、通用 Webhook、钉钉、飞书、邮件 | 未实现 | 当前仅提供摘要评论、企业微信和 CI 日志。                                |
 
 ## 快速开始
 
@@ -226,7 +226,7 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
@@ -243,9 +243,10 @@ jobs:
 将 `<trusted-full-commit-sha>` 替换为发布后审核过的完整提交 SHA；可用 `git rev-parse v0.1.0` 查询。Action 会使用 GitHub
 自动提供的 Token 发布评论，不应手工输出 Token。
 
-**Fork PR 限制：** GitHub 不会向来自 Fork 的 `pull_request` 工作流提供仓库 Secret，因此当前版本无法安全地使用
-`DEEPSEEK_API_KEY` 评审 Fork PR。不要仅为了注入 Secret 而将此工作流改为 `pull_request_target`：当前 CLI 仅接受
-`pull_request` 事件。对 Fork PR 应保留无密钥的常规 CI；待专门的安全事件适配完成后，再启用带 Secret 的评审。
+**Fork PR 限制：** GitHub 不会向来自 Fork 的 `pull_request` 工作流提供仓库 Secret，因此外部 Fork 不运行 DeepSeek 或发布
+摘要评论；它应只运行 Java/TypeScript AST、密钥扫描和 `upload: never` 的 SARIF 等无 Secret 阶段。本仓库的
+[`ai-code-review.yml`](.github/workflows/ai-code-review.yml) 已按此拆分 Fork 与同仓库 PR。不要为了注入 Secret 改用
+`pull_request_target` 并 checkout Fork 的 PR Head。
 
 Composite Action 输入包括 `output-language`、`comment-enabled`、`deepseek-enabled`、`typescript-enabled`、
 `typescript-ast-enabled`、`java-ast-enabled`、`sarif-enabled` / `sarif-report` / `sarif-attestation`、

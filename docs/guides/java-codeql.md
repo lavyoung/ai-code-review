@@ -10,20 +10,20 @@ CodeQL 对 Java 支持 `none`、`autobuild` 和 `manual` 三种构建模式；`n
 
 ## 无 Secret 的 Java CodeQL 阶段
 
-将下面的步骤加入调用方现有的 `.github/workflows/ai-code-review.yml` 的同一 `review` job，置于检出提交之后。它仍是原有的
-`pull_request_target` 评审工作流：只用 CodeQL `build-mode: none` 读取源码，不执行 Maven、Gradle、测试或 PR 脚本。GitHub 的
-CodeQL advanced setup 要求工作流包含 `security-events: write`，因此在现有 `permissions` 中增加该最小权限；本示例仍以
-`upload: never` 禁止将 SARIF 上传到 GitHub Code Scanning。
+将下面的步骤加入调用方现有的 `.github/workflows/ai-code-review.yml` 的 `pull_request` 评审 job，置于检出提交之后。该 job
+只用 CodeQL `build-mode: none` 读取源码，不执行 Maven、Gradle、测试或 PR 脚本。示例以 `upload: never` 禁止上传 SARIF，因此
+job 只需
+`contents: read`，不应为它授予 `security-events: write`。
 
 ```yaml
       - name: Initialize Java CodeQL evidence stage
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@fddeee1a7ece751b577e409a89057319e3172939 # v4
         with:
           languages: java
           build-mode: none
 
       - name: Analyze Java code
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@fddeee1a7ece751b577e409a89057319e3172939 # v4
         with:
           output: ${{ github.workspace }}/sarif-results
           upload: never
@@ -49,6 +49,7 @@ CodeQL advanced setup 要求工作流包含 `security-events: write`，因此在
           deepseek-enabled: "true"
           sarif-enabled: "true"
           sarif-report: ${{ steps.sarif.outputs.path }}
+        # 仅同仓库 PR 启用 DeepSeek 和摘要评论；外部 Fork 必须关闭二者。
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 ```
@@ -64,7 +65,7 @@ PR 产物可被替换而直接成为质量门禁。
 [README 的 SARIF 信任边界](../../README.md#sarif-信任边界)。
 
 这项隔离是必需的：若私钥与可执行 PR 构建的步骤处于同一任务，PR 代码可以伪造任意通过门禁的报告。对于外部 Fork PR，保持
-`build-mode: none`，不要在统一评审工作流中加入可执行 PR 构建步骤或私钥。
+`build-mode: none`，不要在统一评审工作流中加入可执行 PR 构建步骤、私钥、DeepSeek Key 或写评论权限。
 
 ## 使用 Maven 或 Gradle 的精确构建
 

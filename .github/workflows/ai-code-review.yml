@@ -1,38 +1,33 @@
 name: AI Code Review
 
-# This workflow is read from the trusted default branch. It never executes PR
-# scripts; the pinned action only reads the checked-out Git diff and posts a
-# summary. Build and test untrusted PR code in ci.yml, where no secrets exist.
+# Fork PRs never receive repository secrets or a write-capable token. They run
+# deterministic evidence stages only; trusted in-repository PRs also receive
+# the DeepSeek-backed review and the updatable summary comment.
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, reopened, synchronize]
 
 permissions:
   contents: read
-  issues: write
-  pull-requests: write
-  security-events: write
 
 concurrency:
   group: ai-code-review-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  review:
-    name: Review pull request
+  review-fork:
+    name: Review pull request (fork)
+    if: github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out the PR head commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
 
-      # This is a deterministic evidence stage within the same AI Code Review
-      # run. It only reads committed Java source and never executes Maven,
-      # Gradle, tests, or other PR-provided scripts.
       - name: Detect Java source
         id: java
         shell: bash
@@ -46,14 +41,85 @@ jobs:
 
       - name: Initialize Java CodeQL evidence
         if: steps.java.outputs.enabled == 'true'
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@fddeee1a7ece751b577e409a89057319e3172939 # v4
         with:
           languages: java
           build-mode: none
 
       - name: Analyze Java source
         if: steps.java.outputs.enabled == 'true'
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@fddeee1a7ece751b577e409a89057319e3172939 # v4
+        with:
+          output: ${{ github.workspace }}/sarif-results
+          upload: never
+
+      - name: Locate Java SARIF evidence
+        if: steps.java.outputs.enabled == 'true'
+        id: sarif
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          reports=("$GITHUB_WORKSPACE"/sarif-results/*.sarif)
+          if [[ ${#reports[@]} -ne 1 ]]; then
+            echo "Expected exactly one Java CodeQL SARIF report." >&2
+            exit 1
+          fi
+          printf 'path=%s\n' "${reports[0]}" >> "$GITHUB_OUTPUT"
+
+      # This job receives neither DEEPSEEK_API_KEY nor write permissions.
+      # SARIF from a fork remains grounded evidence and cannot gate the PR.
+      - name: Review pull request
+        uses: lavyoung/ai-code-review@be89867ee4c316060f7a99cd14188ab3c2d18496
+        with:
+          output-language: zh-CN
+          comment-enabled: "false"
+          deepseek-enabled: "false"
+          java-ast-enabled: ${{ steps.java.outputs.enabled }}
+          secret-scan-enabled: "true"
+          sarif-enabled: ${{ steps.java.outputs.enabled }}
+          sarif-report: ${{ steps.sarif.outputs.path }}
+
+  review-internal:
+    name: Review pull request
+    if: github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Check out the PR head commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Detect Java source
+        id: java
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-tree -r --name-only HEAD | grep -Eq '\.java$'; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # This stage only reads committed Java source. It does not run Maven,
+      # Gradle, project tests, or project-provided build scripts.
+      - name: Initialize Java CodeQL evidence
+        if: steps.java.outputs.enabled == 'true'
+        uses: github/codeql-action/init@fddeee1a7ece751b577e409a89057319e3172939 # v4
+        with:
+          languages: java
+          build-mode: none
+
+      - name: Analyze Java source
+        if: steps.java.outputs.enabled == 'true'
+        uses: github/codeql-action/analyze@fddeee1a7ece751b577e409a89057319e3172939 # v4
         with:
           output: ${{ github.workspace }}/sarif-results
           upload: never
@@ -78,6 +144,7 @@ jobs:
           output-language: zh-CN
           comment-enabled: "true"
           java-ast-enabled: ${{ steps.java.outputs.enabled }}
+          secret-scan-enabled: "true"
           sarif-enabled: ${{ steps.java.outputs.enabled }}
           sarif-report: ${{ steps.sarif.outputs.path }}
         env:

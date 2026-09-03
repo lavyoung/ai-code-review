@@ -1,6 +1,7 @@
 # ai-code-review 设计规划文档
 
-> 首先遵循[项目军规：统一 AI 代码质量审查](./PROJECT_CHARTER.md)
+> 首先遵循[项目军规：统一 AI 代码质量审查](./PROJECT_CHARTER.md)。GitHub Push
+> 自动审查的范围、实现与发布计划见 [GitHub Push 自动审查详细设计](./GITHUB-PUSH-REVIEW-DESIGN.md)
 > 。长期的可验证评审流水线、统一领域模型、端口边界和迁移方案见 [可验证 AI 代码评审架构](./REVIEW-QUALITY-ARCHITECTURE.md)
 > 。本文保留产品范围、平台接入和首期交付规划。
 
