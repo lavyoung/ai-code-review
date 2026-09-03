@@ -20,6 +20,8 @@ const httpsUrlSchema = z.string().url().refine((value) => new URL(value).protoco
 const configurationOverrideSchema = z.object({
     severityThreshold: z.enum(SEVERITIES).optional(),
     failOn: z.array(z.enum(SEVERITIES)).optional(),
+    aiProvider: z.string().trim().min(1).optional(),
+    aiEnabled: z.boolean().optional(),
     model: z.string().trim().min(1).optional(),
     outputLanguage: outputLanguageSchema.optional(),
     timeoutMs: z.number().int().positive().optional(),
@@ -47,6 +49,10 @@ const configurationOverrideSchema = z.object({
     githubCommentFailOnError: z.boolean().optional(),
     codeUpCommentEnabled: z.boolean().optional(),
     codeUpCommentFailOnError: z.boolean().optional(),
+    commentProviders: z.record(z.string().trim().min(1), z.object({
+        enabled: z.boolean().optional(),
+        failOnError: z.boolean().optional(),
+    }).strict()).optional(),
 }).strict();
 
 const parseBooleanEnvironmentValue = (value: string | undefined): boolean | string | undefined => {
@@ -80,17 +86,21 @@ export const resolveReviewConfiguration = (
     sources: ConfigurationSources,
 ): ReviewConfiguration => {
     const file = configurationOverrideSchema.parse(sources.file ?? {});
+    const aiTimeoutValue = sources.environment?.REVIEW_AI_TIMEOUT_MS
+        ?? sources.environment?.DEEPSEEK_TIMEOUT_MS;
     const environment = configurationOverrideSchema.parse({
         severityThreshold: sources.environment?.REVIEW_SEVERITY_THRESHOLD,
+        aiProvider: sources.environment?.REVIEW_AI_PROVIDER,
+        aiEnabled: parseBooleanEnvironmentValue(sources.environment?.REVIEW_AI_ENABLED),
         failOn: sources.environment?.REVIEW_FAIL_ON
             ?.split(",")
             .map((severity: string) => severity.trim())
             .filter(Boolean),
-        model: sources.environment?.DEEPSEEK_MODEL,
+        model: sources.environment?.REVIEW_AI_MODEL ?? sources.environment?.DEEPSEEK_MODEL,
         outputLanguage: sources.environment?.REVIEW_OUTPUT_LANGUAGE,
-        timeoutMs: sources.environment?.DEEPSEEK_TIMEOUT_MS === undefined
+        timeoutMs: aiTimeoutValue === undefined
             ? undefined
-            : Number(sources.environment.DEEPSEEK_TIMEOUT_MS),
+            : Number(aiTimeoutValue),
         totalTimeoutMs: sources.environment?.REVIEW_TOTAL_ANALYZER_TIMEOUT_MS === undefined
             ? undefined
             : Number(sources.environment.REVIEW_TOTAL_ANALYZER_TIMEOUT_MS),
@@ -173,20 +183,30 @@ export const resolveReviewConfiguration = (
     const githubCommentEnabled = cli.githubCommentEnabled
         ?? environment.githubCommentEnabled
         ?? file.githubCommentEnabled
+        ?? file.commentProviders?.github?.enabled
         ?? false;
     const githubCommentFailOnError = cli.githubCommentFailOnError
         ?? environment.githubCommentFailOnError
         ?? file.githubCommentFailOnError
+        ?? file.commentProviders?.github?.failOnError
         ?? false;
     const codeUpCommentEnabled = cli.codeUpCommentEnabled
         ?? environment.codeUpCommentEnabled
         ?? file.codeUpCommentEnabled
+        ?? file.commentProviders?.codeup?.enabled
         ?? false;
     const codeUpCommentFailOnError = cli.codeUpCommentFailOnError
         ?? environment.codeUpCommentFailOnError
         ?? file.codeUpCommentFailOnError
+        ?? file.commentProviders?.codeup?.failOnError
         ?? false;
-    const deepSeekEnabled = cli.deepSeekEnabled ?? environment.deepSeekEnabled ?? file.deepSeekEnabled ?? true;
+    const deepSeekEnabled = cli.aiEnabled
+        ?? environment.aiEnabled
+        ?? file.aiEnabled
+        ?? cli.deepSeekEnabled
+        ?? environment.deepSeekEnabled
+        ?? file.deepSeekEnabled
+        ?? true;
     const typeScriptEnabled = cli.typeScriptEnabled
         ?? environment.typeScriptEnabled
         ?? file.typeScriptEnabled
@@ -259,7 +279,8 @@ export const resolveReviewConfiguration = (
             failOn: cli.failOn ?? environment.failOn ?? file.failOn ?? ["critical"],
         },
         ai: {
-            provider: "deepseek",
+            provider: cli.aiProvider ?? environment.aiProvider ?? file.aiProvider ?? "deepseek",
+            enabled: deepSeekEnabled,
             model: cli.model ?? environment.model ?? file.model ?? "deepseek-v4-flash",
             outputLanguage:
                 cli.outputLanguage
@@ -353,6 +374,11 @@ export const resolveReviewConfiguration = (
                 enabled: codeUpCommentEnabled,
                 failOnError: codeUpCommentFailOnError,
                 ...(codeUpAccessToken === undefined ? {} : { accessToken: codeUpAccessToken }),
+            },
+            providers: {
+                ...(file.commentProviders ?? {}),
+                github: {enabled: githubCommentEnabled, failOnError: githubCommentFailOnError},
+                codeup: {enabled: codeUpCommentEnabled, failOnError: codeUpCommentFailOnError},
             },
         },
     };

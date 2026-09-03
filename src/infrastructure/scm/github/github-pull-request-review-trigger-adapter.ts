@@ -1,6 +1,5 @@
 import {createReviewCommentId} from "../../../domain/review/model/review-comment.js";
 import {
-    ReviewTriggerConfigurationError,
     ReviewTriggerContextError,
 } from "../../../application/review/errors/review-trigger-error.js";
 import type {
@@ -13,14 +12,11 @@ import {
     type GitHubActionsPullRequestContext,
     resolveGitHubActionsPullRequestContext,
 } from "./resolve-github-actions-pull-request-context.js";
-import {GitHubReviewCommentAdapter} from "./github-review-comment-adapter.js";
 
 export interface GitHubPullRequestReviewTriggerConfiguration {
     environment: NodeJS.ProcessEnv;
     commentEnabled: boolean;
     commentFailOnError: boolean;
-    accessToken?: string;
-    apiBaseUrl?: string;
 }
 
 type GitHubPullRequestContextResolver = (
@@ -39,13 +35,7 @@ export class GitHubPullRequestReviewTriggerAdapter implements ReviewTriggerAdapt
     }
 
     public validateConfiguration(): void {
-        if (this.configuration.commentEnabled && this.configuration.accessToken === undefined) {
-            throw new ReviewTriggerConfigurationError(
-                this.providerId,
-                this.event,
-                "GITHUB_TOKEN must be set for GitHub PR comments.",
-            );
-        }
+        // GitHub 评论凭据由 Delivery Adapter 验证，Trigger 只解析事件上下文。
     }
 
     public async resolve(_: ReviewTriggerRequest): Promise<ReviewTriggerResolution> {
@@ -60,19 +50,20 @@ export class GitHubPullRequestReviewTriggerAdapter implements ReviewTriggerAdapt
         }
 
         const summaryComment = this.configuration.commentEnabled
-        && this.configuration.accessToken !== undefined
             ? {
                 label: "GitHub PR comment",
                 enabled: true as const,
-                reviewId: createReviewCommentId("github", context.repository, context.pullRequestNumber),
-                revision: context.headSha,
-                port: new GitHubReviewCommentAdapter({
-                    owner: context.repositoryOwner,
-                    repository: context.repositoryName,
-                    pullRequestNumber: context.pullRequestNumber,
-                    accessToken: this.configuration.accessToken,
-                    ...(this.configuration.apiBaseUrl === undefined ? {} : {apiBaseUrl: this.configuration.apiBaseUrl}),
-                }),
+                target: {
+                    providerId: this.providerId,
+                    label: "GitHub PR comment",
+                    reviewId: createReviewCommentId("github", context.repository, context.pullRequestNumber),
+                    revision: context.headSha,
+                    attributes: {
+                        owner: context.repositoryOwner,
+                        repository: context.repositoryName,
+                        pullRequestNumber: context.pullRequestNumber,
+                    },
+                },
                 failOnError: this.configuration.commentFailOnError,
             }
             : {

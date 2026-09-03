@@ -10,6 +10,8 @@ import {canonicalizeOutputLanguage} from "../../application/configuration/output
 export interface ConfigurationFileOverride {
     severityThreshold?: Severity;
     failOn?: Severity[];
+    aiProvider?: string;
+    aiEnabled?: boolean;
     model?: string;
     outputLanguage?: string;
     timeoutMs?: number;
@@ -37,7 +39,13 @@ export interface ConfigurationFileOverride {
     githubCommentFailOnError?: boolean;
     codeUpCommentEnabled?: boolean;
     codeUpCommentFailOnError?: boolean;
+    commentProviders?: Record<string, { enabled?: boolean; failOnError?: boolean }>;
 }
+
+const commentProviderSchema = z.object({
+    enabled: z.boolean().optional(),
+    fail_on_error: z.boolean().optional(),
+}).strict();
 
 const configurationFileSchema = z.object({
     review: z.object({
@@ -45,7 +53,8 @@ const configurationFileSchema = z.object({
         fail_on: z.array(z.enum(SEVERITIES)).optional(),
     }).strict().optional(),
     ai: z.object({
-        provider: z.literal("deepseek").optional(),
+        provider: z.string().trim().min(1).optional(),
+        enabled: z.boolean().optional(),
         model: z.string().trim().min(1).optional(),
         output_language: z.string().trim().min(1).max(64)
             .transform((value, context) => {
@@ -107,6 +116,9 @@ const configurationFileSchema = z.object({
             fail_on_error: z.boolean().optional(),
         }).strict().optional(),
     }).strict().optional(),
+    delivery: z.object({
+        comments: z.record(z.string().trim().min(1), commentProviderSchema).optional(),
+    }).strict().optional(),
     recording: z.object({
         local_path: z.string().trim().min(1).optional(),
         quality_store: z.object({
@@ -135,6 +147,10 @@ export const loadConfigurationFile = async (
         ...(configuration.review?.fail_on === undefined
             ? {}
             : { failOn: configuration.review.fail_on }),
+        ...(configuration.ai?.provider === undefined
+            ? {}
+            : {aiProvider: configuration.ai.provider}),
+        ...(configuration.ai?.enabled === undefined ? {} : {aiEnabled: configuration.ai.enabled}),
         ...(configuration.ai?.model === undefined
             ? {}
             : { model: configuration.ai.model }),
@@ -216,5 +232,20 @@ export const loadConfigurationFile = async (
         ...(configuration.comments?.codeup?.fail_on_error === undefined
             ? {}
             : { codeUpCommentFailOnError: configuration.comments.codeup.fail_on_error }),
+        ...(configuration.delivery?.comments === undefined
+            ? {}
+            : {
+                commentProviders: Object.fromEntries(
+                    Object.entries(configuration.delivery.comments).map(([providerId, provider]) => [
+                        providerId,
+                        {
+                            ...(provider.enabled === undefined ? {} : {enabled: provider.enabled}),
+                            ...(provider.fail_on_error === undefined
+                                ? {}
+                                : {failOnError: provider.fail_on_error}),
+                        },
+                    ]),
+                ),
+            }),
     };
 };

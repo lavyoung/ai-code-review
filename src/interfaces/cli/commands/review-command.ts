@@ -8,6 +8,8 @@ import {
 import {renderReviewDeliveryStatus, renderReviewReport,} from "../formatters/render-review-report.js";
 import {redactReviewDiagnostic} from "../formatters/redact-review-diagnostic.js";
 import {
+    createAiProviderFactoryRegistry,
+    createReviewDeliveryAdapterRegistry,
     createReviewDependencies,
     createReviewQualityStore,
     createReviewTriggerAdapterRegistry,
@@ -28,6 +30,8 @@ import {
     ReviewTriggerConfigurationError,
     ReviewTriggerContextError,
 } from "../../../application/review/errors/review-trigger-error.js";
+import {ProviderConfigurationError} from "../../../application/review/errors/provider-configuration-error.js";
+import type {ReviewCommentPort} from "../../../application/delivery/ports/review-comment-port.js";
 import {publishNotificationUseCase} from "../../../application/delivery/use-cases/publish-notification-use-case.js";
 import {
     createSanitizedReviewRunRecord
@@ -41,6 +45,8 @@ interface ReviewCommandOptions {
     target?: string;
     config?: string;
     outputLanguage?: string;
+    aiProvider?: string;
+    aiEnabled?: boolean;
     totalAnalyzerTimeoutMs?: number;
     maxAnalyzerConcurrency?: number;
     maxAiRequestCount?: number;
@@ -97,6 +103,9 @@ const reviewCommand = program
     .option("--target <ref>", "Target branch or commit")
     .option("--config <path>", "Configuration file path")
     .option("--output-language <bcp47-tag>", "BCP 47 language tag for AI review text")
+    .option("--ai-provider <provider>", "Registered AI provider ID")
+    .option("--ai-enabled <true|false>", "Enable the configured AI provider", (value) =>
+        parseBoolean(value, "--ai-enabled"))
     .option("--total-analyzer-timeout-ms <milliseconds>", "Total analyzer execution timeout", (value) =>
         parsePositiveInteger(value, "--total-analyzer-timeout-ms"))
     .option("--max-analyzer-concurrency <count>", "Maximum concurrent analyzers", (value) =>
@@ -137,6 +146,8 @@ const reviewCommand = program
                     ...(options.outputLanguage === undefined
                         ? {}
                         : { outputLanguage: options.outputLanguage }),
+                    ...(options.aiProvider === undefined ? {} : {aiProvider: options.aiProvider}),
+                    ...(options.aiEnabled === undefined ? {} : {aiEnabled: options.aiEnabled}),
                     ...(options.totalAnalyzerTimeoutMs === undefined
                         ? {}
                         : { totalTimeoutMs: options.totalAnalyzerTimeoutMs }),
@@ -195,6 +206,14 @@ const reviewCommand = program
         }
 
         const triggerRegistry = createReviewTriggerAdapterRegistry(configuration);
+        const deliveryRegistry = createReviewDeliveryAdapterRegistry(configuration);
+        const unsupportedCommentProvider = Object.keys(configuration.comments.providers)
+            .find((providerId) => deliveryRegistry.resolve(providerId) === undefined);
+        if (unsupportedCommentProvider !== undefined) {
+            console.error(`Configuration error. Comment delivery provider "${unsupportedCommentProvider}" is not registered. Supported providers: ${deliveryRegistry.supported().join(", ")}.`);
+            process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
+            return;
+        }
         const triggerAdapter = triggerRegistry.resolve(options.provider, options.event);
         if (triggerAdapter === undefined) {
             const supportedModes = triggerRegistry.supported()
@@ -216,10 +235,26 @@ const reviewCommand = program
             throw error;
         }
 
-        if (configuration.analyzers.deepseek.enabled && configuration.ai.apiKey === undefined) {
-            console.error("Configuration error. DEEPSEEK_API_KEY must be set.");
+        const aiProviderRegistry = createAiProviderFactoryRegistry();
+        const aiProvider = aiProviderRegistry.resolve(configuration.ai.provider);
+        if (aiProvider === undefined) {
+            console.error(
+                `Configuration error. AI provider "${configuration.ai.provider}" is not registered. Supported providers: ${aiProviderRegistry.supported().join(", ")}.`,
+            );
             process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
             return;
+        }
+        if (configuration.ai.enabled) {
+            try {
+                aiProvider.validateConfiguration(configuration.ai);
+            } catch (error) {
+                if (error instanceof ProviderConfigurationError) {
+                    console.error(`Configuration error. ${error.message}`);
+                    process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
+                    return;
+                }
+                throw error;
+            }
         }
 
         const runId = randomUUID();
@@ -236,6 +271,20 @@ const reviewCommand = program
                 return;
             }
             const invocation = triggerResolution.invocation;
+            const summaryComment = invocation.summaryComment;
+            let summaryCommentPort: ReviewCommentPort | undefined;
+            if (summaryComment?.enabled) {
+                const deliveryAdapter = deliveryRegistry.resolve(summaryComment.target.providerId);
+                if (deliveryAdapter === undefined) {
+                    throw new ProviderConfigurationError(
+                        "delivery",
+                        summaryComment.target.providerId,
+                        `Comment delivery provider "${summaryComment.target.providerId}" is not registered.`,
+                    );
+                }
+                deliveryAdapter.validateConfiguration();
+                summaryCommentPort = deliveryAdapter.createSummaryCommentPort(summaryComment.target);
+            }
             const result = await runReviewRangeUseCase({
                 range: invocation.range,
                 failOn: configuration.review.failOn,
@@ -273,23 +322,22 @@ const reviewCommand = program
                 ? await publishNotificationUseCase({ markdown: report }, createWeComNotifier(webhookUrl))
                 : undefined;
 
-            const summaryComment = invocation.summaryComment;
             const summaryCommentDelivery = summaryComment === undefined
                 ? undefined
                 : summaryComment.enabled
                     ? await publishReviewCommentUseCase(
                         createSummaryReviewComment(
-                            summaryComment.reviewId,
+                            summaryComment.target.reviewId,
                             renderReviewReport({
                                 target: reportTarget,
                                 runId,
                                 result,
                                 ...(wecomDelivery === undefined ? {} : {wecomDelivery}),
                             }),
-                            summaryComment.revision,
+                            summaryComment.target.revision,
                             runId,
                         ),
-                        summaryComment.port,
+                        summaryCommentPort!,
                     )
                     : {status: "disabled" as const};
 
@@ -327,6 +375,12 @@ const reviewCommand = program
                     `Review trigger context error (${error.providerId}/${error.event}). Check the event context.`,
                 );
                 process.exitCode = CLI_EXIT_CODES.INVALID_ARGUMENT;
+                return;
+            }
+
+            if (error instanceof ProviderConfigurationError) {
+                console.error(`Configuration error. ${error.message}`);
+                process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
                 return;
             }
 

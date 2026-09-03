@@ -15,13 +15,14 @@
 
 ## 当前支持范围
 
-| 场景                                     | 状态   | 说明                                                                    |
-|------------------------------------------|--------|-------------------------------------------------------------------------|
-| 本地 Git 手动评审                        | 支持   | 比较 `target...HEAD`，只包含已提交变更。                                |
-| GitHub Actions Pull Request              | 支持   | 同仓库 PR 提供 AI 摘要评论；外部 Fork PR 仅运行无 Secret 的确定性审查。 |
-| CodeUp Flow Merge Request                | 支持   | 通过 CodeUp API 定位当前 MR 和版本，支持摘要评论。                      |
-| GitLab、Push、定时任务                   | 未实现 | CLI 会拒绝未实现的执行模式。                                            |
-| 行级评论、通用 Webhook、钉钉、飞书、邮件 | 未实现 | 当前仅提供摘要评论、企业微信和 CI 日志。                                |
+| 场景                                     | 状态                | 说明                                                                    |
+|------------------------------------------|---------------------|-------------------------------------------------------------------------|
+| 本地 Git 手动评审                        | 支持                | 比较 `target...HEAD`，只包含已提交变更。                                |
+| GitHub Actions Pull Request              | 支持                | 同仓库 PR 提供 AI 摘要评论；外部 Fork PR 仅运行无 Secret 的确定性审查。 |
+| CodeUp Flow Merge Request                | 支持                | 通过 CodeUp API 定位当前 MR 和版本，支持摘要评论。                      |
+| GitHub Actions Push                      | Action / CLI 已支持 | 严格审查 `before..after`；发布包含该能力的 Action 版本后再启用工作流。  |
+| GitLab、CodeUp Push、定时任务            | 未实现              | CLI 会拒绝未实现的执行模式。                                            |
+| 行级评论、通用 Webhook、钉钉、飞书、邮件 | 未实现              | 当前仅提供摘要评论、企业微信和 CI 日志。                                |
 
 Push 评审采用平台无关的用例设计，首期将接入 GitHub Actions；后续 CodeUp、GitLab、Gitee、Bitbucket 等平台只需增加事件与 CI
 适配器。设计见 [Push 自动审查架构](docs/design/PUSH-REVIEW-ARCHITECTURE.md)。
@@ -64,6 +65,7 @@ review:
 
 ai:
   provider: deepseek
+  enabled: true
   model: deepseek-v4-flash
   output_language: zh-CN
   timeout_ms: 30000
@@ -75,8 +77,7 @@ execution:
   max_model_input_chars: 60000
 
 analyzers:
-  deepseek:
-    enabled: true
+  # `deepseek.enabled` 是兼容旧版本的入口；新配置使用 ai.enabled。
   typescript:
     enabled: false
     timeout_ms: 120000
@@ -100,6 +101,16 @@ notifiers:
     enabled: false
     fail_on_error: false
 
+delivery:
+  comments:
+    github:
+      enabled: false
+      fail_on_error: false
+    codeup:
+      enabled: false
+      fail_on_error: false
+
+# 兼容旧版本；新配置请使用 delivery.comments。
 comments:
   github:
     enabled: false
@@ -115,14 +126,15 @@ recording:
     endpoint_url: https://quality.example.com/api/v1/review-events
 ```
 
-配置文件采用严格校验：不支持的字段会导致配置错误。上例中的 `report_path` 仅在对应分析器启用时必填；
+配置文件采用严格校验：不支持的字段会导致配置错误。`ai.provider` 与 `delivery.comments` 的 Provider 必须在当前版本已注册，
+否则 CLI 以退出码 `102` 拒绝执行。上例中的 `report_path` 仅在对应分析器启用时必填；
 `quality_store.endpoint_url` 仅在组织质量存储启用时必填。
 
 ### 常用环境变量
 
 | 用途                 | 环境变量                                                                                                                                                                                                                             |
 |----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| DeepSeek             | `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`、`DEEPSEEK_TIMEOUT_MS`、`REVIEW_OUTPUT_LANGUAGE`                                                                                                                                                |
+| AI Provider          | `REVIEW_AI_PROVIDER`、`REVIEW_AI_ENABLED`、`REVIEW_AI_MODEL`、`REVIEW_AI_TIMEOUT_MS`、`REVIEW_OUTPUT_LANGUAGE`；DeepSeek 兼容变量：`DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`、`DEEPSEEK_TIMEOUT_MS`、`DEEPSEEK_ANALYZER_ENABLED`          |
 | 质量门禁             | `REVIEW_SEVERITY_THRESHOLD`、`REVIEW_FAIL_ON`                                                                                                                                                                                        |
 | 执行预算             | `REVIEW_TOTAL_ANALYZER_TIMEOUT_MS`、`REVIEW_MAX_ANALYZER_CONCURRENCY`、`REVIEW_MAX_AI_REQUEST_COUNT`、`REVIEW_MAX_MODEL_INPUT_CHARS`                                                                                                 |
 | TypeScript / Java    | `TYPESCRIPT_ANALYZER_ENABLED`、`TYPESCRIPT_ANALYZER_TIMEOUT_MS`、`TYPESCRIPT_AST_ANALYZER_ENABLED`、`JAVA_AST_ANALYZER_ENABLED`                                                                                                      |
@@ -251,11 +263,45 @@ jobs:
 [`ai-code-review.yml`](.github/workflows/ai-code-review.yml) 已按此拆分 Fork 与同仓库 PR。不要为了注入 Secret 改用
 `pull_request_target` 并 checkout Fork 的 PR Head。
 
-Composite Action 输入包括 `output-language`、`comment-enabled`、`deepseek-enabled`、`typescript-enabled`、
+Composite Action 输入包括 `event`（默认 `pull-request`，可设为 `push`）、`output-language`、`comment-enabled`、
+`deepseek-enabled`、`typescript-enabled`、
 `typescript-ast-enabled`、`java-ast-enabled`、`sarif-enabled` / `sarif-report` / `sarif-attestation`、
 `secret-scan-enabled`、
 `sandbox-test-enabled` /
 `sandbox-test-report`、`run-record-path`、`quality-store-enabled` / `quality-store-endpoint` 和 `max-model-input-chars`。
+
+### Push 自动审查
+
+在发布包含 `event: push` 的 Action 版本后，可在受控分支启用以下 Job。必须使用完整历史；工具会从真实 GitHub Push 事件中校验
+`before`、`after` 与当前检出的 `HEAD`，并且只审查 `before..after`。首次推送、分支删除和 Tag 推送会明确成功跳过。
+
+```yaml
+on:
+  push:
+    branches: [main, develop]
+
+jobs:
+  review-push:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ai-code-review-push-${{ github.repository }}-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: lavyoung/ai-code-review@<trusted-release-sha>
+        with:
+          event: push
+          comment-enabled: "false"
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+```
+
+Push 不创建 PR/MR 评论，也不自动修改、追加或重写 Git 提交；其结果显示在该提交的 GitHub Actions Check 和脱敏日志中。
 
 若 Action 仓库是公开仓库，调用方无需额外访问设置；若是私有仓库，需要在 Action 仓库的 **Settings → Actions → General →
 Access** 中授权同一用户或组织下的私有仓库访问。

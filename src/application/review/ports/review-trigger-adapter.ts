@@ -1,4 +1,4 @@
-import type {ReviewCommentPort} from "../../delivery/ports/review-comment-port.js";
+import type {SummaryCommentTarget} from "../../delivery/ports/review-delivery-adapter.js";
 import type {ReviewEventType} from "../../../domain/review/model/review-event.js";
 import type {DiffRange} from "./diff-provider.js";
 
@@ -25,9 +25,7 @@ export type ReviewSummaryComment =
     | {
     label: string;
     enabled: true;
-    reviewId: string;
-    revision: string;
-    port: ReviewCommentPort;
+    target: SummaryCommentTarget;
     failOnError: boolean;
 };
 

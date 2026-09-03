@@ -1,5 +1,4 @@
 import type {ReviewConfiguration} from "../application/configuration/review-configuration.js";
-import {DeepSeekReviewAdapter} from "../infrastructure/ai/deepseek/deepseek-review-adapter.js";
 import {TypeScriptReviewAnalyzer} from "../infrastructure/analyzers/typescript/typescript-review-analyzer.js";
 import {
     TypeScriptAstReviewAnalyzer
@@ -30,17 +29,41 @@ import {LocalManualReviewTriggerAdapter} from "../infrastructure/scm/git/local-m
 import {
     GitHubPullRequestReviewTriggerAdapter,
 } from "../infrastructure/scm/github/github-pull-request-review-trigger-adapter.js";
+import {GitHubPushReviewTriggerAdapter} from "../infrastructure/scm/github/github-push-review-trigger-adapter.js";
 import {
     CodeUpMergeRequestReviewTriggerAdapter,
 } from "../infrastructure/scm/codeup/codeup-merge-request-review-trigger-adapter.js";
+import {
+    StaticAiProviderFactoryRegistry,
+} from "../application/review/orchestration/static-ai-provider-factory-registry.js";
+import {DeepSeekAiProviderFactory} from "../infrastructure/ai/deepseek/deepseek-ai-provider-factory.js";
+import {
+    StaticReviewDeliveryAdapterRegistry,
+} from "../application/delivery/orchestration/static-review-delivery-adapter-registry.js";
+import {
+    GitHubReviewDeliveryAdapter,
+} from "../infrastructure/delivery/github/github-review-delivery-adapter.js";
+import {
+    CodeUpReviewDeliveryAdapter,
+} from "../infrastructure/delivery/codeup/codeup-review-delivery-adapter.js";
+import {ProviderConfigurationError} from "../application/review/errors/provider-configuration-error.js";
 
 /** 在唯一的装配边界创建评审用例所需的具体适配器。 */
 export const createReviewDependencies = (
     configuration: ReviewConfiguration,
     workingDirectory: string,
 ) => {
-    const deepSeekAnalyzer = configuration.analyzers.deepseek.enabled
-        ? new DeepSeekReviewAdapter(configuration.ai)
+    const aiProviderRegistry = createAiProviderFactoryRegistry();
+    const aiProvider = aiProviderRegistry.resolve(configuration.ai.provider);
+    if (aiProvider === undefined) {
+        throw new ProviderConfigurationError(
+            "ai",
+            configuration.ai.provider,
+            `AI provider "${configuration.ai.provider}" is not registered.`,
+        );
+    }
+    const aiAnalyzer = configuration.ai.enabled
+        ? aiProvider.create(configuration.ai)
         : undefined;
     const typeScriptAnalyzer = new TypeScriptReviewAnalyzer(workingDirectory);
     const typeScriptAstAnalyzer = configuration.analyzers.typescriptAst.enabled
@@ -80,12 +103,12 @@ export const createReviewDependencies = (
     const secretScanAnalyzer = configuration.analyzers.secretScan.enabled
         ? new SecretScanReviewAnalyzer()
         : undefined;
-    const analyzers = [...(deepSeekAnalyzer === undefined ? [] : [deepSeekAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(typeScriptAstAnalyzer === undefined ? [] : [typeScriptAstAnalyzer]), ...(javaAstAnalyzer === undefined ? [] : [javaAstAnalyzer]), ...(sandboxTestAnalyzer === undefined ? [] : [sandboxTestAnalyzer]), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer]), ...(secretScanAnalyzer === undefined ? [] : [secretScanAnalyzer])];
+    const analyzers = [...(aiAnalyzer === undefined ? [] : [aiAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(typeScriptAstAnalyzer === undefined ? [] : [typeScriptAstAnalyzer]), ...(javaAstAnalyzer === undefined ? [] : [javaAstAnalyzer]), ...(sandboxTestAnalyzer === undefined ? [] : [sandboxTestAnalyzer]), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer]), ...(secretScanAnalyzer === undefined ? [] : [secretScanAnalyzer])];
     if (analyzers.length === 0) {
         throw new Error("At least one review analyzer must be enabled.");
     }
-    const analyzerPlans = [...(deepSeekAnalyzer === undefined ? [] : [{
-        analyzerId: deepSeekAnalyzer.identity.id,
+    const analyzerPlans = [...(aiAnalyzer === undefined ? [] : [{
+        analyzerId: aiAnalyzer.identity.id,
         required: true,
         timeoutMs: configuration.ai.timeoutMs,
         retryCount: 2,
@@ -180,28 +203,50 @@ export const createReviewQualityStore = (
 /** 解析 CLI 的多来源配置。 */
 export const resolveCliReviewConfiguration = resolveCliConfiguration;
 
-/** 在唯一装配边界注册当前受支持的触发平台和事件。 */
-export const createReviewTriggerAdapterRegistry = (
+/** 在唯一装配边界注册经过审核的 AI Provider 工厂。 */
+export const createAiProviderFactoryRegistry = () => new StaticAiProviderFactoryRegistry([
+    new DeepSeekAiProviderFactory(),
+]);
+
+/** 在唯一装配边界注册当前受支持的摘要评论交付适配器。 */
+export const createReviewDeliveryAdapterRegistry = (
     configuration: ReviewConfiguration,
     environment: NodeJS.ProcessEnv = process.env,
-) => new StaticReviewTriggerAdapterRegistry([
-    new LocalManualReviewTriggerAdapter(),
-    new GitHubPullRequestReviewTriggerAdapter({
-        environment,
-        commentEnabled: configuration.comments.github.enabled,
-        commentFailOnError: configuration.comments.github.failOnError,
+) => new StaticReviewDeliveryAdapterRegistry([
+    new GitHubReviewDeliveryAdapter({
         ...(configuration.comments.github.accessToken === undefined
             ? {}
             : {accessToken: configuration.comments.github.accessToken}),
         ...(environment.GITHUB_API_URL === undefined ? {} : {apiBaseUrl: environment.GITHUB_API_URL}),
     }),
-    new CodeUpMergeRequestReviewTriggerAdapter({
-        environment,
-        commentEnabled: configuration.comments.codeup.enabled,
-        commentFailOnError: configuration.comments.codeup.failOnError,
+    new CodeUpReviewDeliveryAdapter({
         ...(configuration.comments.codeup.accessToken === undefined
             ? {}
             : {accessToken: configuration.comments.codeup.accessToken}),
+    }),
+]);
+
+/** 在唯一装配边界注册当前受支持的触发平台和事件。 */
+export const createReviewTriggerAdapterRegistry = (
+    configuration: ReviewConfiguration,
+    environment: NodeJS.ProcessEnv = process.env,
+    workingDirectory: string = process.cwd(),
+) => new StaticReviewTriggerAdapterRegistry([
+    new LocalManualReviewTriggerAdapter(),
+    new GitHubPullRequestReviewTriggerAdapter({
+        environment,
+        commentEnabled: configuration.comments.providers.github?.enabled ?? false,
+        commentFailOnError: configuration.comments.providers.github?.failOnError ?? false,
+    }),
+    new GitHubPushReviewTriggerAdapter(
+        environment,
+        undefined,
+        () => createCommittedRevisionProvider(workingDirectory).resolve(AbortSignal.timeout(5_000)),
+    ),
+    new CodeUpMergeRequestReviewTriggerAdapter({
+        environment,
+        commentEnabled: configuration.comments.providers.codeup?.enabled ?? false,
+        commentFailOnError: configuration.comments.providers.codeup?.failOnError ?? false,
     }),
 ]);
 

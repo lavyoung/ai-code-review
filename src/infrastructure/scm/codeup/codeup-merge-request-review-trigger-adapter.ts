@@ -1,6 +1,5 @@
 import {createReviewCommentId} from "../../../domain/review/model/review-comment.js";
 import {
-    ReviewTriggerConfigurationError,
     ReviewTriggerContextError,
 } from "../../../application/review/errors/review-trigger-error.js";
 import type {
@@ -13,13 +12,11 @@ import {
     CodeUpMergeRequestContextError,
     resolveCodeUpMergeRequestContext,
 } from "./resolve-codeup-merge-request-context.js";
-import {CodeUpReviewCommentAdapter} from "./codeup-review-comment-adapter.js";
 
 export interface CodeUpMergeRequestReviewTriggerConfiguration {
     environment: NodeJS.ProcessEnv;
     commentEnabled: boolean;
     commentFailOnError: boolean;
-    accessToken?: string;
 }
 
 type CodeUpMergeRequestContextResolver = (
@@ -38,13 +35,7 @@ export class CodeUpMergeRequestReviewTriggerAdapter implements ReviewTriggerAdap
     }
 
     public validateConfiguration(): void {
-        if (this.configuration.accessToken === undefined) {
-            throw new ReviewTriggerConfigurationError(
-                this.providerId,
-                this.event,
-                "CODEUP_TOKEN must be set for CodeUp MR lookup.",
-            );
-        }
+        // CodeUp 访问 Token 由上下文解析与 Delivery Adapter 分别按其职责验证。
     }
 
     public async resolve(_: ReviewTriggerRequest): Promise<ReviewTriggerResolution> {
@@ -59,20 +50,22 @@ export class CodeUpMergeRequestReviewTriggerAdapter implements ReviewTriggerAdap
         }
 
         const summaryComment = this.configuration.commentEnabled
-        && this.configuration.accessToken !== undefined
             ? {
                 label: "CodeUp MR comment",
                 enabled: true as const,
-                reviewId: createReviewCommentId("codeup", context.repositoryId, context.changeRequestId),
-                revision: context.headSha,
-                port: new CodeUpReviewCommentAdapter({
-                    apiBaseUrl: context.apiBaseUrl,
-                    accessToken: this.configuration.accessToken,
-                    repositoryId: context.repositoryId,
-                    changeRequestId: context.changeRequestId,
-                    patchSetBizId: context.patchSetBizId,
-                    ...(context.organizationId === undefined ? {} : {organizationId: context.organizationId}),
-                }),
+                target: {
+                    providerId: this.providerId,
+                    label: "CodeUp MR comment",
+                    reviewId: createReviewCommentId("codeup", context.repositoryId, context.changeRequestId),
+                    revision: context.headSha,
+                    attributes: {
+                        apiBaseUrl: context.apiBaseUrl,
+                        repositoryId: context.repositoryId,
+                        changeRequestId: context.changeRequestId,
+                        patchSetBizId: context.patchSetBizId,
+                        ...(context.organizationId === undefined ? {} : {organizationId: context.organizationId}),
+                    },
+                },
                 failOnError: this.configuration.commentFailOnError,
             }
             : {

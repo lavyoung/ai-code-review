@@ -147,6 +147,50 @@ describe("resolveReviewConfiguration", () => {
         });
     });
 
+    it("applies generic AI provider selection with CLI, environment, file, and default precedence", () => {
+        expect(resolveReviewConfiguration({
+            file: {aiProvider: "file-provider"},
+            environment: {REVIEW_AI_PROVIDER: "environment-provider"},
+            cli: {aiProvider: "cli-provider"},
+        }).ai.provider).toBe("cli-provider");
+
+        expect(resolveReviewConfiguration({
+            file: {aiProvider: "file-provider"},
+            environment: {REVIEW_AI_PROVIDER: "environment-provider"},
+        }).ai.provider).toBe("environment-provider");
+
+        expect(resolveReviewConfiguration({
+            environment: {
+                REVIEW_AI_PROVIDER: "deepseek",
+                REVIEW_AI_MODEL: "generic-model",
+                DEEPSEEK_MODEL: "legacy-model",
+                REVIEW_AI_TIMEOUT_MS: "10000",
+                DEEPSEEK_TIMEOUT_MS: "20000",
+            },
+        }).ai).toMatchObject({
+            provider: "deepseek",
+            model: "generic-model",
+            timeoutMs: 10_000,
+        });
+    });
+
+    it("supports generic file-based comment provider settings while keeping legacy settings compatible", () => {
+        const configuration = resolveReviewConfiguration({
+            file: {
+                commentProviders: {
+                    github: {enabled: true, failOnError: true},
+                    codeup: {enabled: false, failOnError: false},
+                },
+            },
+        });
+
+        expect(configuration.comments.providers).toEqual({
+            github: {enabled: true, failOnError: true},
+            codeup: {enabled: false, failOnError: false},
+        });
+        expect(configuration.comments.github).toMatchObject({enabled: true, failOnError: true});
+    });
+
     it("rejects an invalid environment timeout", () => {
         expect(() =>
             resolveReviewConfiguration({

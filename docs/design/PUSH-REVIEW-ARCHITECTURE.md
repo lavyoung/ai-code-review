@@ -269,12 +269,12 @@ Result，但输出协议与退出码保持一致：
 
 ## 9. 分阶段实施与发布
 
-### 阶段 A：领域外上下文与本地验证
+### 阶段 A：领域外上下文与本地验证（已完成）
 
 实现 `PushReviewContext`、平台无关的 two-dot change resolver、Push use case 和 CLI 路由；先落地 GitHub resolver，并补齐契约单测与
 Git 集成测试。此阶段不改变线上 workflow。
 
-### 阶段 B：GitHub 工作流接入
+### 阶段 B：GitHub 工作流接入（待发布后启用）
 
 在统一 `ai-code-review.yml` 中增加受控分支 GitHub Push job、完整 checkout、权限和并发设置；以不阻断模式观察真实
 Check、耗时、空范围和通知行为。后续平台只新增 CI/context adapter，不复制用例。
@@ -290,13 +290,14 @@ Check、耗时、空范围和通知行为。后续平台只新增 CI/context ada
 
 ## 10. 实施验收清单
 
-- [ ] Push 核心只接收平台无关的 `PushReviewContext`，仅接受受控分支和有效 `before/after`；
-- [ ] Diff 始终为 `before..after`，无隐式回退；
-- [ ] 共享评审流水线与结果协议，没有复制 PR 逻辑；
-- [ ] Push 不调用 PR/MR 评论端口；
-- [ ] 工作流使用完整 checkout、最小权限和事件隔离并发组；
-- [ ] 日志、通知和模型输入均执行现有脱敏策略；
-- [ ] 通知失败重试两次，默认不改变主审查结果；
-- [ ] 退出码、Check 状态和合法跳过原因可预测；
-- [ ] 单测、Git 集成测试和 GitHub Actions 验收均已通过；
-- [ ] GitHub 首期发布说明与 README 说明 Push 的使用方式、边界和默认不自动修复行为；后续平台接入仅增加适配器文档。
+- [x] GitHub Push Trigger Adapter 仅产出平台无关的 `ReviewInvocation` / `ReviewSkip`，并校验有效 `before/after` 与检出
+  `HEAD`；
+- [x] Diff 始终为 `before..after`，使用 two-dot 且无隐式回退；
+- [x] 共享评审流水线与结果协议，没有复制 PR 逻辑；
+- [x] Push 不调用 PR/MR 评论端口；
+- [ ] 工作流使用完整 checkout、最小权限和事件隔离并发组（需在发布含 Push 合约的 Action 版本后启用）；
+- [x] 日志、通知和模型输入复用现有脱敏策略；
+- [x] 通知失败复用既有两次重试，默认不改变主审查结果；
+- [x] 退出码与合法跳过原因可预测；GitHub Check 展示待真实工作流验收；
+- [x] 单测与本地构建已通过；GitHub Actions 真实 Push 验收待发布后执行；
+- [x] README 已说明 Push 的使用方式、边界和默认不自动修复行为；后续平台接入仅增加适配器文档。

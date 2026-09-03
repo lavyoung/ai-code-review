@@ -1,7 +1,11 @@
 name: AI Code Review
-description: Review a GitHub pull request with DeepSeek and publish an updatable summary comment.
+description: Review GitHub pull requests or committed push ranges with DeepSeek and deterministic evidence.
 
 inputs:
+  event:
+    description: Review event. Supported values are pull-request and push.
+    required: false
+    default: pull-request
   output-language:
     description: BCP 47 language tag for the generated review text.
     required: false
@@ -83,7 +87,7 @@ runs:
       shell: bash
       run: npm run build --prefix "$GITHUB_ACTION_PATH"
 
-    - name: Review pull request
+    - name: Run AI code review
       shell: bash
       env:
         DEEPSEEK_API_KEY: ${{ env.DEEPSEEK_API_KEY }}
@@ -107,4 +111,4 @@ runs:
         QUALITY_STORE_ENDPOINT_URL: ${{ inputs.quality-store-endpoint }}
         QUALITY_STORE_SIGNING_SECRET: ${{ env.QUALITY_STORE_SIGNING_SECRET }}
         REVIEW_MAX_MODEL_INPUT_CHARS: ${{ inputs.max-model-input-chars }}
-      run: node "$GITHUB_ACTION_PATH/dist/interfaces/cli/index.js" review --provider github --event pull-request
+      run: node "$GITHUB_ACTION_PATH/dist/interfaces/cli/index.js" review --provider github --event "${{ inputs.event }}"

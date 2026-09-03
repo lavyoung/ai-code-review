@@ -3,11 +3,6 @@ import type { ReviewAnalysis } from "../../../domain/review/model/review-finding
 import type { ReviewAnalyzer } from "./review-analyzer-port.js";
 
 /**
- * 已支持或已预留的 AI 评审服务提供方。
- */
-export type AiProvider = "deepseek" | "openai";
-
-/**
  * 调用 AI 服务生成结构化评审分析的应用端口。
  */
 /**
@@ -17,7 +12,7 @@ export interface AiReviewPort extends ReviewAnalyzer {
     /**
      * 此端口实现所调用的 AI 服务提供方。
      */
-    readonly provider: AiProvider;
+    readonly provider: string;
 
     /**
      * 对已完成敏感内容过滤的变更执行评审。

@@ -12,6 +12,7 @@ describe("loadConfigurationFile", () => {
             .resolves.toEqual({
                 severityThreshold: "low",
                 failOn: ["high"],
+                aiProvider: "deepseek",
                 model: "deepseek-v4-flash",
                 outputLanguage: "ja",
                 timeoutMs: 10_000,
@@ -27,8 +28,20 @@ describe("loadConfigurationFile", () => {
             });
     });
 
-    it("rejects an unsupported AI provider", async () => {
+    it("preserves an AI provider selection for the registered factory validation boundary", async () => {
         await expect(loadConfigurationFile(fixturePath("invalid-ai-code-review.yml")))
-            .rejects.toThrow();
+            .resolves.toEqual({aiProvider: "unsupported"});
+    });
+
+    it("loads generic delivery comment provider settings without accepting secrets in YAML", async () => {
+        await expect(loadConfigurationFile(fixturePath("delivery-comments-ai-code-review.yml")))
+            .resolves.toEqual({
+                aiProvider: "deepseek",
+                aiEnabled: false,
+                commentProviders: {
+                    github: {enabled: true, failOnError: true},
+                    codeup: {enabled: false, failOnError: false},
+                },
+            });
     });
 });

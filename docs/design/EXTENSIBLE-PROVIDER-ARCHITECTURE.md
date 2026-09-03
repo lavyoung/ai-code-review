@@ -140,15 +140,14 @@ DeepSeek 是第一个注册项，不再是应用配置模型中的唯一联合�
 
 ### 4.2 配置迁移
 
-新的规范配置：
+当前规范配置：
 
 ```yaml
 ai:
-  default_provider: deepseek
-  providers:
-    deepseek:
-      model: deepseek-v4-flash
-      timeout_ms: 30000
+  provider: deepseek
+  enabled: true
+  model: deepseek-v4-flash
+  timeout_ms: 30000
 ```
 
 配置文件不保存密钥。Provider 专属密钥继续仅由其基础设施适配器从环境变量或 CI Secret 读取，例如 `DEEPSEEK_API_KEY`。通用选择项使用：
@@ -159,14 +158,19 @@ REVIEW_AI_MODEL
 REVIEW_AI_TIMEOUT_MS
 ```
 
-兼容策略：当前 `ai.provider`、`DEEPSEEK_MODEL`、`DEEPSEEK_TIMEOUT_MS` 在一个小版本周期内作为 DeepSeek
-的兼容输入保留；新旧值同时提供且冲突时，以新的通用配置优先，并输出不含敏感信息的迁移警告。移除旧入口只能在下一个主版本进行。
+通用选择项使用 `REVIEW_AI_PROVIDER`、`REVIEW_AI_ENABLED`、`REVIEW_AI_MODEL` 与 `REVIEW_AI_TIMEOUT_MS`；当前已兼容
+`DEEPSEEK_MODEL`、`DEEPSEEK_TIMEOUT_MS`、`DEEPSEEK_ANALYZER_ENABLED` 与 `--deepseek-enabled`。新旧值同时提供且冲突时，
+通用配置优先。Provider 专属密钥继续仅从环境变量或 CI Secret 读取，例如 `DEEPSEEK_API_KEY`。
+
+当前只注册了 DeepSeek；选择未注册的 AI Provider 稳定以 `102` 失败并列出受支持项。接入第二个 Provider 时，才在不改变此通用
+配置契约的前提下增加其专属配置块。
 
 ## 5. 评论、通知与交付
 
-`ReviewCommentPort` 与 `NotifierPort` 保持平台无关。平台适配器负责根据 `ReviewInvocation.commentTarget` 创建相应端口。
+`ReviewCommentPort` 与 `NotifierPort` 保持平台无关。Trigger Adapter 仅提供 `ReviewInvocation.summaryComment.target`；
+Delivery Adapter Registry 再根据该目标创建相应端口，因此 Trigger 不依赖平台 HTTP 评论实现。
 
-配置从固定嵌套结构逐步演进为：
+规范配置为：
 
 ```yaml
 delivery:
@@ -179,7 +183,8 @@ delivery:
       fail_on_error: false
 ```
 
-配置解析允许已注册 Provider 的键；未知键必须以 `102` 失败，避免拼写错误被忽略。评论识别标志继续使用
+历史 `comments.github` / `comments.codeup` 与 `GITHUB_COMMENT_*` / `CODEUP_COMMENT_*` 保持兼容；CLI、环境变量优先于
+配置文件中的规范键。配置解析允许已注册 Provider 的键；未知键必须以 `102` 失败，避免拼写错误被忽略。评论识别标志继续使用
 `{providerId}:{repositoryId}:{changeId}`，保证跨平台唯一性和更新幂等。
 
 GitHub Composite Action 仍是 GitHub 专属适配器，不需要伪装为通用 Action；GitLab CI、CodeUp Flow 等平台通过其 CI 文件调用同一
@@ -229,7 +234,7 @@ bootstrap/
 2. 将现有 manual / PR / MR 用例变为兼容委托包装。
 3. 验证 two-dot 与 three-dot 比较语义完全不回归。
 
-### 阶段 C：AI 与交付配置迁移
+### 阶段 C：AI 与交付配置迁移（已完成）
 
 1. 引入 `AiProviderFactory`；DeepSeek 作为首个注册项。
 2. 增加新规范配置和旧配置兼容解析测试。
@@ -251,8 +256,8 @@ AI Provider 工厂。
 - [x] Domain 与 `runReviewRangeUseCase` 中不存在 GitHub、CodeUp、DeepSeek 等具体 Provider 分支。
 - [x] CLI 通过 Trigger Registry 路由，未知组合稳定返回 `101` 并列出已注册组合。
 - [x] 已有 local manual、GitHub PR、CodeUp MR 的范围、评论协议和退出码由兼容用例与 Trigger Adapter 契约测试保护。
-- [ ] DeepSeek 迁移后仍可通过旧环境变量工作；新配置优先级正确。
-- [ ] AI / 平台 / 评论 Provider 的未知配置稳定返回 `102`。
+- [x] DeepSeek 已通过 AI Provider Factory 创建；旧环境变量与 `--deepseek-enabled` 仍可用，通用配置优先级已测试。
+- [x] AI / 评论 Provider 的未知配置稳定返回 `102`；平台未知组合稳定返回 `101`。
 - [ ] GitHub Push 作为首个新增平台事件，不修改领域策略或统一范围用例。
 - [ ] 外部 Fork、密钥、脱敏和最小权限约束不回归。
 - [ ] 所有适配器都通过同一组契约测试；构建、单测、CLI 集成测试和工作流验收通过。
