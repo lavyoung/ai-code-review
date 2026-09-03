@@ -23,6 +23,9 @@
 | GitLab、Push、定时任务                   | 未实现 | CLI 会拒绝未实现的执行模式。                                            |
 | 行级评论、通用 Webhook、钉钉、飞书、邮件 | 未实现 | 当前仅提供摘要评论、企业微信和 CI 日志。                                |
 
+Push 评审采用平台无关的用例设计，首期将接入 GitHub Actions；后续 CodeUp、GitLab、Gitee、Bitbucket 等平台只需增加事件与 CI
+适配器。设计见 [Push 自动审查架构](docs/design/PUSH-REVIEW-ARCHITECTURE.md)。
+
 ## 快速开始
 
 前提：Node.js 22+、Git，以及可访问的目标提交。默认启用 DeepSeek，因此需要通过环境变量注入 `DEEPSEEK_API_KEY`。

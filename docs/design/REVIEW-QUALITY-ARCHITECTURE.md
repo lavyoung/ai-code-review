@@ -1,7 +1,8 @@
 # 可验证 AI 代码评审架构
 
-> 产品目标与不可违反的统一入口约束见[项目军规：统一 AI 代码质量审查](./PROJECT_CHARTER.md)。GitHub Push
-> 触发场景的具体实现规划见 [GitHub Push 自动审查详细设计](./GITHUB-PUSH-REVIEW-DESIGN.md)。本文的分层、验证和安全设计必须服务于该目标。
+> 产品目标与不可违反的统一入口约束见[项目军规：统一 AI 代码质量审查](./PROJECT_CHARTER.md)。平台无关的 Push
+> 触发设计见 [Push 自动审查架构](./PUSH-REVIEW-ARCHITECTURE.md)，平台、AI 与交付 Provider
+> 的注册边界见 [可扩展 Provider 架构调整方案](./EXTENSIBLE-PROVIDER-ARCHITECTURE.md)。本文的分层、验证和安全设计必须服务于该目标。
 
 ## 1. 决策摘要
 

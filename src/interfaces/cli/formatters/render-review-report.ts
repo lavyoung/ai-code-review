@@ -10,6 +10,12 @@ import type {
     ReviewCommentPublication
 } from "../../../application/delivery/use-cases/publish-review-comment-use-case.js";
 
+/** 平台适配器提供的摘要评论投递状态；标签由适配器确定，避免 CLI 识别平台。 */
+export interface SummaryCommentDeliveryStatus {
+    label: string;
+    publication: ReviewCommentPublication | { status: "disabled" };
+}
+
 /**
  * 渲染手动评审 CI 报告所需的接口层输入。
  */
@@ -19,8 +25,7 @@ export interface ManualReviewReportInput {
     result: ManualReviewResult;
     includeDeliveryStatus?: boolean;
     wecomDelivery?: NotificationDelivery | { status: "disabled" } | { status: "pending" };
-    githubCommentDelivery?: ReviewCommentPublication | { status: "disabled" };
-    codeupCommentDelivery?: ReviewCommentPublication | { status: "disabled" };
+    summaryCommentDelivery?: SummaryCommentDeliveryStatus;
 }
 
 const formatWeComDelivery = (
@@ -37,35 +42,26 @@ const formatWeComDelivery = (
     return `- WeCom: ${delivery.status} (attempts: ${delivery.attempts})`;
 };
 
-const formatGitHubCommentDelivery = (
-    delivery: ManualReviewReportInput["githubCommentDelivery"],
+const formatSummaryCommentDelivery = (
+    delivery: ManualReviewReportInput["summaryCommentDelivery"],
 ): string | undefined => delivery === undefined
     ? undefined
-    : delivery.status === "disabled"
-        ? "- GitHub PR comment: disabled"
-        : `- GitHub PR comment: ${delivery.status} (attempts: ${delivery.attempts})`;
-
-const formatCodeUpCommentDelivery = (
-    delivery: ManualReviewReportInput["codeupCommentDelivery"],
-): string | undefined => delivery === undefined
-    ? undefined
-    : delivery.status === "disabled"
-        ? "- CodeUp MR comment: disabled"
-        : `- CodeUp MR comment: ${delivery.status} (attempts: ${delivery.attempts})`;
+    : delivery.publication.status === "disabled"
+        ? `- ${delivery.label}: disabled`
+        : `- ${delivery.label}: ${delivery.publication.status} (attempts: ${delivery.publication.attempts})`;
 
 /** 渲染不会重复包含评审发现项的最终投递状态。 */
 export const renderReviewDeliveryStatus = (
     input: Pick<
         ManualReviewReportInput,
-        "wecomDelivery" | "githubCommentDelivery" | "codeupCommentDelivery"
+        "wecomDelivery" | "summaryCommentDelivery"
     >,
 ): string => [
     "## AI Code Review Delivery",
     "",
     "- CI Log: delivered",
     formatWeComDelivery(input.wecomDelivery),
-    formatGitHubCommentDelivery(input.githubCommentDelivery),
-    formatCodeUpCommentDelivery(input.codeupCommentDelivery),
+    formatSummaryCommentDelivery(input.summaryCommentDelivery),
 ].filter((line): line is string => line !== undefined).join("\n");
 
 const redactText = (value: string): string =>

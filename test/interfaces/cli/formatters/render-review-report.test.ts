@@ -8,7 +8,10 @@ describe("renderReviewReport", () => {
     it("renders final delivery status without repeating review findings", () => {
         expect(renderReviewDeliveryStatus({
             wecomDelivery: { status: "failed", attempts: 3 },
-            githubCommentDelivery: { status: "delivered", attempts: 1 },
+            summaryCommentDelivery: {
+                label: "GitHub PR comment",
+                publication: {status: "delivered", attempts: 1},
+            },
         })).toBe([
             "## AI Code Review Delivery",
             "",
@@ -191,7 +194,10 @@ describe("renderReviewReport", () => {
                 suppressedCandidateCounts: {},
                 policy: { highestSeverity: null, shouldFail: false },
             },
-            githubCommentDelivery: { status: "failed", attempts: 3 },
+            summaryCommentDelivery: {
+                label: "GitHub PR comment",
+                publication: {status: "failed", attempts: 3},
+            },
         });
 
         expect(report).toContain("GitHub PR comment: failed (attempts: 3)");
@@ -207,7 +213,10 @@ describe("renderReviewReport", () => {
                 suppressedCandidateCounts: {},
                 policy: { highestSeverity: null, shouldFail: false },
             },
-            codeupCommentDelivery: { status: "delivered", attempts: 1 },
+            summaryCommentDelivery: {
+                label: "CodeUp MR comment",
+                publication: {status: "delivered", attempts: 1},
+            },
         });
 
         expect(report).toContain("CodeUp MR comment: delivered (attempts: 1)");

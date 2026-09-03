@@ -1,20 +1,12 @@
-import type { DiffProvider } from "../ports/diff-provider.js";
-import type { Severity } from "../../../domain/review/model/severity.js";
-import { resolvePullRequestCodeChange } from "./resolve-pull-request-code-change.js";
+import type {Severity} from "../../../domain/review/model/severity.js";
 import {
-    reviewCodeChangeUseCase,
     type ReviewExecutionResult,
-    type ReviewCodeChangeDependencies,
-} from "./review-code-change-use-case.js";
-import {
-    AiReviewExecutionError,
-    DiffResolutionError,
-} from "../errors/review-execution-error.js";
+    type RunReviewRangeDependencies,
+    runReviewRangeUseCase,
+} from "./run-review-range-use-case.js";
 
 /** GitHub 等 PR 触发评审需要的外部能力。 */
-export interface RunPullRequestReviewDependencies extends ReviewCodeChangeDependencies {
-    diffProvider: DiffProvider;
-}
+export type RunPullRequestReviewDependencies = RunReviewRangeDependencies;
 
 /** GitHub 等 PR 触发评审的已提交范围与质量门禁输入。 */
 export interface RunPullRequestReviewCommand {
@@ -29,26 +21,11 @@ export interface RunPullRequestReviewCommand {
 export const runPullRequestReviewUseCase = async (
     command: RunPullRequestReviewCommand,
     dependencies: RunPullRequestReviewDependencies,
-): Promise<ReviewExecutionResult> => {
-    try {
-        const reviewInput = await resolvePullRequestCodeChange(
-            dependencies.diffProvider,
-            command,
-        );
-
-        return reviewCodeChangeUseCase({
-            reviewInput,
-            failOn: command.failOn,
-        }, dependencies);
-    } catch (error) {
-        if (error instanceof DiffResolutionError) {
-            throw error;
-        }
-
-        if (error instanceof AiReviewExecutionError) {
-            throw error;
-        }
-
-        throw new DiffResolutionError(error);
-    }
-};
+): Promise<ReviewExecutionResult> => runReviewRangeUseCase({
+    range: {
+        baseRef: command.baseSha,
+        headRef: command.headSha,
+        comparison: "three-dot",
+    },
+    failOn: command.failOn,
+}, dependencies);

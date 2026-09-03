@@ -1,6 +1,6 @@
 {
   "name": "@lavyoung/ai-code-review",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "AI-powered code review workflow for push, pull request, merge request, and CI pipelines.",
   "bin": {
     "ai-code-review": "./dist/interfaces/cli/index.js"
