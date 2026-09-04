@@ -17,6 +17,7 @@ import {deduplicateReviewFindings} from "../orchestration/deduplicate-review-fin
 import type {FindingSuppressionPort} from "../ports/finding-suppression-port.js";
 import type {SemanticImpactIndexPort} from "../ports/semantic-impact-index-port.js";
 import type {TestInventoryPort} from "../ports/test-inventory-port.js";
+import type {TestExecutionEvidencePort} from "../ports/test-execution-evidence-port.js";
 import {createImpactPackage} from "../changes/create-impact-package.js";
 
 /** 对已获取代码变更执行统一分析器集合所需的外部能力。 */
@@ -31,6 +32,8 @@ export interface ReviewCodeChangeDependencies {
     semanticImpactIndex?: SemanticImpactIndexPort;
     /** 可选的已提交测试资产发现；不能执行仓库脚本或制造覆盖证明。 */
     testInventory?: TestInventoryPort;
+    /** 可选的受控沙箱通过证明；失败或不可用不得伪造覆盖。 */
+    testExecutionEvidence?: TestExecutionEvidencePort;
 }
 
 /** 对同一次受控原始/安全变更执行评审的输入。 */
@@ -61,13 +64,23 @@ export const reviewCodeChangeUseCase = async (
 ): Promise<ReviewExecutionResult> => {
     let impactPackage;
     let testInventory;
+    let passedTestIds: readonly string[] = [];
     if (dependencies.testInventory !== undefined) {
         try {
             testInventory = await dependencies.testInventory.discover(
                 AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
             );
         } catch {
-            testInventory = {status: "unavailable" as const, frameworks: [], assetCount: 0};
+            testInventory = {status: "unavailable" as const, frameworks: [], assetCount: 0, staticReferences: []};
+        }
+    }
+    if (dependencies.testExecutionEvidence !== undefined) {
+        try {
+            passedTestIds = await dependencies.testExecutionEvidence.readPassedTestIds(
+                AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
+            );
+        } catch {
+            // 未通过验签、revision 校验或读取失败时，保持没有执行证明。
         }
     }
     if (dependencies.semanticImpactIndex !== undefined) {
@@ -77,9 +90,9 @@ export const reviewCodeChangeUseCase = async (
                 command.reviewInput.codeChange,
                 AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
             );
-            impactPackage = createImpactPackage(result.relations, result.limitations, testInventory);
+            impactPackage = createImpactPackage(result.relations, result.limitations, testInventory, passedTestIds);
         } catch {
-            impactPackage = createImpactPackage([], ["impact-index-unavailable"], testInventory);
+            impactPackage = createImpactPackage([], ["impact-index-unavailable"], testInventory, passedTestIds);
         }
     }
     const execution = await executeReviewAnalyzers(

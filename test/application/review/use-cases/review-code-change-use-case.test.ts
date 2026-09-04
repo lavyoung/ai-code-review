@@ -162,7 +162,10 @@ describe("reviewCodeChangeUseCase", () => {
             }),
         };
         const testInventory = {
-            discover: vi.fn().mockResolvedValue({status: "available" as const, frameworks: ["vitest" as const], assetCount: 1}),
+            discover: vi.fn().mockResolvedValue({status: "available" as const, frameworks: ["vitest" as const], assetCount: 1, staticReferences: []}),
+        };
+        const testExecutionEvidence = {
+            readPassedTestIds: vi.fn().mockResolvedValue([]),
         };
 
         await reviewCodeChangeUseCase({
@@ -175,13 +178,14 @@ describe("reviewCodeChangeUseCase", () => {
             findingVerifiers: [],
             semanticImpactIndex,
             testInventory,
+            testExecutionEvidence,
         });
 
         expect(analyze).toHaveBeenCalledWith(expect.objectContaining({
             impactPackage: expect.objectContaining({
                 version: "v1",
                 limitations: ["dynamic-dependency-unavailable"],
-                testInventory: {status: "available", frameworks: ["vitest"], assetCount: 1},
+                testInventory: {status: "available", frameworks: ["vitest"], assetCount: 1, staticReferences: []},
             }),
         }));
         expect(semanticImpactIndex.analyze).toHaveBeenCalledWith(
@@ -190,5 +194,6 @@ describe("reviewCodeChangeUseCase", () => {
             expect.any(AbortSignal),
         );
         expect(testInventory.discover).toHaveBeenCalledWith(expect.any(AbortSignal));
+        expect(testExecutionEvidence.readPassedTestIds).toHaveBeenCalledWith(expect.any(AbortSignal));
     });
 });

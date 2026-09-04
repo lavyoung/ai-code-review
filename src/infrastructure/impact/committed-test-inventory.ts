@@ -1,13 +1,19 @@
 import {execFile} from "node:child_process";
+import {createHash} from "node:crypto";
+import {posix} from "node:path";
 import {promisify} from "node:util";
-import type {TestInventorySummary} from "../../domain/impact/model/impact-package.js";
+import type {StaticTestReference, TestInventorySummary} from "../../domain/impact/model/impact-package.js";
 import {isSensitiveFile} from "../../domain/review/policy/sensitive-content-policy.js";
 import type {TestInventoryPort} from "../../application/review/ports/test-inventory-port.js";
+import {createOpaqueTestAssetId} from "./test-asset-identity.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_TEST_FILES = 64;
 const testPathPattern = /(?:^|\/)(?:__tests__|test|tests)\/|\.(?:test|spec)\.(?:[cm]?[jt]sx?)$/iu;
 const javaTestPathPattern = /(?:^|\/)src\/test\/java\/.+\.java$/iu;
+const typeScriptImport = /(?:import|export)\s+(?:.+?\s+from\s+)?["']([^"']+)["']/gu;
+const commonJsRequire = /require\(\s*["']([^"']+)["']\s*\)/gu;
+const javaImport = /^\s*import\s+(?:static\s+)?([A-Za-z_$][\w.$]*);/gmu;
 
 const classifyFramework = (content: string): "vitest" | "jest" | "junit" | undefined => {
     if (/\b(?:from\s+["']vitest["']|require\(\s*["']vitest["']\s*\))/u.test(content)) {
@@ -20,6 +26,49 @@ const classifyFramework = (content: string): "vitest" | "jest" | "junit" | undef
         return "junit";
     }
     return undefined;
+};
+
+const toOpaqueId = (prefix: string, value: string): string =>
+    `${prefix}:${createHash("sha256").update(value).digest("hex").slice(0, 16)}`;
+
+const normalizeTypeScriptTarget = (testPath: string, target: string): string | undefined => {
+    if (!target.startsWith(".")) {
+        return undefined;
+    }
+    const resolved = posix.normalize(posix.join(posix.dirname(testPath), target));
+
+    return resolved.replace(/\.(?:[cm]?[jt]sx?)$/iu, "");
+};
+
+const findStaticReferences = (
+    path: string,
+    content: string,
+    framework: "vitest" | "jest" | "junit",
+): readonly StaticTestReference[] => {
+    const testId = createOpaqueTestAssetId(path);
+    const targets = new Set<string>();
+    const kind = framework === "junit" ? "java-import" as const : "module-import" as const;
+    if (kind === "java-import") {
+        for (const match of content.matchAll(javaImport)) {
+            targets.add(match[1]!);
+        }
+    } else {
+        for (const pattern of [typeScriptImport, commonJsRequire]) {
+            for (const match of content.matchAll(pattern)) {
+                const target = normalizeTypeScriptTarget(path, match[1]!);
+                if (target !== undefined) {
+                    targets.add(target);
+                }
+            }
+        }
+    }
+
+    return [...targets].map((target) => ({
+        id: toOpaqueId("test-reference", `${testId}:${kind}:${target}`),
+        testId,
+        target,
+        kind,
+    }));
 };
 
 /**
@@ -43,6 +92,7 @@ export class CommittedTestInventory implements TestInventoryPort {
             .filter((path) => testPathPattern.test(path) || javaTestPathPattern.test(path));
         const paths = candidatePaths.slice(0, MAX_TEST_FILES);
         const frameworks = new Set<"vitest" | "jest" | "junit">();
+        const references: StaticTestReference[] = [];
         let assetCount = 0;
         for (const path of paths) {
             if (signal.aborted) {
@@ -58,12 +108,14 @@ export class CommittedTestInventory implements TestInventoryPort {
             if (framework !== undefined) {
                 frameworks.add(framework);
                 assetCount += 1;
+                references.push(...findStaticReferences(path, content, framework));
             }
         }
         return {
             status: candidatePaths.length > MAX_TEST_FILES ? "partial" : "available",
             frameworks: [...frameworks],
             assetCount,
+            staticReferences: references,
         };
     }
 }

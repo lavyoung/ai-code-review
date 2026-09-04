@@ -566,6 +566,12 @@ JSONL 记录器保存带类型标识的运行摘要，并可追加只含固定�
 测试资产，输出无正文、无路径的框架与数量摘要；未建立影响关联时覆盖为 `not-demonstrated`，不等于没有测试。发现超出上限或
 不可用时覆盖为 `not-assessable`，并分别附带 `test-inventory-partial` 或 `test-inventory-unavailable` 限制。测试义务仅表示需要的
 证据类型，不可由“未改测试文件”推导为缺失测试。
+当前仅把相对 TypeScript/CommonJS 引用及 Java import 与本次变更源码作机械匹配，匹配结果产生不透明测试资产 ID 的
+`impact-association` 证据，并最多将状态提升为 `partial`；由于没有当前提交的受控执行结果，绝不能标记为 `demonstrated`。
+测试名称、目录接近、动态加载、别名和反射不参与关联。
+受控沙箱可在签名 `v1` 报告中可选提供已通过测试文件；报告先按原始 payload 验签，再校验 `sourceRevision` 与当前 `HEAD`，
+最后把路径投影为不透明测试资产 ID。只有该 ID 已有静态影响关联时，系统才写入 `test-execution` 与 `impact-association` 双重
+证据并标记 `demonstrated`。旧版报告省略通过列表时保持兼容，但只可用于失败发现，不能证明覆盖。
 示例工作流按 PR 编号串行运行，评论与通知失败都最多尝试三次并将最终脱敏状态写入 CI 日志。ESLint、CodeQL 与 Semgrep
 可沿用同一边界接入，不能通过伪造 AI 输出或配置开关绕过该边界。
 

@@ -45,7 +45,18 @@ export interface ImpactCoverage {
     obligationId: string;
     status: "demonstrated" | "partial" | "not-demonstrated" | "not-assessable";
     evidence: readonly TestCoverageEvidenceReference[];
-    limitation?: "test-inventory-unavailable" | "test-inventory-partial" | "impact-association-unavailable";
+    limitation?: "test-inventory-unavailable"
+        | "test-inventory-partial"
+        | "impact-association-unavailable"
+        | "test-execution-unavailable";
+}
+
+/** 可被安全引用的测试静态依赖；测试路径被不透明 ID 替代。 */
+export interface StaticTestReference {
+    id: string;
+    testId: string;
+    target: string;
+    kind: ImpactRelationKind;
 }
 
 /** 测试资产发现的安全摘要；既不包含测试正文，也不把名称当作覆盖证明。 */
@@ -53,6 +64,7 @@ export interface TestInventorySummary {
     status: "available" | "partial" | "unavailable";
     frameworks: readonly ("vitest" | "jest" | "junit")[];
     assetCount: number;
+    staticReferences: readonly StaticTestReference[];
 }
 
 /** 可发送给 AI 的受限影响摘要；仅包含已锚定关系与明确限制。 */

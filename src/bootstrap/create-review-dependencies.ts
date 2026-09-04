@@ -13,6 +13,7 @@ import {GitHubActionsAutomationParser} from "../infrastructure/automation/github
 import {LocalCommittedFileReader} from "../infrastructure/scm/git/local-committed-file-reader.js";
 import {ChangedImportSemanticImpactIndex} from "../infrastructure/impact/changed-import-semantic-impact-index.js";
 import {CommittedTestInventory} from "../infrastructure/impact/committed-test-inventory.js";
+import {SignedSandboxTestExecutionEvidence} from "../infrastructure/impact/signed-sandbox-test-execution-evidence.js";
 import {StaticReviewAnalyzerRegistry} from "../application/review/orchestration/static-review-analyzer-registry.js";
 import {StaticAutomationParserRegistry} from "../application/review/orchestration/static-automation-parser-registry.js";
 import {
@@ -83,6 +84,14 @@ export const createReviewDependencies = (
     && configuration.analyzers.sandboxTests.reportPath !== undefined
     && configuration.analyzers.sandboxTests.signingSecret !== undefined
         ? new SandboxedTestResultAnalyzer({
+            reportPath: configuration.analyzers.sandboxTests.reportPath,
+            signingSecret: configuration.analyzers.sandboxTests.signingSecret,
+        }, createCommittedRevisionProvider(workingDirectory))
+        : undefined;
+    const testExecutionEvidence = configuration.analyzers.sandboxTests.enabled
+    && configuration.analyzers.sandboxTests.reportPath !== undefined
+    && configuration.analyzers.sandboxTests.signingSecret !== undefined
+        ? new SignedSandboxTestExecutionEvidence({
             reportPath: configuration.analyzers.sandboxTests.reportPath,
             signingSecret: configuration.analyzers.sandboxTests.signingSecret,
         }, createCommittedRevisionProvider(workingDirectory))
@@ -187,6 +196,7 @@ export const createReviewDependencies = (
         findingVerifiers: [deterministicAnalyzerFindingVerifier],
         semanticImpactIndex: new ChangedImportSemanticImpactIndex(),
         testInventory: new CommittedTestInventory(workingDirectory),
+        ...(testExecutionEvidence === undefined ? {} : {testExecutionEvidence}),
         ...(configuration.recording.localPath === undefined
             ? {}
             : {findingSuppressionPort: new LocalJsonlFindingSuppressionReader(configuration.recording.localPath)}),

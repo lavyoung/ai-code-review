@@ -29,7 +29,7 @@ describe("buildStructuredReviewPrompt", () => {
             }],
             testObligations: [],
             impactCoverage: [],
-            testInventory: {status: "unavailable", frameworks: [], assetCount: 0},
+            testInventory: {status: "unavailable", frameworks: [], assetCount: 0, staticReferences: []},
             limitations: ["dynamic-dependency-unavailable"],
         });
 

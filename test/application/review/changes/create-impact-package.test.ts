@@ -31,7 +31,7 @@ describe("createImpactPackage", () => {
                 status: "not-assessable",
                 limitation: "test-inventory-unavailable",
             })],
-            testInventory: {status: "unavailable", frameworks: [], assetCount: 0},
+            testInventory: {status: "unavailable", frameworks: [], assetCount: 0, staticReferences: []},
             limitations: ["dynamic-dependency-unavailable"],
         });
     });
@@ -45,13 +45,13 @@ describe("createImpactPackage", () => {
             target: "./service.js",
             kind: "module-import",
             completeness: "partial",
-        }], [], {status: "available", frameworks: ["vitest"], assetCount: 2}))
+        }], [], {status: "available", frameworks: ["vitest"], assetCount: 2, staticReferences: []}))
             .toMatchObject({
                 impactCoverage: [{
                     status: "not-demonstrated",
                     limitation: "impact-association-unavailable",
                 }],
-                testInventory: {status: "available", frameworks: ["vitest"], assetCount: 2},
+                testInventory: {status: "available", frameworks: ["vitest"], assetCount: 2, staticReferences: []},
             });
     });
 
@@ -64,12 +64,70 @@ describe("createImpactPackage", () => {
             target: "./service.js",
             kind: "module-import",
             completeness: "partial",
-        }], [], {status: "partial", frameworks: ["vitest"], assetCount: 64}))
+        }], [], {status: "partial", frameworks: ["vitest"], assetCount: 64, staticReferences: []}))
             .toMatchObject({
                 impactCoverage: [{
                     status: "not-assessable",
                     limitation: "test-inventory-partial",
                 }],
             });
+    });
+
+    it("records a partial result for a test that statically imports the changed TypeScript source", () => {
+        expect(createImpactPackage([{
+            id: "relation-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "src/example.ts",
+            sourceLine: 4,
+            target: "./service.js",
+            kind: "module-import",
+            completeness: "partial",
+        }], [], {
+            status: "available",
+            frameworks: ["vitest"],
+            assetCount: 1,
+            staticReferences: [{
+                id: "test-reference:1",
+                testId: "test-asset:1",
+                target: "src/example",
+                kind: "module-import",
+            }],
+        })).toMatchObject({
+            impactCoverage: [{
+                status: "partial",
+                evidence: [{kind: "impact-association", referenceId: "test-reference:1"}],
+                limitation: "test-execution-unavailable",
+            }],
+        });
+    });
+
+    it("demonstrates an impact only when an associated test has signed execution evidence", () => {
+        expect(createImpactPackage([{
+            id: "relation-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "src/example.ts",
+            sourceLine: 4,
+            target: "./service.js",
+            kind: "module-import",
+            completeness: "partial",
+        }], [], {
+            status: "available",
+            frameworks: ["vitest"],
+            assetCount: 1,
+            staticReferences: [{
+                id: "test-reference:1",
+                testId: "test-asset:1",
+                target: "src/example",
+                kind: "module-import",
+            }],
+        }, ["test-asset:1"])).toMatchObject({
+            impactCoverage: [{
+                status: "demonstrated",
+                evidence: [
+                    {kind: "impact-association", referenceId: "test-reference:1"},
+                    {kind: "test-execution", referenceId: "test-execution:test-asset:1"},
+                ],
+            }],
+        });
     });
 });
