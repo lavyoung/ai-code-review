@@ -161,6 +161,9 @@ describe("reviewCodeChangeUseCase", () => {
                 limitations: ["dynamic-dependency-unavailable" as const],
             }),
         };
+        const testInventory = {
+            discover: vi.fn().mockResolvedValue({status: "available" as const, frameworks: ["vitest" as const], assetCount: 1}),
+        };
 
         await reviewCodeChangeUseCase({
             reviewInput: {rawCodeChange: {fileChanges: []}, codeChange},
@@ -171,12 +174,14 @@ describe("reviewCodeChangeUseCase", () => {
             analyzerBudget: {totalTimeoutMs: 1_000, maxConcurrency: 1, maxAiRequestCount: 1, maxModelInputChars: 10_000},
             findingVerifiers: [],
             semanticImpactIndex,
+            testInventory,
         });
 
         expect(analyze).toHaveBeenCalledWith(expect.objectContaining({
             impactPackage: expect.objectContaining({
                 version: "v1",
                 limitations: ["dynamic-dependency-unavailable"],
+                testInventory: {status: "available", frameworks: ["vitest"], assetCount: 1},
             }),
         }));
         expect(semanticImpactIndex.analyze).toHaveBeenCalledWith(
@@ -184,5 +189,6 @@ describe("reviewCodeChangeUseCase", () => {
             codeChange,
             expect.any(AbortSignal),
         );
+        expect(testInventory.discover).toHaveBeenCalledWith(expect.any(AbortSignal));
     });
 });

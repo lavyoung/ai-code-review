@@ -27,6 +27,9 @@ describe("buildStructuredReviewPrompt", () => {
                     validation: "not-assessable",
                 },
             }],
+            testObligations: [],
+            impactCoverage: [],
+            testInventory: {status: "unavailable", frameworks: [], assetCount: 0},
             limitations: ["dynamic-dependency-unavailable"],
         });
 

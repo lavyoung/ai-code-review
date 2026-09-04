@@ -562,6 +562,10 @@ JSONL 记录器保存带类型标识的运行摘要，并可追加只含固定�
 
 当前影响索引只提取新增 TypeScript/Java 静态 import 与 CommonJS require，生成不含源码正文的 `ImpactPackage` 供 AI
 解释已知关联。动态依赖、反射、未支持语言及索引失败均明确保留为 `unknown`，不能表示无影响，也不能单独构成回归、缺失测试或门禁结论。
+每个已锚定的关系还会由领域策略生成最小测试义务。`TestInventoryPort` 当前仅在受限数量内发现已提交的 Vitest、Jest 与 JUnit
+测试资产，输出无正文、无路径的框架与数量摘要；未建立影响关联时覆盖为 `not-demonstrated`，不等于没有测试。发现超出上限或
+不可用时覆盖为 `not-assessable`，并分别附带 `test-inventory-partial` 或 `test-inventory-unavailable` 限制。测试义务仅表示需要的
+证据类型，不可由“未改测试文件”推导为缺失测试。
 示例工作流按 PR 编号串行运行，评论与通知失败都最多尝试三次并将最终脱敏状态写入 CI 日志。ESLint、CodeQL 与 Semgrep
 可沿用同一边界接入，不能通过伪造 AI 输出或配置开关绕过该边界。
 

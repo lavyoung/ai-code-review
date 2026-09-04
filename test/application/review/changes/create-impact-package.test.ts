@@ -22,7 +22,54 @@ describe("createImpactPackage", () => {
                     validation: "not-assessable",
                 },
             })],
+            testObligations: [expect.objectContaining({
+                impactId: "impact:chunk-1",
+                kind: "happy-path",
+                requiredEvidence: ["test-execution", "impact-association"],
+            })],
+            impactCoverage: [expect.objectContaining({
+                status: "not-assessable",
+                limitation: "test-inventory-unavailable",
+            })],
+            testInventory: {status: "unavailable", frameworks: [], assetCount: 0},
             limitations: ["dynamic-dependency-unavailable"],
         });
+    });
+
+    it("keeps coverage unproven when test assets exist without an impact association", () => {
+        expect(createImpactPackage([{
+            id: "relation-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "src/example.ts",
+            sourceLine: 4,
+            target: "./service.js",
+            kind: "module-import",
+            completeness: "partial",
+        }], [], {status: "available", frameworks: ["vitest"], assetCount: 2}))
+            .toMatchObject({
+                impactCoverage: [{
+                    status: "not-demonstrated",
+                    limitation: "impact-association-unavailable",
+                }],
+                testInventory: {status: "available", frameworks: ["vitest"], assetCount: 2},
+            });
+    });
+
+    it("keeps coverage not-assessable when inventory discovery is incomplete", () => {
+        expect(createImpactPackage([{
+            id: "relation-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "src/example.ts",
+            sourceLine: 4,
+            target: "./service.js",
+            kind: "module-import",
+            completeness: "partial",
+        }], [], {status: "partial", frameworks: ["vitest"], assetCount: 64}))
+            .toMatchObject({
+                impactCoverage: [{
+                    status: "not-assessable",
+                    limitation: "test-inventory-partial",
+                }],
+            });
     });
 });
