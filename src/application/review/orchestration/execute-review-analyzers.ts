@@ -2,6 +2,7 @@ import type {ReviewChangeInput} from "../../../domain/review/model/code-change.j
 import {boundSanitizedModelInput} from "../changes/bound-sanitized-model-input.js";
 import type {AnalyzerIdentity} from "../../../domain/review/model/analyzer-identity.js";
 import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
+import type {ImpactPackage} from "../../../domain/impact/model/impact-package.js";
 import {
     AiReviewExecutionError,
     AiReviewFailure,
@@ -75,6 +76,7 @@ export const executeReviewAnalyzers = async (
     plans: readonly AnalyzerExecutionPlan[],
     registry: ReviewAnalyzerRegistry,
     budget: ReviewRunBudget,
+    impactPackage?: ImpactPackage,
 ): Promise<ReviewAnalyzerExecutionResult> => {
     const analyses: CompletedAnalysis[] = [];
     const runs: AnalyzerRun[] = [];
@@ -138,6 +140,7 @@ export const executeReviewAnalyzers = async (
                         analysis = await analyzer.analyze({
                             codeChange,
                             signal: planSignal,
+                            ...(impactPackage === undefined ? {} : {impactPackage}),
                             ...(analyzer.capabilities.inputAccess === "trusted-raw-local"
                                 ? { rawCodeChange: reviewInput.rawCodeChange }
                                 : {}),

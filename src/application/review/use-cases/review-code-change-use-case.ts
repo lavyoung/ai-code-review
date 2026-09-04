@@ -15,6 +15,8 @@ import {verifyReviewFindings} from "../orchestration/verify-review-findings.js";
 import type {FindingVerifier} from "../ports/finding-verifier-port.js";
 import {deduplicateReviewFindings} from "../orchestration/deduplicate-review-findings.js";
 import type {FindingSuppressionPort} from "../ports/finding-suppression-port.js";
+import type {SemanticImpactIndexPort} from "../ports/semantic-impact-index-port.js";
+import {createImpactPackage} from "../changes/create-impact-package.js";
 
 /** 对已获取代码变更执行统一分析器集合所需的外部能力。 */
 export interface ReviewCodeChangeDependencies {
@@ -24,6 +26,8 @@ export interface ReviewCodeChangeDependencies {
     findingVerifiers: readonly FindingVerifier[];
     /** 可选的人工作废反馈读取端口；只允许抑制 AI advisory。 */
     findingSuppressionPort?: FindingSuppressionPort;
+    /** 可选的本地静态影响索引；失败必须降级，不能中断评审。 */
+    semanticImpactIndex?: SemanticImpactIndexPort;
 }
 
 /** 对同一次受控原始/安全变更执行评审的输入。 */
@@ -52,11 +56,25 @@ export const reviewCodeChangeUseCase = async (
     command: ReviewCodeChangeCommand,
     dependencies: ReviewCodeChangeDependencies,
 ): Promise<ReviewExecutionResult> => {
+    let impactPackage;
+    if (dependencies.semanticImpactIndex !== undefined) {
+        try {
+            const result = await dependencies.semanticImpactIndex.analyze(
+                command.reviewInput.rawCodeChange,
+                command.reviewInput.codeChange,
+                AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
+            );
+            impactPackage = createImpactPackage(result.relations, result.limitations);
+        } catch {
+            impactPackage = createImpactPackage([], ["impact-index-unavailable"]);
+        }
+    }
     const execution = await executeReviewAnalyzers(
         command.reviewInput,
         dependencies.analyzerPlans,
         dependencies.reviewAnalyzerRegistry,
         dependencies.analyzerBudget,
+        impactPackage,
     );
     const analysis: ReviewAnalysis = execution.analysis;
 

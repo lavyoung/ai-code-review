@@ -135,4 +135,54 @@ describe("reviewCodeChangeUseCase", () => {
         expect(suppressedResult.suppressedCandidateCounts).toEqual({"feedback-suppressed": 1});
         expect(suppressedResult.policy).toEqual({highestSeverity: null, shouldFail: false});
     });
+
+    it("passes a safe static impact package to AI analyzers and degrades cleanly when unavailable", async () => {
+        const analyze = vi.fn().mockResolvedValue({summary: "No issues.", findings: []});
+        const analyzer = {
+            identity: {kind: "ai" as const, id: "deepseek"},
+            capabilities: {
+                inputAccess: "sanitized-model-input" as const,
+                supportsChangedOnly: true,
+                supportsRepositoryScan: false,
+            },
+            analyze,
+        };
+        const semanticImpactIndex = {
+            analyze: vi.fn().mockResolvedValue({
+                relations: [{
+                    id: "relation-1",
+                    changeAnchorId: "chunk-1",
+                    sourcePath: "src/example.ts",
+                    sourceLine: 1,
+                    target: "./service.js",
+                    kind: "module-import" as const,
+                    completeness: "partial" as const,
+                }],
+                limitations: ["dynamic-dependency-unavailable" as const],
+            }),
+        };
+
+        await reviewCodeChangeUseCase({
+            reviewInput: {rawCodeChange: {fileChanges: []}, codeChange},
+            failOn: ["critical"],
+        }, {
+            reviewAnalyzerRegistry: new StaticReviewAnalyzerRegistry([analyzer]),
+            analyzerPlans: [{analyzerId: "deepseek", required: true, timeoutMs: 1_000, failureMode: "fail"}],
+            analyzerBudget: {totalTimeoutMs: 1_000, maxConcurrency: 1, maxAiRequestCount: 1, maxModelInputChars: 10_000},
+            findingVerifiers: [],
+            semanticImpactIndex,
+        });
+
+        expect(analyze).toHaveBeenCalledWith(expect.objectContaining({
+            impactPackage: expect.objectContaining({
+                version: "v1",
+                limitations: ["dynamic-dependency-unavailable"],
+            }),
+        }));
+        expect(semanticImpactIndex.analyze).toHaveBeenCalledWith(
+            {fileChanges: []},
+            codeChange,
+            expect.any(AbortSignal),
+        );
+    });
 });

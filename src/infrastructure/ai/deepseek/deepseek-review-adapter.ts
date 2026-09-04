@@ -15,6 +15,7 @@ import {AiReviewFailure} from "../../../application/review/errors/review-executi
 import type {CodeChange} from "../../../domain/review/model/code-change.js";
 import type {ReviewAnalysis,} from "../../../domain/review/model/review-finding.js";
 import type {ReviewCandidate} from "../../../domain/review/model/review-candidate.js";
+import type {ImpactPackage} from "../../../domain/impact/model/impact-package.js";
 import {resolveAssertionPolicy, resolveAssertionType} from "../../../domain/review/policy/assertion-policy.js";
 import {
     isSensitiveFile,
@@ -167,12 +168,16 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
      *
      * @throws API Key 缺失、请求失败、响应不完整或结构不合法时抛出异常。
      */
-    public async review(codeChange: CodeChange, signal?: AbortSignal): Promise<ReviewAnalysis> {
+    public async review(
+        codeChange: CodeChange,
+        signal?: AbortSignal,
+        impactPackage?: ImpactPackage,
+    ): Promise<ReviewAnalysis> {
         if (this.configuration.apiKey === undefined) {
             throw new AiReviewFailure("authentication", "DeepSeek API key is required.");
         }
 
-        const prompt = buildStructuredReviewPrompt(codeChange, this.configuration.outputLanguage);
+        const prompt = buildStructuredReviewPrompt(codeChange, this.configuration.outputLanguage, impactPackage);
         let response: Response;
         try {
             response = await this.fetchImplementation(DEEPSEEK_CHAT_COMPLETIONS_URL, {
@@ -286,6 +291,6 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
 
     /** 将 DeepSeek 的兼容 review 调用适配为统一分析器端口。 */
     public analyze(request: AnalysisRequest): Promise<ReviewAnalysis> {
-        return this.review(request.codeChange, request.signal);
+        return this.review(request.codeChange, request.signal, request.impactPackage);
     }
 }

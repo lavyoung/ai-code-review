@@ -11,6 +11,7 @@ import {SecretScanReviewAnalyzer} from "../infrastructure/analyzers/secret-scan/
 import {GitHubActionsAutomationReviewAnalyzer} from "../infrastructure/analyzers/github-actions/github-actions-automation-review-analyzer.js";
 import {GitHubActionsAutomationParser} from "../infrastructure/automation/github-actions/github-actions-automation-parser.js";
 import {LocalCommittedFileReader} from "../infrastructure/scm/git/local-committed-file-reader.js";
+import {ChangedImportSemanticImpactIndex} from "../infrastructure/impact/changed-import-semantic-impact-index.js";
 import {StaticReviewAnalyzerRegistry} from "../application/review/orchestration/static-review-analyzer-registry.js";
 import {StaticAutomationParserRegistry} from "../application/review/orchestration/static-automation-parser-registry.js";
 import {
@@ -183,6 +184,7 @@ export const createReviewDependencies = (
             maxModelInputChars: configuration.execution.maxModelInputChars,
         },
         findingVerifiers: [deterministicAnalyzerFindingVerifier],
+        semanticImpactIndex: new ChangedImportSemanticImpactIndex(),
         ...(configuration.recording.localPath === undefined
             ? {}
             : {findingSuppressionPort: new LocalJsonlFindingSuppressionReader(configuration.recording.localPath)}),

@@ -1,4 +1,5 @@
 import type {CodeChange} from "../../../domain/review/model/code-change.js";
+import type {ImpactPackage} from "../../../domain/impact/model/impact-package.js";
 import {
     STRUCTURED_REVIEW_CONTRACT,
     STRUCTURED_REVIEW_OUTPUT_EXAMPLE,
@@ -19,6 +20,7 @@ export interface StructuredReviewPrompt {
 export const buildStructuredReviewPrompt = (
     codeChange: CodeChange,
     outputLanguage: string,
+    impactPackage?: ImpactPackage,
 ): StructuredReviewPrompt => ({
     system: `You are an expert code reviewer.
 Return JSON only; do not use Markdown or prose outside the JSON object.
@@ -32,6 +34,9 @@ Use this example shape:
 ${JSON.stringify(STRUCTURED_REVIEW_OUTPUT_EXAMPLE)}
 For every finding, chunkId and evidence are required. chunkId must exactly match one provided chunk id. evidence must be a short literal excerpt copied exactly from that chunk, including the diff line prefix. Do not report a finding if you cannot provide both.
 The literal placeholder [REDACTED] means that a value is unavailable. Never infer a syntax, configuration, dependency, or business defect from that placeholder. Do not report compiler, package manifest, workflow syntax, or documentation-link failures unless an explicit diagnostic for that failure is present in the supplied diff.
+When an impact package is supplied, treat its relations as limited static evidence and its limitations as unknowns. Never claim a production regression, complete impact coverage, or missing test solely from an unknown or not-assessable impact state.
 When no actionable issue is found, return {"summary":"No actionable issues found.","findings":[]}.`,
-    user: `Review these committed, sanitized diff chunks.\n\n<chunks>\n${JSON.stringify(codeChange.chunks)}\n</chunks>`,
+    user: `Review these committed, sanitized diff chunks.\n\n<chunks>\n${JSON.stringify(codeChange.chunks)}\n</chunks>${impactPackage === undefined
+        ? ""
+        : `\n\n<impact-package>\n${JSON.stringify(impactPackage)}\n</impact-package>`}`,
 });

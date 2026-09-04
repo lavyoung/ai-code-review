@@ -2,6 +2,7 @@ import type {CodeChange, RawCodeChange} from "../../../domain/review/model/code-
 import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
 import type {AnalyzerIdentity} from "../../../domain/review/model/analyzer-identity.js";
 import type {AiReviewFailureType} from "../errors/review-execution-error.js";
+import type {ImpactPackage} from "../../../domain/impact/model/impact-package.js";
 
 /** 分析器的规范化身份；具体供应商名称不进入领域策略。 */
 export type { AnalyzerIdentity } from "../../../domain/review/model/analyzer-identity.js";
@@ -22,6 +23,8 @@ export interface AnalyzerCapabilities {
 /** 所有分析器都可接收的安全输入。 */
 export interface SanitizedAnalysisRequest {
     codeChange: CodeChange;
+    /** 可选的安全静态影响摘要；不包含原始 diff 或关联文件正文。 */
+    impactPackage?: ImpactPackage;
     /** 调度器提供的截止信号；适配器应将其传递给可取消的底层调用。 */
     signal: AbortSignal;
 }
