@@ -10,10 +10,16 @@ const preserveFindingIdentity = (
     ...finding,
     verificationStatus: finding.verificationStatus === "verified" || verified.verificationStatus === "verified"
         ? "verified"
-        : "grounded",
+        : finding.verificationStatus === "corroborated" || verified.verificationStatus === "corroborated"
+            ? "corroborated"
+            : finding.verificationStatus === "unavailable" || verified.verificationStatus === "unavailable"
+                ? "unavailable"
+                : "anchored",
     disposition: finding.disposition === "defect" || verified.disposition === "defect"
         ? "defect"
-        : "advisory",
+        : finding.disposition === "unverifiable" || verified.disposition === "unverifiable"
+            ? "unverifiable"
+            : "advisory",
     verificationMethods: [...new Set([...finding.verificationMethods, ...verified.verificationMethods])],
 });
 

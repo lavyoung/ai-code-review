@@ -6,6 +6,7 @@ import type {
     ValidatedFinding,
 } from "../model/review-candidate.js";
 import {createFindingFingerprint} from "./create-finding-fingerprint.js";
+import {createReviewAssertion, resolveAssertionPolicy} from "./assertion-policy.js";
 
 const suppress = (
     suppressedCounts: CandidateValidationResult["suppressedCounts"],
@@ -40,7 +41,7 @@ const dependsOnRedactedPlaceholder = (candidate: ReviewCandidate): boolean => ca
  * 仅保留能够映射到当前已脱敏变更块、且证据文本真实存在的候选项。
  *
  * 此验证不尝试证明业务结论正确；它只建立可追溯性，因此结果状态为
- * `grounded`，不能单独触发质量门禁。
+ * `anchored`，不能单独触发质量门禁。
  */
 export const validateReviewCandidates = (
     candidates: readonly ReviewCandidate[],
@@ -82,13 +83,41 @@ export const validateReviewCandidates = (
             continue;
         }
 
+        const facts = [
+            {
+                id: `diff-anchor:${candidate.chunkId}`,
+                kind: "diff-anchor" as const,
+                source: "candidate-validation" as const,
+                verification: "confirmed" as const,
+            },
+            ...(candidate.line === undefined ? [] : [{
+                id: `source-range:${candidate.chunkId}:${candidate.line}`,
+                kind: "source-range" as const,
+                source: "candidate-validation" as const,
+                verification: "confirmed" as const,
+            }]),
+            {
+                id: `evidence-match:${candidate.chunkId}`,
+                kind: "evidence-match" as const,
+                source: "candidate-validation" as const,
+                verification: "confirmed" as const,
+            },
+        ];
+        const assertion = createReviewAssertion(
+            candidate.assertionType,
+            candidate.analyzer?.kind === "ai" ? "ai" : "rule",
+            facts,
+        );
+        const assertionPolicy = resolveAssertionPolicy(assertion.type);
         const finding = {
-            severity: candidate.severity,
+            severity: candidate.analyzer?.kind === "ai"
+                ? assertionPolicy.advisorySeverity
+                : candidate.severity,
             title: candidate.title,
             description: candidate.description,
             chunkId: candidate.chunkId,
             evidence: candidate.evidence,
-            verificationStatus: "grounded",
+            verificationStatus: "anchored",
             disposition: "advisory",
             verificationMethods: [
                 "diff-anchor",
@@ -97,6 +126,8 @@ export const validateReviewCandidates = (
             ],
             ...(candidate.analyzer === undefined ? {} : { analyzer: candidate.analyzer }),
             analyzers: candidate.analyzer === undefined ? [] : [candidate.analyzer],
+            facts,
+            assertion,
             ...(candidate.file === undefined ? {} : { file: candidate.file }),
             ...(candidate.line === undefined ? {} : { line: candidate.line }),
             ...(candidate.category === undefined ? {} : { category: candidate.category }),

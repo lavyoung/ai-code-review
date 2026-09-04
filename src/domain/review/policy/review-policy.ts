@@ -1,5 +1,6 @@
 import type {ValidatedFinding} from "../model/review-candidate.js";
 import type {Severity} from "../model/severity.js";
+import {resolveAssertionPolicy} from "./assertion-policy.js";
 
 const severityRanks: Record<Severity, number> = {
     info: 0,
@@ -8,6 +9,11 @@ const severityRanks: Record<Severity, number> = {
     high: 3,
     critical: 4,
 };
+
+/** AI 断言须经受控策略授权；历史记录与本地规则保持既有门禁语义。 */
+const isGateEligible = (finding: ValidatedFinding): boolean => finding.assertion === undefined
+    || finding.assertion.author !== "ai"
+    || resolveAssertionPolicy(finding.assertion.type).gateEligible;
 
 /**
  * 评审发现项经过质量门禁规则判定后的结果。
@@ -39,6 +45,7 @@ export const evaluateReviewPolicy = (
         highestSeverity,
         shouldFail: findings.some((finding) => finding.verificationStatus === "verified"
             && finding.disposition === "defect"
+            && isGateEligible(finding)
             && failOn.includes(finding.severity)),
     };
 };

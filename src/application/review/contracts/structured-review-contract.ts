@@ -1,8 +1,8 @@
 import {z} from "zod";
-import {SEVERITIES} from "../../../domain/review/model/severity.js";
+import {ASSERTION_TYPES} from "../../../domain/review/model/review-candidate.js";
 
 /** 所有 AI 提供方共用的结构化输出契约版本。 */
-export const STRUCTURED_REVIEW_CONTRACT_VERSION = "v1";
+export const STRUCTURED_REVIEW_CONTRACT_VERSION = "v2";
 
 /**
  * 模型输出的候选发现项 Schema。
@@ -11,7 +11,6 @@ export const STRUCTURED_REVIEW_CONTRACT_VERSION = "v1";
  * 不满足锚定要求的单个候选项安全地抑制，而不是丢弃同一响应中的其他有效发现。
  */
 export const structuredReviewFindingSchema = z.object({
-    severity: z.enum(SEVERITIES),
     title: z.string().trim().min(1),
     description: z.string().trim().min(1),
     file: z.string().trim().min(1).optional(),
@@ -19,15 +18,16 @@ export const structuredReviewFindingSchema = z.object({
     category: z.string().trim().min(1).optional(),
     suggestion: z.string().trim().min(1).optional(),
     confidence: z.number().min(0).max(1).optional(),
+    assertionType: z.enum(ASSERTION_TYPES).optional(),
     chunkId: z.string().trim().min(1).optional(),
     evidence: z.string().trim().min(1).max(500).optional(),
-});
+}).strict();
 
 /** 所有 AI 适配器都必须解析为该平台无关的候选输出。 */
 export const structuredReviewAnalysisSchema = z.object({
     summary: z.string().trim().min(1),
     findings: z.array(structuredReviewFindingSchema).max(20),
-});
+}).strict();
 
 export type StructuredReviewAnalysis = z.infer<typeof structuredReviewAnalysisSchema>;
 
@@ -38,7 +38,6 @@ export const STRUCTURED_REVIEW_OUTPUT_JSON_SCHEMA = z.toJSONSchema(structuredRev
 export const STRUCTURED_REVIEW_OUTPUT_EXAMPLE = {
     summary: "short summary",
     findings: [{
-        severity: "high",
         title: "short title",
         description: "why this is a problem",
         file: "safe/path.ts",
@@ -48,6 +47,7 @@ export const STRUCTURED_REVIEW_OUTPUT_EXAMPLE = {
         category: "correctness",
         suggestion: "specific fix",
         confidence: 0.9,
+        assertionType: "design-maintainability",
     }],
 };
 

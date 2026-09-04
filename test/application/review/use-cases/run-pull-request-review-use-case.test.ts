@@ -62,7 +62,7 @@ describe("runPullRequestReviewUseCase", () => {
             ...createAnalyzerDependencies(analyze),
         })).resolves.toMatchObject({
             policy: { shouldFail: false },
-            findings: [{ verificationStatus: "grounded" }],
+            findings: [{ verificationStatus: "anchored" }],
         });
         expect(getRawCodeChange).toHaveBeenCalledWith({
             baseRef: "base-sha",

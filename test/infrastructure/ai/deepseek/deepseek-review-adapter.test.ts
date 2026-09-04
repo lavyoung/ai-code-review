@@ -31,7 +31,6 @@ describe("DeepSeekReviewAdapter", () => {
                     content: JSON.stringify({
                         summary: "One issue found.",
                         findings: [{
-                            severity: "high",
                             title: "Missing validation",
                             description: "The input is used without validation.",
                             file: "src/example.ts",
@@ -39,6 +38,7 @@ describe("DeepSeekReviewAdapter", () => {
                             category: "correctness",
                             suggestion: "Validate the input first.",
                             confidence: 0.9,
+                            assertionType: "regression-risk",
                             chunkId: "chunk-1",
                             evidence: "+use(input);",
                         }],
@@ -51,7 +51,7 @@ describe("DeepSeekReviewAdapter", () => {
         await expect(adapter.review(codeChange)).resolves.toEqual({
             summary: "One issue found.",
             findings: [{
-                severity: "high",
+                severity: "medium",
                 title: "Missing validation",
                 description: "The input is used without validation.",
                 file: "src/example.ts",
@@ -59,6 +59,7 @@ describe("DeepSeekReviewAdapter", () => {
                 category: "correctness",
                 suggestion: "Validate the input first.",
                 confidence: 0.9,
+                assertionType: "regression-risk",
                 chunkId: "chunk-1",
                 evidence: "+use(input);",
             }],
@@ -194,7 +195,6 @@ describe("DeepSeekReviewAdapter", () => {
                     content: JSON.stringify({
                         summary: "One issue found.",
                         findings: [{
-                            severity: "high",
                             title: "Sensitive finding",
                             description: "A sensitive file was mentioned.",
                             file: ".env.production",
@@ -209,7 +209,7 @@ describe("DeepSeekReviewAdapter", () => {
         await expect(adapter.review(codeChange)).resolves.toEqual({
             summary: "One issue found.",
             findings: [{
-                severity: "high",
+                severity: "low",
                 title: "Sensitive finding",
                 description: "A sensitive file was mentioned.",
             }],
@@ -224,7 +224,6 @@ describe("DeepSeekReviewAdapter", () => {
                     content: JSON.stringify({
                         summary: "One issue found.",
                         findings: [{
-                            severity: "high",
                             title: "Authorization: Bearer exposed-token",
                             description: "token: exposed-token",
                         }],
@@ -237,7 +236,7 @@ describe("DeepSeekReviewAdapter", () => {
         await expect(adapter.review(codeChange)).resolves.toEqual({
             summary: "One issue found.",
             findings: [{
-                severity: "high",
+                severity: "low",
                 title: "Authorization: Bearer [REDACTED]",
                 description: "token: [REDACTED]",
             }],

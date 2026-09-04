@@ -31,10 +31,16 @@ export const deduplicateReviewFindings = (
             analyzers: uniqueAnalyzers(duplicates),
             verificationStatus: duplicates.some((finding) => finding.verificationStatus === "verified")
                 ? "verified"
-                : "grounded",
+                : duplicates.some((finding) => finding.verificationStatus === "corroborated")
+                    ? "corroborated"
+                    : duplicates.some((finding) => finding.verificationStatus === "unavailable")
+                        ? "unavailable"
+                        : "anchored",
             disposition: duplicates.some((finding) => finding.disposition === "defect")
                 ? "defect"
-                : "advisory",
+                : duplicates.some((finding) => finding.disposition === "unverifiable")
+                    ? "unverifiable"
+                    : "advisory",
             verificationMethods: [...new Set(duplicates.flatMap((finding) => finding.verificationMethods))],
         };
     });

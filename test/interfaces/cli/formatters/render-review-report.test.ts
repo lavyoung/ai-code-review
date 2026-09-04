@@ -131,7 +131,7 @@ describe("renderReviewReport", () => {
         expect(report).toContain("### Confirmed findings");
         expect(report).toContain("### AI suggestions for review");
         expect(report).toContain("Verified findings: 1");
-        expect(report).toContain("Grounded findings: 0");
+        expect(report).toContain("Anchored findings: 0");
         expect(report).toContain("Fingerprint: `0123456789abcdef01234567`");
         expect(report).toContain("Suggestion: Move token: [REDACTED] to a secret store.");
         expect(report).not.toContain("exposed-value");

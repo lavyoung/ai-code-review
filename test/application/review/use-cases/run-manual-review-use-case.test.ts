@@ -44,10 +44,10 @@ describe("runManualReviewUseCase", () => {
         };
         const getRawCodeChange = vi.fn().mockResolvedValue(rawCodeChange);
         const analyze = vi.fn().mockImplementation(({ codeChange }) => ({
-            summary: "One critical issue found.",
+            summary: "One issue needs review.",
             findings: [{
                 severity: "critical",
-                title: "Critical issue",
+                title: "Potential issue",
                 description: "Description.",
                 file: "src/example.ts",
                 line: 1,
@@ -64,10 +64,10 @@ describe("runManualReviewUseCase", () => {
             ...createAnalyzerDependencies(analyze),
         })).resolves.toMatchObject({
             analysis: {
-                summary: "One critical issue found.",
+                summary: "One issue needs review.",
             },
             policy: {
-                highestSeverity: "critical",
+                highestSeverity: "low",
                 shouldFail: false,
             },
         });

@@ -150,15 +150,15 @@ recording:
 
 | 分析器         | 默认值 | 结论类型                             | 说明                                                                                                             |
 |----------------|--------|--------------------------------------|------------------------------------------------------------------------------------------------------------------|
-| DeepSeek       | 开启   | `grounded`（显示为 `advisory`）      | 已锚定本次 diff 的 AI 建议，仅供人工评审，不阻断流水线。                                                         |
+| DeepSeek       | 开启   | `anchored`（显示为 `advisory`）      | 已锚定本次 diff 的 AI 建议，仅供人工评审，不阻断流水线。                                                         |
 | TypeScript     | 关闭   | `verified`                           | 只输出能可靠定位到新增 diff 行的 `tsc` 诊断。                                                                    |
 | TypeScript AST | 关闭   | `verified`                           | 当前规则可靠识别新增 TypeScript 行中的 `eval(...)`。                                                             |
-| Java AST       | 关闭   | `grounded`（显示为 `advisory`）      | 只解析新增 Java 行，不执行 Maven 或 Gradle；当前识别直接的 `Runtime.getRuntime().exec(...)` 调用，必须人工确认。 |
-| SARIF          | 关闭   | 默认 `grounded`（显示为 `advisory`）；经证明后 `verified` | 仅采纳 SARIF 2.1.0 报告中定位到新增行的结果；没有有效证明时不可触发门禁。                                        |
+| Java AST       | 关闭   | `anchored`（显示为 `advisory`）      | 只解析新增 Java 行，不执行 Maven 或 Gradle；当前识别直接的 `Runtime.getRuntime().exec(...)` 调用，必须人工确认。 |
+| SARIF          | 关闭   | 默认 `anchored`（显示为 `advisory`）；经证明后 `verified` | 仅采纳 SARIF 2.1.0 报告中定位到新增行的结果；没有有效证明时不可触发门禁。                                        |
 | 密钥扫描       | 关闭   | `verified`                           | 只扫描新增行中的高置信度凭据，不输出凭据或敏感路径。                                                             |
 | 受控测试结果   | 关闭   | `verified`                           | 仅接受签名有效、提交一致、定位到新增行的外部沙箱结果。                                                           |
 
-只有 `verified` 发现可以根据 `review.fail_on` 触发质量门禁；`grounded` 仅表示证据已锚定，并以 `advisory` 人工建议展示，绝不会单独阻断流水线。所有分析器共享总时限、并发数、AI
+只有 `verified` 发现可以根据 `review.fail_on` 触发质量门禁；`anchored` 仅表示证据已锚定，并以 `advisory` 人工建议展示，绝不会单独阻断流水线。历史 JSONL 记录中的 `grounded` 会兼容读取为 `anchored`。所有分析器共享总时限、并发数、AI
 请求数和模型输入大小预算。DeepSeek 对网络、限流和超时错误最多额外重试两次；认证、JSON、Schema、内容过滤与上下文限制错误不会重试。
 
 ### Java 语法检查
@@ -179,7 +179,7 @@ Actions 中以无 Secret 的 CodeQL 扫描 Java
 
 ### SARIF 信任边界
 
-普通 SARIF 是 **可定位的外部建议**：报告可能来自任意工具或 PR 产物，因此默认以 `grounded`（`advisory`）显示，不会阻断流水线。若需要将某个
+普通 SARIF 是 **可定位的外部建议**：报告可能来自任意工具或 PR 产物，因此默认以 `anchored`（`advisory`）显示，不会阻断流水线。若需要将某个
 受控工具的结果作为门禁，必须同时提供 `SARIF_ATTESTATION_PATH` 与 `SARIF_VERIFICATION_PUBLIC_KEY`。证明将报告原始内容的
 SHA-256 和完整 Git `HEAD` 绑定，并由 Ed25519 私钥签名；任何内容、提交或签名不匹配都会让必需的 SARIF 分析失败，不能静默升级。
 

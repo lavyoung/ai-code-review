@@ -15,6 +15,7 @@ import {AiReviewFailure} from "../../../application/review/errors/review-executi
 import type {CodeChange} from "../../../domain/review/model/code-change.js";
 import type {ReviewAnalysis,} from "../../../domain/review/model/review-finding.js";
 import type {ReviewCandidate} from "../../../domain/review/model/review-candidate.js";
+import {resolveAssertionPolicy, resolveAssertionType} from "../../../domain/review/policy/assertion-policy.js";
 import {
     isSensitiveFile,
     redactSensitiveFilePaths,
@@ -88,7 +89,7 @@ const isTimeoutError = (error: unknown): boolean => error instanceof Error
 const toReviewFinding = (
     finding: StructuredReviewAnalysis["findings"][number],
 ): ReviewCandidate => ({
-    severity: finding.severity,
+    severity: resolveAssertionPolicy(resolveAssertionType(finding.assertionType)).advisorySeverity,
     title: finding.title,
     description: finding.description,
     ...(finding.file === undefined ? {} : { file: finding.file }),
@@ -96,6 +97,7 @@ const toReviewFinding = (
     ...(finding.category === undefined ? {} : { category: finding.category }),
     ...(finding.suggestion === undefined ? {} : { suggestion: finding.suggestion }),
     ...(finding.confidence === undefined ? {} : { confidence: finding.confidence }),
+    ...(finding.assertionType === undefined ? {} : { assertionType: finding.assertionType }),
     ...(finding.chunkId === undefined ? {} : { chunkId: finding.chunkId }),
     ...(finding.evidence === undefined ? {} : { evidence: finding.evidence }),
 });

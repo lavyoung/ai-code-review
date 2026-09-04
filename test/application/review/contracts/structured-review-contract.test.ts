@@ -16,4 +16,42 @@ describe("structured review contract", () => {
             findings: [],
         })).toEqual({summary: "No issues.", findings: []});
     });
+
+    it("accepts only a proposed assertion type and rejects model-controlled decision fields", () => {
+        expect(STRUCTURED_REVIEW_CONTRACT.parse({
+            summary: "Review needed.",
+            findings: [{
+                title: "Missing boundary test",
+                description: "The changed branch needs a test.",
+                assertionType: "test-obligation",
+            }],
+        })).toMatchObject({
+            findings: [{assertionType: "test-obligation"}],
+        });
+
+        expect(() => STRUCTURED_REVIEW_CONTRACT.parse({
+            summary: "Review needed.",
+            findings: [{
+                title: "Attempted override",
+                description: "The model must not choose verification.",
+                verificationStatus: "verified",
+            }],
+        })).toThrow();
+
+        for (const decisionField of [
+            {severity: "high"},
+            {disposition: "defect"},
+            {verificationMethods: ["ast"]},
+            {gateEligible: true},
+        ]) {
+            expect(() => STRUCTURED_REVIEW_CONTRACT.parse({
+                summary: "Review needed.",
+                findings: [{
+                    title: "Attempted decision override",
+                    description: "The model must not choose a system decision.",
+                    ...decisionField,
+                }],
+            })).toThrow();
+        }
+    });
 });

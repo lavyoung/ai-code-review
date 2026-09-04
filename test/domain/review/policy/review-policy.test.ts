@@ -34,4 +34,25 @@ describe("evaluateReviewPolicy", () => {
             shouldFail: true,
         });
     });
+
+    it("does not allow an AI assertion to expand the quality gate", () => {
+        expect(evaluateReviewPolicy([{
+            severity: "critical",
+            title: "Untrusted AI assertion",
+            description: "A verifier must not promote this AI-only claim to a gate.",
+            chunkId: "chunk-1",
+            evidence: "+const changed = true;",
+            verificationStatus: "verified",
+            disposition: "defect",
+            assertion: {
+                type: "regression-risk",
+                author: "ai",
+                factIds: ["diff-anchor:chunk-1"],
+                uncertainty: "none",
+            },
+        }], ["critical"])).toEqual({
+            highestSeverity: "critical",
+            shouldFail: false,
+        });
+    });
 });

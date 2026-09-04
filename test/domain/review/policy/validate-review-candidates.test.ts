@@ -37,8 +37,16 @@ describe("validateReviewCandidates", () => {
         expect(result.findings).toEqual([expect.objectContaining({
             chunkId: "chunk-1",
             evidence: "+run(enabled);",
-            verificationStatus: "grounded",
+            verificationStatus: "anchored",
             disposition: "advisory",
+            assertion: expect.objectContaining({
+                type: "design-maintainability",
+                author: "rule",
+            }),
+            facts: expect.arrayContaining([
+                expect.objectContaining({kind: "diff-anchor"}),
+                expect.objectContaining({kind: "evidence-match"}),
+            ]),
             verificationMethods: ["diff-anchor", "source-range", "evidence-match"],
         })]);
         expect(result.suppressedCounts).toEqual({ "location-mismatch": 1 });
@@ -90,6 +98,26 @@ describe("validateReviewCandidates", () => {
 
         expect(result.findings).toEqual([]);
         expect(result.suppressedCounts).toEqual({"redacted-dependency": 1});
+    });
+
+    it("uses the system-owned advisory priority for an AI assertion", () => {
+        const result = validateReviewCandidates([{
+            severity: "critical",
+            title: "Potential contract break",
+            description: "The changed contract needs compatibility review.",
+            chunkId: "chunk-1",
+            evidence: "+const enabled = true;",
+            assertionType: "contract-compatibility",
+            analyzer: {kind: "ai", id: "deepseek"},
+        }], codeChange);
+
+        expect(result.findings).toEqual([expect.objectContaining({
+            severity: "medium",
+            assertion: expect.objectContaining({
+                type: "contract-compatibility",
+                author: "ai",
+            }),
+        })]);
     });
 
     it("keeps redacted evidence from a deterministic secret scanner", () => {

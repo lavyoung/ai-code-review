@@ -8,7 +8,8 @@
 > [AI 评审质量优化架构](./AI-REVIEW-QUALITY-OPTIMIZATION.md)。该设计细化本文的“证据先于结论”原则，
 > 不以 GitHub Actions 作为领域模型前提。
 >
-> 术语兼容说明：本文中现有实现的 `grounded` 表示“证据已锚定”，不是正确性结论；对外应呈现为人工审查建议。
+> 术语兼容说明：当前实现使用 `anchored` 表示“证据已锚定”，不是正确性结论；对外应呈现为人工审查建议。
+> 历史 JSONL 记录中的 `grounded` 在读取时兼容映射为 `anchored`。
 > 后续演进以增量设计定义的 `EvidenceStatus` 与 `FindingDisposition` 双维模型为准。
 
 ## 1. 决策摘要
@@ -215,16 +216,16 @@ interface ValidatedFinding extends ReviewCandidate {
 }
 
 interface FindingVerification {
-  status: "grounded" | "verified" | "suppressed";
+  status: "anchored" | "corroborated" | "verified" | "unavailable";
   evidence: readonly VerificationEvidence[];
 }
 ```
 
-`ReviewCandidate` 不是对用户可见的最终对象。完成安全、变更锚定和证据一致性检查的 `grounded` 发现只能以 `advisory` 进入“AI
+`ReviewCandidate` 不是对用户可见的最终对象。完成安全、变更锚定和证据一致性检查的 `anchored` 发现只能以 `advisory` 进入“AI
 suggestions for review”区域；获得确定性工具或可执行验证的 `verified` 发现以 `defect` 进入“Confirmed findings”区域并可参与门禁。
 `suppressed` 候选项只保留脱敏计数、分类和原因码。
 
-状态聚合规则固定为：安全拒绝、找不到变更块、范围越界、证据摘要不一致或重复冲突时为 `suppressed`；仅完成锚定和证据一致性时为 `grounded`；任一适用的确定性验证通过时为 `verified`。单个验证器返回的是一条 `VerificationEvidence`，应用层负责聚合为 `FindingVerification`。
+状态聚合规则固定为：安全拒绝、找不到变更块、范围越界、证据摘要不一致或重复冲突时为 `suppressed`；仅完成锚定和证据一致性时为 `anchored`；多个独立受控来源支持但未满足门禁条件时为 `corroborated`；任一适用的确定性验证通过时为 `verified`。单个验证器返回的是一条 `VerificationEvidence`，应用层负责聚合为 `FindingVerification`。
 
 ### 5.3 统一来源与严重级别
 
@@ -255,7 +256,7 @@ type VerificationMethod =
 ```
 
 外部静态分析结果优先通过 SARIF 2.1.0 适配到内部模型。SARIF 是交换格式，不是领域模型：项目的领域语义、门禁和评论协议不得依赖任何特定工具的字段。普通
-SARIF 默认只产生 `grounded` 建议；只有报告 SHA-256、完整 `HEAD` 和 Ed25519 签名证明全部验证通过，且验证任务仅持有公钥时，SARIF
+SARIF 默认只产生 `anchored` 建议；只有报告 SHA-256、完整 `HEAD` 和 Ed25519 签名证明全部验证通过，且验证任务仅持有公钥时，SARIF
 适配器才可声明 `verificationEligible`。私钥必须位于不执行不可信 PR 代码的隔离可信任务，不能与验证任务共享。
 
 ## 6. 端口与适配器
@@ -306,12 +307,15 @@ interface ReviewExecutionLockPort {
 
 ```ts
 interface StructuredReviewContract {
-  version: "v1";
+  version: "v2";
   instruction: ReviewInstruction;
   input: SafeReviewInput;
   outputSchema: JsonSchema;
 }
 ```
+
+`v2` 将 AI 输出收敛为断言候选：模型可以给出 `assertionType`，但 schema 明确拒绝 `severity`、验证状态、验证方法、
+处置和门禁字段。系统策略按断言类型分配仅用于人工排序的建议严重级别；该值不改变 `verified + defect` 的门禁条件。
 
 - `ReviewInstruction` 定义评审原则、语言、禁止事项和证据要求；它是平台无关的共享契约。
 - AI 适配器只负责将该契约转换为供应商 API（Chat Completions、Responses 或其他协议）并解析响应。
@@ -398,7 +402,7 @@ interface ReviewDecision {
 4. 将稳定、脱敏的 `ReviewDecision` 映射为既有三位退出码。
 
 门禁资格固定为：`finding.verification.status === "verified"` 且 `finding.disposition === "defect"`，并且发现严重级别命中仓库、分支和事件的
-`fail_on_verified` 策略。`grounded` 的 AI 语义发现只能以 `advisory` 形式评论、可通知，但绝不因模型置信度或单独的项目开关而阻断流水线。
+`fail_on_verified` 策略。`anchored` 的 AI 语义发现只能以 `advisory` 形式评论、可通知，但绝不因模型置信度或单独的项目开关而阻断流水线。
 
 摘要评论仍是唯一的首期平台评论形式。它包含评审范围、分析器状态、已验证发现统计、门禁结果和投递状态。它不输出被过滤的敏感路径、内容或完整证据片段。
 
@@ -484,7 +488,7 @@ analyzers:
     role: deterministic-check
 
 verification:
-  required_for_comment: grounded
+  required_for_comment: anchored
   required_for_gate: verified
   enabled_methods: [diff-anchor, source-range, typecheck]
 
@@ -548,7 +552,7 @@ AST 适配器使用官方 `@typescript/typescript6` 兼容 API，与 TS7 构建�
 `StructuredReviewContract` 是提示词示例、JSON Schema 导出和运行时 Zod 解析的共同来源，新的 AI 适配器不必重新定义评审输出形状。调度器只向声明
 `trusted-raw-local` 的已注册本地分析器传递原始已提交 diff；`ai` 身份分析器被强制限定为安全输入，并受每个请求的安全 JSON
 diff 字符预算约束，超限时仅接收按变更顺序截取的前缀分块。DeepSeek 对网络、限流和超时等瞬时错误最多额外尝试两次，预留请求数会先计入
-AI 预算；认证或结构化响应错误不重试。`DeepSeek`、Java AST 与未证明的 SARIF 仍只会产生 `grounded` 发现；已接入的本地
+AI 预算；认证或结构化响应错误不重试。`DeepSeek`、Java AST 与未证明的 SARIF 仍只会产生 `anchored` 发现；已接入的本地
 TypeScript 分析器、高置信度密钥扫描器，以及证明有效的 SARIF 报告才会将本次新增 diff 行的确定性诊断升级为 `verified`
 并参与质量门禁。SARIF 证明通过 Ed25519 公私钥分离绑定报告哈希和 `HEAD`
 ：验证任务不能伪造证明，且任何报告或提交替换都会失败。密钥扫描器只输出安全锚点与通用说明，敏感路径和原始值不离开本地边界。输出发现已具有仅基于安全定位与规范化语义的稳定指纹；同次运行的等价发现会合并来源与验证方法。可选
@@ -585,7 +589,7 @@ JSONL 记录器保存带类型标识的运行摘要，并可追加只含固定�
 - 每条输出到评论、通知或门禁的发现都能映射到本次已提交变更，并具备脱敏证据。
 - AI 自报置信度不能单独触发门禁。
 - AI 或其他远程服务无法读取原始 diff、敏感路径、敏感文件内容或凭据；受信任本地扫描器仍可在不外泄的条件下扫描原始提交内容。
-- 只有 `verified` 发现可阻断；`grounded` 发现只能评论或通知。
+- 只有 `verified` 发现可阻断；`anchored` 发现只能评论或通知。
 - 并行分析器运行受全局时限、并发和预算约束，required/advisory 失败具有不同且可测试的策略。
 - 确定性分析器失败、AI 失败、评论失败、通知失败具有独立且明确的状态、策略和三位退出码映射。
 - 同一变更重复执行更新同一摘要评论；同一发现具有稳定指纹。

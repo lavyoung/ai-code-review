@@ -31,13 +31,17 @@ const analyzerRunSchema = z.object({
 const recordedFindingSchema = z.object({
     fingerprint: z.string().regex(/^[a-f0-9]{24}$/),
     severity: z.enum(["info", "low", "medium", "high", "critical"]),
-    verificationStatus: z.enum(["grounded", "verified"]),
-    disposition: z.enum(["advisory", "defect"]).optional(),
+    verificationStatus: z.enum(["grounded", "anchored", "corroborated", "verified", "unavailable"]),
+    disposition: z.enum(["advisory", "defect", "unverifiable"]).optional(),
     analyzerIds: z.array(z.string()),
 }).transform(({disposition, verificationStatus, ...finding}) => ({
     ...finding,
-    verificationStatus,
-    disposition: disposition ?? (verificationStatus === "verified" ? "defect" : "advisory"),
+    verificationStatus: verificationStatus === "grounded" ? "anchored" : verificationStatus,
+    disposition: disposition ?? (verificationStatus === "verified"
+        ? "defect"
+        : verificationStatus === "unavailable"
+            ? "unverifiable"
+            : "advisory"),
 }));
 
 const reviewRunRecordSchema = z.object({

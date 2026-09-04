@@ -95,7 +95,7 @@ const countFindingsByVerificationStatus = (
     findings: readonly ValidatedFinding[],
 ): Record<ValidatedFinding["verificationStatus"], number> => findings.reduce(
     (counts, finding) => ({ ...counts, [finding.verificationStatus]: counts[finding.verificationStatus] + 1 }),
-    { grounded: 0, verified: 0 },
+    { grounded: 0, anchored: 0, corroborated: 0, verified: 0, unavailable: 0 },
 );
 
 const formatAnalyzerRuns = (
@@ -134,7 +134,9 @@ export const renderReviewReport = (
         `- Highest severity: ${policy.highestSeverity ?? "none"}`,
         `- Findings: ${validatedFindings.length}`,
         `- Verified findings: ${verificationCounts.verified}`,
-        `- Grounded findings: ${verificationCounts.grounded}`,
+        `- Anchored findings: ${verificationCounts.anchored + verificationCounts.grounded}`,
+        `- Corroborated findings: ${verificationCounts.corroborated}`,
+        `- Unverifiable findings: ${verificationCounts.unavailable}`,
         `- Suppressed candidates: ${suppressedCandidateCount}`,
         ...(formatAnalyzerRuns(input.result.analyzerRuns) === undefined
             ? []
