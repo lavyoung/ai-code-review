@@ -154,12 +154,19 @@ recording:
 | TypeScript     | 关闭   | `verified`                           | 只输出能可靠定位到新增 diff 行的 `tsc` 诊断。                                                                    |
 | TypeScript AST | 关闭   | `verified`                           | 当前规则可靠识别新增 TypeScript 行中的 `eval(...)`。                                                             |
 | Java AST       | 关闭   | `anchored`（显示为 `advisory`）      | 只解析新增 Java 行，不执行 Maven 或 Gradle；当前识别直接的 `Runtime.getRuntime().exec(...)` 调用，必须人工确认。 |
+| GitHub Actions 自动化 | 开启 | `anchored`（显示为 `advisory`） | 只读取本次变更的 `.github/workflows/*.yml` 或 `.yaml` 在已提交 `HEAD` 中的内容；识别可变外部引用和不可信触发器与写权限组合，不执行工作流或脚本。 |
 | SARIF          | 关闭   | 默认 `anchored`（显示为 `advisory`）；经证明后 `verified` | 仅采纳 SARIF 2.1.0 报告中定位到新增行的结果；没有有效证明时不可触发门禁。                                        |
 | 密钥扫描       | 关闭   | `verified`                           | 只扫描新增行中的高置信度凭据，不输出凭据或敏感路径。                                                             |
 | 受控测试结果   | 关闭   | `verified`                           | 仅接受签名有效、提交一致、定位到新增行的外部沙箱结果。                                                           |
 
 只有 `verified` 发现可以根据 `review.fail_on` 触发质量门禁；`anchored` 仅表示证据已锚定，并以 `advisory` 人工建议展示，绝不会单独阻断流水线。历史 JSONL 记录中的 `grounded` 会兼容读取为 `anchored`。所有分析器共享总时限、并发数、AI
 请求数和模型输入大小预算。DeepSeek 对网络、限流和超时错误最多额外重试两次；认证、JSON、Schema、内容过滤与上下文限制错误不会重试。
+
+### GitHub Actions 自动化观察
+
+GitHub Actions 自动化分析器不需要额外配置。它只在本次提交修改 `.github/workflows/*.yml` 或 `.yaml` 时，通过 Git
+读取当前 `HEAD` 的工作流 YAML；不会读取未提交工作区，也不会执行 YAML、表达式、脚本、Action 或容器。解析受文件大小、
+YAML 别名和嵌套深度限制。当前发现仅用于人工评审，永远不会阻断流水线。
 
 ### Java 语法检查
 

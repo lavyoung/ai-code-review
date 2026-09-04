@@ -8,6 +8,9 @@ import {SandboxedTestResultAnalyzer,} from "../infrastructure/analyzers/sandbox-
 import {createCommittedRevisionProvider} from "../infrastructure/scm/git/committed-revision-provider.js";
 import {SarifReviewAnalyzer} from "../infrastructure/analyzers/sarif/sarif-review-analyzer.js";
 import {SecretScanReviewAnalyzer} from "../infrastructure/analyzers/secret-scan/secret-scan-review-analyzer.js";
+import {GitHubActionsAutomationReviewAnalyzer} from "../infrastructure/analyzers/github-actions/github-actions-automation-review-analyzer.js";
+import {GitHubActionsAutomationParser} from "../infrastructure/automation/github-actions/github-actions-automation-parser.js";
+import {LocalCommittedFileReader} from "../infrastructure/scm/git/local-committed-file-reader.js";
 import {StaticReviewAnalyzerRegistry} from "../application/review/orchestration/static-review-analyzer-registry.js";
 import {
     deterministicAnalyzerFindingVerifier
@@ -47,6 +50,7 @@ import {
     CodeUpReviewDeliveryAdapter,
 } from "../infrastructure/delivery/codeup/codeup-review-delivery-adapter.js";
 import {ProviderConfigurationError} from "../application/review/errors/provider-configuration-error.js";
+import type {AnalyzerExecutionPlan} from "../application/review/ports/review-analyzer-port.js";
 
 /** 在唯一的装配边界创建评审用例所需的具体适配器。 */
 export const createReviewDependencies = (
@@ -103,11 +107,15 @@ export const createReviewDependencies = (
     const secretScanAnalyzer = configuration.analyzers.secretScan.enabled
         ? new SecretScanReviewAnalyzer()
         : undefined;
-    const analyzers = [...(aiAnalyzer === undefined ? [] : [aiAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(typeScriptAstAnalyzer === undefined ? [] : [typeScriptAstAnalyzer]), ...(javaAstAnalyzer === undefined ? [] : [javaAstAnalyzer]), ...(sandboxTestAnalyzer === undefined ? [] : [sandboxTestAnalyzer]), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer]), ...(secretScanAnalyzer === undefined ? [] : [secretScanAnalyzer])];
+    const automationAnalyzer = new GitHubActionsAutomationReviewAnalyzer(
+        new LocalCommittedFileReader(workingDirectory),
+        new GitHubActionsAutomationParser(),
+    );
+    const analyzers = [...(aiAnalyzer === undefined ? [] : [aiAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(typeScriptAstAnalyzer === undefined ? [] : [typeScriptAstAnalyzer]), ...(javaAstAnalyzer === undefined ? [] : [javaAstAnalyzer]), ...(sandboxTestAnalyzer === undefined ? [] : [sandboxTestAnalyzer]), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer]), ...(secretScanAnalyzer === undefined ? [] : [secretScanAnalyzer]), automationAnalyzer];
     if (analyzers.length === 0) {
         throw new Error("At least one review analyzer must be enabled.");
     }
-    const analyzerPlans = [...(aiAnalyzer === undefined ? [] : [{
+    const analyzerPlans: AnalyzerExecutionPlan[] = [...(aiAnalyzer === undefined ? [] : [{
         analyzerId: aiAnalyzer.identity.id,
         required: true,
         timeoutMs: configuration.ai.timeoutMs,
@@ -155,6 +163,13 @@ export const createReviewDependencies = (
     if (secretScanAnalyzer !== undefined) {
         analyzerPlans.push({ analyzerId: secretScanAnalyzer.identity.id, required: true, timeoutMs: 5_000, retryCount: 0, failureMode: "fail" });
     }
+    analyzerPlans.push({
+        analyzerId: automationAnalyzer.identity.id,
+        required: false,
+        timeoutMs: 5_000,
+        retryCount: 0,
+        failureMode: "degrade",
+    });
 
     return {
         diffProvider: new LocalGitDiffProvider(workingDirectory),
