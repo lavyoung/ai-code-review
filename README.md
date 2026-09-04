@@ -189,6 +189,10 @@ JUnit 测试资产，但不运行仓库脚本。尚未建立测试与影响路�
 `sourceRevision` 等于当前 `HEAD`，且该测试已由上述静态关系关联到本次改动时，影响覆盖才会标为 `demonstrated`。旧报告没有
 `passedTests` 时仍可报告已锚定的失败，但不会产生通过或覆盖证明；CLI 自身不会执行任何仓库测试脚本。
 
+对于明确的版本化契约位置（`openapi` / `asyncapi` 文件，以及 `docs/context/contracts/` 下的 JSON/YAML Schema），系统会识别
+已锚定的新增改动，并生成 `contract` 与 `compatibility` 验证义务。它不解析消费者、不判定破坏性变更，也不声称兼容；没有受控的
+契约验证证据时状态固定为 `not-assessable`，仅供 AI 给出人工复核建议。
+
 ### Java 语法检查
 
 启用 `java_ast` 后，固定版本的 Java 解析器只在本地解析已提交 diff 的新增 `.java` 行；它不读取未提交工作区、不启动 JDK，也不执行

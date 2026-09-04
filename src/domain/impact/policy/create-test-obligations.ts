@@ -7,12 +7,30 @@ import type {ChangeImpact, TestObligation} from "../model/impact-package.js";
  */
 export const createTestObligations = (
     impacts: readonly ChangeImpact[],
-): readonly TestObligation[] => impacts.flatMap((impact) => impact.relations.length === 0
-    ? []
-    : [{
+): readonly TestObligation[] => impacts.flatMap((impact): readonly TestObligation[] => {
+    if (impact.relations.length === 0) {
+        return [];
+    }
+    if (impact.kind === "contract") {
+        return [{
+            id: `test-obligation:${impact.id}:contract`,
+            impactId: impact.id,
+            kind: "contract" as const,
+            rationale: "A versioned contract changed; verify the changed contract on the current revision.",
+            requiredEvidence: ["contract-validation"] as const,
+        }, {
+            id: `test-obligation:${impact.id}:compatibility`,
+            impactId: impact.id,
+            kind: "compatibility" as const,
+            rationale: "A versioned contract changed; obtain explicit compatibility evidence for known consumers.",
+            requiredEvidence: ["contract-validation"] as const,
+        }];
+    }
+    return [{
         id: `test-obligation:${impact.id}:happy-path`,
         impactId: impact.id,
         kind: "happy-path" as const,
         rationale: "A committed change has an anchored static dependency relation; verify its affected behavior on the current revision.",
         requiredEvidence: ["test-execution", "impact-association"] as const,
-    }]);
+    }];
+});

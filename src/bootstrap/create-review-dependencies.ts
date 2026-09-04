@@ -14,6 +14,7 @@ import {LocalCommittedFileReader} from "../infrastructure/scm/git/local-committe
 import {ChangedImportSemanticImpactIndex} from "../infrastructure/impact/changed-import-semantic-impact-index.js";
 import {CommittedTestInventory} from "../infrastructure/impact/committed-test-inventory.js";
 import {SignedSandboxTestExecutionEvidence} from "../infrastructure/impact/signed-sandbox-test-execution-evidence.js";
+import {ChangedContractCatalog} from "../infrastructure/impact/changed-contract-catalog.js";
 import {StaticReviewAnalyzerRegistry} from "../application/review/orchestration/static-review-analyzer-registry.js";
 import {StaticAutomationParserRegistry} from "../application/review/orchestration/static-automation-parser-registry.js";
 import {
@@ -195,6 +196,7 @@ export const createReviewDependencies = (
         },
         findingVerifiers: [deterministicAnalyzerFindingVerifier],
         semanticImpactIndex: new ChangedImportSemanticImpactIndex(),
+        contractCatalog: new ChangedContractCatalog(),
         testInventory: new CommittedTestInventory(workingDirectory),
         ...(testExecutionEvidence === undefined ? {} : {testExecutionEvidence}),
         ...(configuration.recording.localPath === undefined

@@ -40,4 +40,29 @@ describe("createTestObligations", () => {
             },
         }])).toEqual([]);
     });
+
+    it("creates contract and compatibility evidence obligations for a contract impact", () => {
+        expect(createTestObligations([{
+            id: "impact:chunk-1",
+            changeAnchorId: "chunk-1",
+            kind: "contract",
+            relations: [{
+                id: "contract-1",
+                changeAnchorId: "chunk-1",
+                sourcePath: "contracts/openapi.yaml",
+                sourceLine: 2,
+                target: "openapi",
+                kind: "contract-definition",
+                completeness: "partial",
+            }],
+            closure: {
+                implementation: "unknown",
+                compatibility: "unknown",
+                validation: "not-assessable",
+            },
+        }])).toEqual([
+            expect.objectContaining({kind: "contract", requiredEvidence: ["contract-validation"]}),
+            expect.objectContaining({kind: "compatibility", requiredEvidence: ["contract-validation"]}),
+        ]);
+    });
 });

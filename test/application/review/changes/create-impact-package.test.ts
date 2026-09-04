@@ -130,4 +130,26 @@ describe("createImpactPackage", () => {
             }],
         });
     });
+
+    it("does not turn a changed contract into a compatibility conclusion", () => {
+        expect(createImpactPackage([{
+            id: "contract-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "contracts/openapi.yaml",
+            sourceLine: 2,
+            target: "openapi",
+            kind: "contract-definition",
+            completeness: "partial",
+        }])).toMatchObject({
+            impacts: [{kind: "contract"}],
+            testObligations: [
+                {kind: "contract"},
+                {kind: "compatibility"},
+            ],
+            impactCoverage: [
+                {status: "not-assessable", limitation: "contract-validation-unavailable"},
+                {status: "not-assessable", limitation: "contract-validation-unavailable"},
+            ],
+        });
+    });
 });

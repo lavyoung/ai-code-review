@@ -40,7 +40,7 @@ export const createImpactPackage = (
         .map((relation) => ({
             id: `impact:${relation.changeAnchorId}`,
             changeAnchorId: relation.changeAnchorId,
-            kind: "local-behavior" as const,
+            kind: relation.kind === "contract-definition" ? "contract" as const : "local-behavior" as const,
             relations: relations.filter((candidate) => candidate.changeAnchorId === relation.changeAnchorId),
             closure: {
                 implementation: "unknown" as const,
@@ -62,6 +62,14 @@ export const createImpactPackage = (
         impacts,
         testObligations,
         impactCoverage: testObligations.map((obligation) => {
+            if (obligation.kind === "contract" || obligation.kind === "compatibility") {
+                return {
+                    obligationId: obligation.id,
+                    status: "not-assessable" as const,
+                    evidence: [],
+                    limitation: "contract-validation-unavailable" as const,
+                };
+            }
             const references = referencesByImpactId.get(obligation.impactId) ?? [];
             if (testInventory.status !== "available") {
                 return {

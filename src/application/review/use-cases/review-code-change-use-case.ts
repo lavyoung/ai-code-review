@@ -1,4 +1,5 @@
 import type {CodeChange, ReviewChangeInput} from "../../../domain/review/model/code-change.js";
+import type {StaticImpactRelation} from "../../../domain/impact/model/impact-package.js";
 import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
 import type {CandidateValidationResult, ValidatedFinding,} from "../../../domain/review/model/review-candidate.js";
 import {validateReviewCandidates} from "../../../domain/review/policy/validate-review-candidates.js";
@@ -18,6 +19,7 @@ import type {FindingSuppressionPort} from "../ports/finding-suppression-port.js"
 import type {SemanticImpactIndexPort} from "../ports/semantic-impact-index-port.js";
 import type {TestInventoryPort} from "../ports/test-inventory-port.js";
 import type {TestExecutionEvidencePort} from "../ports/test-execution-evidence-port.js";
+import type {ContractCatalogPort} from "../ports/contract-catalog-port.js";
 import {createImpactPackage} from "../changes/create-impact-package.js";
 
 /** 对已获取代码变更执行统一分析器集合所需的外部能力。 */
@@ -34,6 +36,8 @@ export interface ReviewCodeChangeDependencies {
     testInventory?: TestInventoryPort;
     /** 可选的受控沙箱通过证明；失败或不可用不得伪造覆盖。 */
     testExecutionEvidence?: TestExecutionEvidencePort;
+    /** 可选的本地契约目录；只发现变更，不能得出兼容性结论。 */
+    contractCatalog?: ContractCatalogPort;
 }
 
 /** 对同一次受控原始/安全变更执行评审的输入。 */
@@ -65,6 +69,8 @@ export const reviewCodeChangeUseCase = async (
     let impactPackage;
     let testInventory;
     let passedTestIds: readonly string[] = [];
+    let contractRelations: StaticImpactRelation[] = [];
+    let contractLimitations: ("contract-catalog-unavailable")[] = [];
     if (dependencies.testInventory !== undefined) {
         try {
             testInventory = await dependencies.testInventory.discover(
@@ -83,6 +89,19 @@ export const reviewCodeChangeUseCase = async (
             // 未通过验签、revision 校验或读取失败时，保持没有执行证明。
         }
     }
+    if (dependencies.contractCatalog !== undefined) {
+        try {
+            const result = await dependencies.contractCatalog.analyze(
+                command.reviewInput.rawCodeChange,
+                command.reviewInput.codeChange,
+                AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
+            );
+            contractRelations = [...result.relations];
+            contractLimitations = [...result.limitations.filter((limitation) => limitation === "contract-catalog-unavailable")];
+        } catch {
+            contractLimitations = ["contract-catalog-unavailable"];
+        }
+    }
     if (dependencies.semanticImpactIndex !== undefined) {
         try {
             const result = await dependencies.semanticImpactIndex.analyze(
@@ -90,10 +109,22 @@ export const reviewCodeChangeUseCase = async (
                 command.reviewInput.codeChange,
                 AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
             );
-            impactPackage = createImpactPackage(result.relations, result.limitations, testInventory, passedTestIds);
+            impactPackage = createImpactPackage(
+                [...result.relations, ...contractRelations],
+                [...result.limitations, ...contractLimitations],
+                testInventory,
+                passedTestIds,
+            );
         } catch {
-            impactPackage = createImpactPackage([], ["impact-index-unavailable"], testInventory, passedTestIds);
+            impactPackage = createImpactPackage(
+                contractRelations,
+                ["impact-index-unavailable", ...contractLimitations],
+                testInventory,
+                passedTestIds,
+            );
         }
+    } else if (dependencies.contractCatalog !== undefined) {
+        impactPackage = createImpactPackage(contractRelations, contractLimitations, testInventory, passedTestIds);
     }
     const execution = await executeReviewAnalyzers(
         command.reviewInput,

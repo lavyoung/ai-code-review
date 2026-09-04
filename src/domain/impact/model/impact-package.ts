@@ -1,5 +1,5 @@
 /** 对外可用的静态影响关系类型；动态分派必须显式保持未知。 */
-export type ImpactRelationKind = "module-import" | "java-import";
+export type ImpactRelationKind = "module-import" | "java-import" | "contract-definition";
 
 /** 可安全引用本次变更的单条静态关系，不保存源文件正文。 */
 export interface StaticImpactRelation {
@@ -16,7 +16,7 @@ export interface StaticImpactRelation {
 export interface ChangeImpact {
     id: string;
     changeAnchorId: string;
-    kind: "local-behavior" | "configuration" | "workflow";
+    kind: "local-behavior" | "contract" | "configuration" | "workflow";
     relations: readonly StaticImpactRelation[];
     closure: {
         implementation: "unknown";
@@ -31,7 +31,7 @@ export interface TestObligation {
     impactId: string;
     kind: "happy-path" | "contract" | "authorization" | "persistence" | "compatibility";
     rationale: string;
-    requiredEvidence: readonly ("test-execution" | "impact-association")[];
+    requiredEvidence: readonly ("test-execution" | "impact-association" | "contract-validation")[];
 }
 
 /** 可追溯的测试覆盖证明引用；当前发现阶段尚不产生此类证明。 */
@@ -48,7 +48,8 @@ export interface ImpactCoverage {
     limitation?: "test-inventory-unavailable"
         | "test-inventory-partial"
         | "impact-association-unavailable"
-        | "test-execution-unavailable";
+        | "test-execution-unavailable"
+        | "contract-validation-unavailable";
 }
 
 /** 可被安全引用的测试静态依赖；测试路径被不透明 ID 替代。 */
@@ -78,5 +79,6 @@ export interface ImpactPackage {
         | "dynamic-dependency-unavailable"
         | "unsupported-language"
         | "impact-index-unavailable"
+        | "contract-catalog-unavailable"
     )[];
 }
