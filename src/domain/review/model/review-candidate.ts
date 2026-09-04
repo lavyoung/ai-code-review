@@ -32,8 +32,15 @@ export type AssertionType = typeof ASSERTION_TYPES[number];
 /** 可审计事实的最小安全表达，不保存原始 diff。 */
 export interface ReviewFact {
     id: string;
-    kind: "diff-anchor" | "source-range" | "evidence-match" | "deterministic-analyzer";
-    source: "candidate-validation" | "deterministic-analyzer";
+    kind: "diff-anchor"
+        | "source-range"
+        | "evidence-match"
+        | "deterministic-analyzer"
+        | "automation-parse"
+        | "automation-trigger"
+        | "automation-permission"
+        | "automation-external-reference";
+    source: "candidate-validation" | "deterministic-analyzer" | "automation-parser";
     verification: "confirmed" | "unavailable" | "inconclusive";
 }
 
