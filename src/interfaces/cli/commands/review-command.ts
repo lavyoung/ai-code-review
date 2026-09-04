@@ -8,22 +8,17 @@ import {
 import {renderReviewDeliveryStatus, renderReviewReport,} from "../formatters/render-review-report.js";
 import {redactReviewDiagnostic} from "../formatters/redact-review-diagnostic.js";
 import {
-    createCodeUpReviewCommentPort,
-    createGitHubReviewCommentPort,
+    createAiProviderFactoryRegistry,
+    createReviewDeliveryAdapterRegistry,
     createReviewDependencies,
     createReviewQualityStore,
+    createReviewTriggerAdapterRegistry,
     createWeComNotifier,
     resolveCliReviewConfiguration,
-    resolveCodeUpMergeRequestReviewContext,
-    resolveGitHubPullRequestContext,
-    ReviewPlatformContextError,
 } from "../../../bootstrap/create-review-dependencies.js";
-import type {ManualReviewResult} from "../../../application/review/use-cases/run-manual-review-use-case.js";
-import {runManualReviewUseCase} from "../../../application/review/use-cases/run-manual-review-use-case.js";
-import {runPullRequestReviewUseCase} from "../../../application/review/use-cases/run-pull-request-review-use-case.js";
+import {runReviewRangeUseCase} from "../../../application/review/use-cases/run-review-range-use-case.js";
 import {createSummaryReviewComment} from "../../../application/delivery/comments/create-summary-review-comment.js";
 import {publishReviewCommentUseCase} from "../../../application/delivery/use-cases/publish-review-comment-use-case.js";
-import {createReviewCommentId} from "../../../domain/review/model/review-comment.js";
 import {
     AiReviewExecutionError,
     AiReviewFailure,
@@ -31,6 +26,12 @@ import {
     ReviewAnalyzerExecutionError,
     ReviewVerifierExecutionError,
 } from "../../../application/review/errors/review-execution-error.js";
+import {
+    ReviewTriggerConfigurationError,
+    ReviewTriggerContextError,
+} from "../../../application/review/errors/review-trigger-error.js";
+import {ProviderConfigurationError} from "../../../application/review/errors/provider-configuration-error.js";
+import type {ReviewCommentPort} from "../../../application/delivery/ports/review-comment-port.js";
 import {publishNotificationUseCase} from "../../../application/delivery/use-cases/publish-notification-use-case.js";
 import {
     createSanitizedReviewRunRecord
@@ -44,6 +45,8 @@ interface ReviewCommandOptions {
     target?: string;
     config?: string;
     outputLanguage?: string;
+    aiProvider?: string;
+    aiEnabled?: boolean;
     totalAnalyzerTimeoutMs?: number;
     maxAnalyzerConcurrency?: number;
     maxAiRequestCount?: number;
@@ -100,6 +103,9 @@ const reviewCommand = program
     .option("--target <ref>", "Target branch or commit")
     .option("--config <path>", "Configuration file path")
     .option("--output-language <bcp47-tag>", "BCP 47 language tag for AI review text")
+    .option("--ai-provider <provider>", "Registered AI provider ID")
+    .option("--ai-enabled <true|false>", "Enable the configured AI provider", (value) =>
+        parseBoolean(value, "--ai-enabled"))
     .option("--total-analyzer-timeout-ms <milliseconds>", "Total analyzer execution timeout", (value) =>
         parsePositiveInteger(value, "--total-analyzer-timeout-ms"))
     .option("--max-analyzer-concurrency <count>", "Maximum concurrent analyzers", (value) =>
@@ -130,22 +136,6 @@ const reviewCommand = program
         parseBoolean(value, "--quality-store-enabled"))
     .option("--quality-store-endpoint <https-url>", "Organization quality store HTTPS endpoint")
     .action(async (options: ReviewCommandOptions) => {
-        const isManualReview = options.event === "manual"
-            && options.provider === "local"
-            && options.target !== undefined;
-        const isGitHubPullRequestReview = options.event === "pull-request"
-            && options.provider === "github";
-        const isCodeUpMergeRequestReview = options.event === "merge-request"
-            && options.provider === "codeup";
-
-        if (!isManualReview && !isGitHubPullRequestReview && !isCodeUpMergeRequestReview) {
-            console.error(
-                "Supported modes: manual (--provider local --target <ref>), GitHub pull-request, and CodeUp merge-request.",
-            );
-            process.exitCode = CLI_EXIT_CODES.INVALID_ARGUMENT;
-            return;
-        }
-
         let configuration;
         try {
             configuration = await resolveCliReviewConfiguration({
@@ -156,6 +146,8 @@ const reviewCommand = program
                     ...(options.outputLanguage === undefined
                         ? {}
                         : { outputLanguage: options.outputLanguage }),
+                    ...(options.aiProvider === undefined ? {} : {aiProvider: options.aiProvider}),
+                    ...(options.aiEnabled === undefined ? {} : {aiEnabled: options.aiEnabled}),
                     ...(options.totalAnalyzerTimeoutMs === undefined
                         ? {}
                         : { totalTimeoutMs: options.totalAnalyzerTimeoutMs }),
@@ -213,24 +205,56 @@ const reviewCommand = program
             return;
         }
 
-        if (configuration.analyzers.deepseek.enabled && configuration.ai.apiKey === undefined) {
-            console.error("Configuration error. DEEPSEEK_API_KEY must be set.");
+        const triggerRegistry = createReviewTriggerAdapterRegistry(configuration);
+        const deliveryRegistry = createReviewDeliveryAdapterRegistry(configuration);
+        const unsupportedCommentProvider = Object.keys(configuration.comments.providers)
+            .find((providerId) => deliveryRegistry.resolve(providerId) === undefined);
+        if (unsupportedCommentProvider !== undefined) {
+            console.error(`Configuration error. Comment delivery provider "${unsupportedCommentProvider}" is not registered. Supported providers: ${deliveryRegistry.supported().join(", ")}.`);
             process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
             return;
         }
-
-        if (isGitHubPullRequestReview
-            && configuration.comments.github.enabled
-            && configuration.comments.github.accessToken === undefined) {
-            console.error("Configuration error. GITHUB_TOKEN must be set for GitHub PR comments.");
-            process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
+        const triggerAdapter = triggerRegistry.resolve(options.provider, options.event);
+        if (triggerAdapter === undefined) {
+            const supportedModes = triggerRegistry.supported()
+                .map(({providerId, event}) => `${providerId} ${event}`)
+                .join(", ");
+            console.error(`Unsupported review provider/event. Supported modes: ${supportedModes}.`);
+            process.exitCode = CLI_EXIT_CODES.INVALID_ARGUMENT;
             return;
         }
 
-        if (isCodeUpMergeRequestReview && configuration.comments.codeup.accessToken === undefined) {
-            console.error("Configuration error. CODEUP_TOKEN must be set for CodeUp MR lookup.");
+        try {
+            triggerAdapter.validateConfiguration();
+        } catch (error) {
+            if (error instanceof ReviewTriggerConfigurationError) {
+                console.error(`Configuration error. ${error.message}`);
+                process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
+                return;
+            }
+            throw error;
+        }
+
+        const aiProviderRegistry = createAiProviderFactoryRegistry();
+        const aiProvider = aiProviderRegistry.resolve(configuration.ai.provider);
+        if (aiProvider === undefined) {
+            console.error(
+                `Configuration error. AI provider "${configuration.ai.provider}" is not registered. Supported providers: ${aiProviderRegistry.supported().join(", ")}.`,
+            );
             process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
             return;
+        }
+        if (configuration.ai.enabled) {
+            try {
+                aiProvider.validateConfiguration(configuration.ai);
+            } catch (error) {
+                if (error instanceof ProviderConfigurationError) {
+                    console.error(`Configuration error. ${error.message}`);
+                    process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
+                    return;
+                }
+                throw error;
+            }
         }
 
         const runId = randomUUID();
@@ -238,39 +262,34 @@ const reviewCommand = program
 
         try {
             const dependencies = createReviewDependencies(configuration, process.cwd());
-            let result: ManualReviewResult;
-            let reportTarget: string;
-            let githubContext;
-            let codeUpContext;
-
-            if (isManualReview) {
-                const target = options.target;
-                if (target === undefined) {
-                    throw new Error("Manual review target was unavailable.");
-                }
-
-                result = await runManualReviewUseCase({
-                    target,
-                    failOn: configuration.review.failOn,
-                }, dependencies);
-                reportTarget = target;
-            } else if (isGitHubPullRequestReview) {
-                githubContext = await resolveGitHubPullRequestContext(process.env);
-                result = await runPullRequestReviewUseCase({
-                    baseSha: githubContext.baseSha,
-                    headSha: githubContext.headSha,
-                    failOn: configuration.review.failOn,
-                }, dependencies);
-                reportTarget = githubContext.baseRef;
-            } else {
-                codeUpContext = await resolveCodeUpMergeRequestReviewContext(process.env);
-                result = await runPullRequestReviewUseCase({
-                    baseSha: codeUpContext.baseSha,
-                    headSha: codeUpContext.headSha,
-                    failOn: configuration.review.failOn,
-                }, dependencies);
-                reportTarget = codeUpContext.targetRef;
+            const triggerResolution = await triggerAdapter.resolve(
+                options.target === undefined ? {} : {target: options.target},
+            );
+            if (triggerResolution.kind === "skip") {
+                console.log(`AI Code Review skipped: ${triggerResolution.skip.reason}.`);
+                process.exitCode = CLI_EXIT_CODES.SUCCESS;
+                return;
             }
+            const invocation = triggerResolution.invocation;
+            const summaryComment = invocation.summaryComment;
+            let summaryCommentPort: ReviewCommentPort | undefined;
+            if (summaryComment?.enabled) {
+                const deliveryAdapter = deliveryRegistry.resolve(summaryComment.target.providerId);
+                if (deliveryAdapter === undefined) {
+                    throw new ProviderConfigurationError(
+                        "delivery",
+                        summaryComment.target.providerId,
+                        `Comment delivery provider "${summaryComment.target.providerId}" is not registered.`,
+                    );
+                }
+                deliveryAdapter.validateConfiguration();
+                summaryCommentPort = deliveryAdapter.createSummaryCommentPort(summaryComment.target);
+            }
+            const result = await runReviewRangeUseCase({
+                range: invocation.range,
+                failOn: configuration.review.failOn,
+            }, dependencies);
+            const reportTarget = invocation.reportTarget;
 
             const report = renderReviewReport({
                 target: reportTarget,
@@ -303,69 +322,40 @@ const reviewCommand = program
                 ? await publishNotificationUseCase({ markdown: report }, createWeComNotifier(webhookUrl))
                 : undefined;
 
-            const githubCommentDelivery = isGitHubPullRequestReview
-                && configuration.comments.github.enabled
-                && githubContext !== undefined
-                && configuration.comments.github.accessToken !== undefined
-                ? await publishReviewCommentUseCase(
-                    createSummaryReviewComment(
-                        createReviewCommentId(
-                            "github",
-                            githubContext.repository,
-                            githubContext.pullRequestNumber,
-                        ),
-                        renderReviewReport({
-                            target: reportTarget,
+            const summaryCommentDelivery = summaryComment === undefined
+                ? undefined
+                : summaryComment.enabled
+                    ? await publishReviewCommentUseCase(
+                        createSummaryReviewComment(
+                            summaryComment.target.reviewId,
+                            renderReviewReport({
+                                target: reportTarget,
+                                runId,
+                                result,
+                                ...(wecomDelivery === undefined ? {} : {wecomDelivery}),
+                            }),
+                            summaryComment.target.revision,
                             runId,
-                            result,
-                            ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
-                        }),
-                        githubContext.headSha,
-                        runId,
-                    ),
-                    createGitHubReviewCommentPort(
-                        githubContext,
-                        configuration.comments.github.accessToken,
-                        process.env.GITHUB_API_URL,
-                    ),
-                )
-                : undefined;
-            const codeUpCommentDelivery = isCodeUpMergeRequestReview
-                && configuration.comments.codeup.enabled
-                && codeUpContext !== undefined
-                && configuration.comments.codeup.accessToken !== undefined
-                ? await publishReviewCommentUseCase(
-                    createSummaryReviewComment(
-                        createReviewCommentId(
-                            "codeup",
-                            codeUpContext.repositoryId,
-                            codeUpContext.changeRequestId,
                         ),
-                        renderReviewReport({
-                            target: reportTarget,
-                            runId,
-                            result,
-                            ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
-                        }),
-                        codeUpContext.headSha,
-                        runId,
-                    ),
-                    createCodeUpReviewCommentPort(codeUpContext, configuration.comments.codeup.accessToken),
-                )
-                : undefined;
+                        summaryCommentPort!,
+                    )
+                    : {status: "disabled" as const};
 
             console.log(renderReviewDeliveryStatus({
                 ...(wecomDelivery === undefined ? {} : { wecomDelivery }),
-                ...(githubCommentDelivery === undefined
-                    ? (isGitHubPullRequestReview ? { githubCommentDelivery: { status: "disabled" as const } } : {})
-                    : { githubCommentDelivery }),
-                ...(codeUpCommentDelivery === undefined
-                    ? (isCodeUpMergeRequestReview ? { codeupCommentDelivery: { status: "disabled" as const } } : {})
-                    : { codeupCommentDelivery: codeUpCommentDelivery }),
+                ...(summaryComment === undefined || summaryCommentDelivery === undefined
+                    ? {}
+                    : {
+                        summaryCommentDelivery: {
+                            label: summaryComment.label,
+                            publication: summaryCommentDelivery,
+                        },
+                    }),
             }));
 
-            if ((githubCommentDelivery?.status === "failed" && configuration.comments.github.failOnError)
-                || (codeUpCommentDelivery?.status === "failed" && configuration.comments.codeup.failOnError)) {
+            if (summaryComment?.enabled
+                && summaryCommentDelivery?.status === "failed"
+                && summaryComment.failOnError) {
                 process.exitCode = CLI_EXIT_CODES.COMMENT_PUBLICATION_FAILED;
                 return;
             }
@@ -380,11 +370,17 @@ const reviewCommand = program
                 : CLI_EXIT_CODES.SUCCESS;
         } catch (error) {
             console.error(`AI Code Review Run ID: ${runId}`);
-            if (error instanceof ReviewPlatformContextError) {
-                console.error(error.provider === "github"
-                    ? "GitHub Actions event error. Check the pull_request event context."
-                    : "CodeUp Flow event error. Check the required AICR_CODEUP_* variables.");
+            if (error instanceof ReviewTriggerContextError) {
+                console.error(
+                    `Review trigger context error (${error.providerId}/${error.event}). Check the event context.`,
+                );
                 process.exitCode = CLI_EXIT_CODES.INVALID_ARGUMENT;
+                return;
+            }
+
+            if (error instanceof ProviderConfigurationError) {
+                console.error(`Configuration error. ${error.message}`);
+                process.exitCode = CLI_EXIT_CODES.INVALID_CONFIGURATION;
                 return;
             }
 

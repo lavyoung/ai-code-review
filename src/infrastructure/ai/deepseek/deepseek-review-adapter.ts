@@ -1,5 +1,5 @@
 import {z} from "zod";
-import type {ReviewConfiguration} from "../../../application/configuration/review-configuration.js";
+import type {AiProviderRuntimeConfiguration} from "../../../application/review/ports/ai-provider-factory.js";
 import {
     STRUCTURED_REVIEW_CONTRACT,
     type StructuredReviewAnalysis,
@@ -156,7 +156,7 @@ export class DeepSeekReviewAdapter implements AiReviewPort {
      * @param fetchImplementation 可替换的 HTTP 实现，用于测试。
      */
     public constructor(
-        private readonly configuration: ReviewConfiguration["ai"],
+        private readonly configuration: AiProviderRuntimeConfiguration,
         private readonly fetchImplementation: typeof fetch = fetch,
     ) {}
 

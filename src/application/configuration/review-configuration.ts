@@ -11,7 +11,10 @@ export interface ReviewConfiguration {
         failOn: Severity[];
     };
     ai: {
-        provider: "deepseek";
+        /** 已注册的 AI Provider ID；未知值必须由注册表拒绝。 */
+        provider: string;
+        /** AI 语义分析器是否启用；旧的 deepseek 分析器配置仍作为兼容入口保留。 */
+        enabled: boolean;
         model: string;
         /** AI 评审文本使用的自然语言；JSON 字段名与严重级别不受影响。 */
         outputLanguage: string;
@@ -91,5 +94,10 @@ export interface ReviewConfiguration {
             /** 仅由环境变量或 CI Secret 注入，禁止写入配置文件与日志。 */
             accessToken?: string;
         };
+        /** 规范化的 Provider 评论配置；保留 github/codeup 字段以兼容现有调用方。 */
+        providers: Readonly<Record<string, {
+            enabled: boolean;
+            failOnError: boolean;
+        }>>;
     };
 }

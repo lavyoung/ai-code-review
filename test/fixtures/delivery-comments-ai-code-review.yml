@@ -1,0 +1,12 @@
+ai:
+  provider: deepseek
+  enabled: false
+
+delivery:
+  comments:
+    github:
+      enabled: true
+      fail_on_error: true
+    codeup:
+      enabled: false
+      fail_on_error: false

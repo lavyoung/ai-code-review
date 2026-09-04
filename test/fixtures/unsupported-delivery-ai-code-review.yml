@@ -1,0 +1,7 @@
+ai:
+  enabled: false
+
+delivery:
+  comments:
+    unsupported:
+      enabled: false
