@@ -5,6 +5,9 @@ import {
 import {
     GitHubActionsAutomationReviewAnalyzer
 } from "../../../../src/infrastructure/analyzers/github-actions/github-actions-automation-review-analyzer.js";
+import {
+    StaticAutomationParserRegistry
+} from "../../../../src/application/review/orchestration/static-automation-parser-registry.js";
 
 const path = ".github/workflows/ci.yml";
 const codeChange = {
@@ -41,7 +44,7 @@ jobs:
 `);
         const analyzer = new GitHubActionsAutomationReviewAnalyzer(
             {readHeadFile},
-            new GitHubActionsAutomationParser(),
+            new StaticAutomationParserRegistry([new GitHubActionsAutomationParser()]),
         );
 
         await expect(analyzer.analyze({
@@ -51,7 +54,7 @@ jobs:
             },
             signal: AbortSignal.timeout(1_000),
         })).resolves.toMatchObject({
-            summary: "GitHub Actions automation analysis parsed 1 workflow(s), produced 2 advisory candidate(s), and skipped 0 workflow(s).",
+            summary: "GitHub Actions automation analysis parsed 1 workflow(s), loaded 0 reachable reusable workflow(s), detected 0 cycle(s), left 0 local reference(s) unresolved, produced 2 advisory candidate(s), and skipped 0 workflow(s).",
             findings: expect.arrayContaining([
                 expect.objectContaining({
                     title: "Mutable automation dependency reference",
@@ -74,7 +77,7 @@ jobs:
         const readHeadFile = vi.fn();
         const analyzer = new GitHubActionsAutomationReviewAnalyzer(
             {readHeadFile},
-            new GitHubActionsAutomationParser(),
+            new StaticAutomationParserRegistry([new GitHubActionsAutomationParser()]),
         );
 
         await expect(analyzer.analyze({
@@ -87,7 +90,7 @@ jobs:
             },
             signal: AbortSignal.timeout(1_000),
         })).resolves.toEqual({
-            summary: "GitHub Actions automation analysis parsed 0 workflow(s), produced 0 advisory candidate(s), and skipped 0 workflow(s).",
+            summary: "GitHub Actions automation analysis parsed 0 workflow(s), loaded 0 reachable reusable workflow(s), detected 0 cycle(s), left 0 local reference(s) unresolved, produced 0 advisory candidate(s), and skipped 0 workflow(s).",
             findings: [],
         });
         expect(readHeadFile).not.toHaveBeenCalled();

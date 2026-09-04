@@ -12,6 +12,7 @@ import {GitHubActionsAutomationReviewAnalyzer} from "../infrastructure/analyzers
 import {GitHubActionsAutomationParser} from "../infrastructure/automation/github-actions/github-actions-automation-parser.js";
 import {LocalCommittedFileReader} from "../infrastructure/scm/git/local-committed-file-reader.js";
 import {StaticReviewAnalyzerRegistry} from "../application/review/orchestration/static-review-analyzer-registry.js";
+import {StaticAutomationParserRegistry} from "../application/review/orchestration/static-automation-parser-registry.js";
 import {
     deterministicAnalyzerFindingVerifier
 } from "../application/review/verification/deterministic-analyzer-finding-verifier.js";
@@ -109,7 +110,7 @@ export const createReviewDependencies = (
         : undefined;
     const automationAnalyzer = new GitHubActionsAutomationReviewAnalyzer(
         new LocalCommittedFileReader(workingDirectory),
-        new GitHubActionsAutomationParser(),
+        new StaticAutomationParserRegistry([new GitHubActionsAutomationParser()]),
     );
     const analyzers = [...(aiAnalyzer === undefined ? [] : [aiAnalyzer]), ...(configuration.analyzers.typescript.enabled ? [typeScriptAnalyzer] : []), ...(typeScriptAstAnalyzer === undefined ? [] : [typeScriptAstAnalyzer]), ...(javaAstAnalyzer === undefined ? [] : [javaAstAnalyzer]), ...(sandboxTestAnalyzer === undefined ? [] : [sandboxTestAnalyzer]), ...(sarifAnalyzer === undefined ? [] : [sarifAnalyzer]), ...(secretScanAnalyzer === undefined ? [] : [secretScanAnalyzer]), automationAnalyzer];
     if (analyzers.length === 0) {

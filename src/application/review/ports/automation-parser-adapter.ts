@@ -19,3 +19,9 @@ export interface AutomationParserAdapter {
     readonly platformId: string;
     parse(request: AutomationParseRequest): AutomationParseResult;
 }
+
+/** 仅解析 bootstrap 显式注册的平台，不加载运行时第三方解析器。 */
+export interface AutomationParserRegistry {
+
+    resolve(platformId: string): AutomationParserAdapter | undefined;
+}

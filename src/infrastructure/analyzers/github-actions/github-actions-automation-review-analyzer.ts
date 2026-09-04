@@ -4,7 +4,8 @@ import type {ReviewCandidate} from "../../../domain/review/model/review-candidat
 import {classifyRepositoryFile} from "../../../domain/automation/policy/classify-repository-file.js";
 import {findAddedLineEvidenceContaining} from "../../../domain/review/policy/find-added-line-evidence.js";
 import type {CommittedFileReader} from "../../../application/review/ports/committed-file-reader.js";
-import type {AutomationParserAdapter} from "../../../application/review/ports/automation-parser-adapter.js";
+import {resolveAutomationDefinitionGraph} from "../../../application/review/orchestration/resolve-automation-definition-graph.js";
+import type {AutomationParserRegistry} from "../../../application/review/ports/automation-parser-adapter.js";
 import type {
     AnalysisRequest,
     AnalyzerIdentity,
@@ -35,7 +36,7 @@ export class GitHubActionsAutomationReviewAnalyzer implements ReviewAnalyzer {
 
     public constructor(
         private readonly committedFileReader: CommittedFileReader,
-        private readonly parser: AutomationParserAdapter,
+        private readonly automationParserRegistry: AutomationParserRegistry,
     ) {}
 
     public async analyze(request: AnalysisRequest): Promise<ReviewAnalysis> {
@@ -46,6 +47,9 @@ export class GitHubActionsAutomationReviewAnalyzer implements ReviewAnalyzer {
         const findings: ReviewCandidate[] = [];
         let parsedCount = 0;
         let unavailableCount = 0;
+        let reachableContextCount = 0;
+        let cycleCount = 0;
+        let unavailableReferenceCount = 0;
         for (const fileChange of request.rawCodeChange.fileChanges) {
             const {path, status} = fileChange.file;
             if (!isChangedActiveWorkflow(path, status)) {
@@ -56,19 +60,29 @@ export class GitHubActionsAutomationReviewAnalyzer implements ReviewAnalyzer {
                 unavailableCount += 1;
                 continue;
             }
-            const classification = classifyRepositoryFile(path);
-            const parsed = this.parser.parse({path, content, classification});
-            if (parsed.definition === undefined) {
+            const resolved = await resolveAutomationDefinitionGraph({
+                platformId: "github-actions",
+                rootPath: path,
+                rootContent: content,
+                signal: request.signal,
+            }, {
+                committedFileReader: this.committedFileReader,
+                automationParserRegistry: this.automationParserRegistry,
+            });
+            if (resolved.graph === undefined) {
                 unavailableCount += 1;
                 continue;
             }
             parsedCount += 1;
-            findings.push(...this.findMutableReferenceCandidates(parsed.definition.externalReferences, path, request));
-            findings.push(...this.findUntrustedWriteCandidates(parsed.definition.jobs, parsed.definition.triggers, path, request));
+            reachableContextCount += resolved.graph.reachableDefinitions.length - 1;
+            cycleCount += resolved.graph.cycleCount;
+            unavailableReferenceCount += resolved.graph.unavailableReferenceCount;
+            findings.push(...this.findMutableReferenceCandidates(resolved.graph.root.externalReferences, path, request));
+            findings.push(...this.findUntrustedWriteCandidates(resolved.graph.root.jobs, resolved.graph.root.triggers, path, request));
         }
 
         return {
-            summary: `GitHub Actions automation analysis parsed ${parsedCount} workflow(s), produced ${findings.length} advisory candidate(s), and skipped ${unavailableCount} workflow(s).`,
+            summary: `GitHub Actions automation analysis parsed ${parsedCount} workflow(s), loaded ${reachableContextCount} reachable reusable workflow(s), detected ${cycleCount} cycle(s), left ${unavailableReferenceCount} local reference(s) unresolved, produced ${findings.length} advisory candidate(s), and skipped ${unavailableCount} workflow(s).`,
             findings,
         };
     }
