@@ -15,12 +15,26 @@ const passedTestSchema = z.object({
     file: z.string().trim().min(1).max(1_024),
 }).strict();
 
+const validatedContractSchema = z.object({
+    file: z.string().trim().min(1).max(1_024),
+}).strict();
+
+const validatedConsumerSchema = z.object({
+    id: z.string().trim().min(1).max(128),
+    sourceRevision: z.string().regex(/^[a-f0-9]{40}$/),
+    contractFile: z.string().trim().min(1).max(1_024),
+}).strict();
+
 const sandboxTestPayloadSchema = z.object({
     schemaVersion: z.literal("v1"),
     sourceRevision: z.string().regex(/^[a-f0-9]{40}$/),
     failures: z.array(sandboxFailureSchema).max(100),
     /** 旧版报告省略该字段时不产生通过证明，以保持安全的向后兼容。 */
     passedTests: z.array(passedTestSchema).max(1_000).optional(),
+    /** 旧版报告省略该字段时不产生契约验证证明。 */
+    validatedContracts: z.array(validatedContractSchema).max(256).optional(),
+    /** 旧版报告省略该字段时不产生已知消费者兼容性证明。 */
+    validatedConsumers: z.array(validatedConsumerSchema).max(256).optional(),
 }).strict();
 
 const signedSandboxTestReportSchema = z.object({
@@ -31,8 +45,10 @@ const signedSandboxTestReportSchema = z.object({
 type SignedSandboxTestPayload = z.infer<typeof sandboxTestPayloadSchema>;
 
 /** 验签和 revision 校验后的安全报告投影。 */
-export interface SandboxTestPayload extends Omit<SignedSandboxTestPayload, "passedTests"> {
+export interface SandboxTestPayload extends Omit<SignedSandboxTestPayload, "passedTests" | "validatedContracts" | "validatedConsumers"> {
     passedTests: readonly {file: string}[];
+    validatedContracts: readonly {file: string}[];
+    validatedConsumers: readonly {id: string; sourceRevision: string; contractFile: string}[];
 }
 
 /** 受控沙箱报告的敏感配置；不得输出路径、签名或原文。 */
@@ -77,6 +93,11 @@ export class SignedSandboxTestReportReader {
         if (report.payload.sourceRevision !== currentRevision) {
             throw new Error("Sandbox test result revision did not match the committed review revision.");
         }
-        return {...report.payload, passedTests: report.payload.passedTests ?? []};
+        return {
+            ...report.payload,
+            passedTests: report.payload.passedTests ?? [],
+            validatedContracts: report.payload.validatedContracts ?? [],
+            validatedConsumers: report.payload.validatedConsumers ?? [],
+        };
     }
 }

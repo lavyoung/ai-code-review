@@ -7,6 +7,8 @@ describe("createTestObligations", () => {
             id: "impact:chunk-1",
             changeAnchorId: "chunk-1",
             kind: "local-behavior",
+            businessCapabilities: [],
+            knownConsumers: [],
             relations: [{
                 id: "relation-1",
                 changeAnchorId: "chunk-1",
@@ -32,6 +34,8 @@ describe("createTestObligations", () => {
             id: "impact:chunk-1",
             changeAnchorId: "chunk-1",
             kind: "local-behavior",
+            businessCapabilities: [],
+            knownConsumers: [],
             relations: [],
             closure: {
                 implementation: "unknown",
@@ -46,6 +50,8 @@ describe("createTestObligations", () => {
             id: "impact:chunk-1",
             changeAnchorId: "chunk-1",
             kind: "contract",
+            businessCapabilities: [],
+            knownConsumers: [],
             relations: [{
                 id: "contract-1",
                 changeAnchorId: "chunk-1",
@@ -62,7 +68,7 @@ describe("createTestObligations", () => {
             },
         }])).toEqual([
             expect.objectContaining({kind: "contract", requiredEvidence: ["contract-validation"]}),
-            expect.objectContaining({kind: "compatibility", requiredEvidence: ["contract-validation"]}),
+            expect.objectContaining({kind: "compatibility", requiredEvidence: ["consumer-compatibility"]}),
         ]);
     });
 });

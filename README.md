@@ -172,9 +172,9 @@ YAML 别名和嵌套深度限制。当前发现仅用于人工评审，永远不
 
 ### 改动影响上下文
 
-每次评审会从已提交 diff 的新增 TypeScript/Java 静态 `import` 与 CommonJS `require` 提取安全的影响关系，构建后仅将
-锚点、目标标识与明确限制传给 AI；原始关联文件正文不会传出。动态 import、反射、未支持语言或索引失败都会明确标记为
-`unknown`，不代表“没有影响”，也不能单独生成已确认缺陷、缺失测试或质量门禁。
+每次评审会从已提交 diff 的新增 TypeScript/Java 静态 `import`、CommonJS `require` 与已锚定源码改动提取安全的影响关系，构建后
+仅将锚点、目标标识与明确限制传给 AI；原始关联文件正文不会传出。动态 import、反射、未支持语言、仅删除的源码改动或索引失败都会
+明确标记为 `unknown`，不代表“没有影响”，也不能单独生成已确认缺陷、缺失测试或质量门禁。
 
 对已锚定的静态关系，系统还会生成“应寻找何种验证证据”的最小测试义务。它会在受限数量内从当前提交发现 Vitest、Jest 与
 JUnit 测试资产，但不运行仓库脚本。尚未建立测试与影响路径的证据关联时，覆盖状态是 `not-demonstrated`；这意味着“尚未证明”，
@@ -185,13 +185,68 @@ JUnit 测试资产，但不运行仓库脚本。尚未建立测试与影响路�
 `impact-association` 证据，覆盖状态最高为 `partial`，因为尚未证明测试在当前提交执行并通过；测试名称相似、目录相邻和动态
 依赖均不参与匹配。
 
+对于新增或修改的 TypeScript/Java 源码，系统会额外建立一次已锚定的源码变更关系，因此即使源码本身没有新增 import，引用该源码的
+已发现测试也可以形成上述有限关联。它不是调用图、控制流分析或行为覆盖证明；仅删除且无法锚定到新行的源码改动保持 `unknown`。
+
 如启用 `sandbox_tests`，外部受控沙箱可在既有签名结果中附加 `passedTests`（每项只含测试文件路径）。只有 HMAC 签名有效、
 `sourceRevision` 等于当前 `HEAD`，且该测试已由上述静态关系关联到本次改动时，影响覆盖才会标为 `demonstrated`。旧报告没有
 `passedTests` 时仍可报告已锚定的失败，但不会产生通过或覆盖证明；CLI 自身不会执行任何仓库测试脚本。
 
+同一签名报告可选附加 `validatedContracts`（每项只含契约文件路径）。只有路径属于本次已锚定的契约改动且报告对应当前 `HEAD` 时，
+`contract` 义务才可标记为 `demonstrated`。这只证明该契约完成受控验证。
+
+若要证明登记消费者的兼容性，报告还必须提供 `validatedConsumers` 项：`id`、40 位 `sourceRevision` 和 `contractFile`。系统只接受同时
+匹配当前签名报告、当前已审核消费者目录与本次契约锚点的项；同一影响关联的**全部已登记消费者快照**均有匹配项时，`compatibility` 才标为
+`demonstrated`。此结论的范围仅为“已登记消费者”，绝不表示完整生产消费者集合或全局兼容性；任一缺失、过期、签名/revision 不匹配或目录
+不可用时仍为 `not-assessable`。
+
 对于明确的版本化契约位置（`openapi` / `asyncapi` 文件，以及 `docs/context/contracts/` 下的 JSON/YAML Schema），系统会识别
 已锚定的新增改动，并生成 `contract` 与 `compatibility` 验证义务。它不解析消费者、不判定破坏性变更，也不声称兼容；没有受控的
 契约验证证据时状态固定为 `not-assessable`，仅供 AI 给出人工复核建议。
+
+### 可选：业务能力目录
+
+在 `docs/context/capabilities.yml` 维护经过审核的代码路径到业务能力映射，可以让 AI 在不猜测业务语义的前提下理解改动归属：
+
+```yaml
+version: v1
+capabilities:
+  - id: order-payment
+    owner: payment-platform
+    reviewedAt: 2026-09-04
+    expiresAt: 2027-03-04
+    authority: approved
+    pathPrefixes:
+      - src/payment/
+```
+
+`id`、`owner`、审核日期、过期日期、`authority: approved` 与非通配符 `pathPrefixes` 均为必填。目录缺失、过期、无效或未匹配时，
+评审只标记业务上下文不可用；不会从类名、文件名、PR 描述或模型推测业务流程、owner 或客户影响。
+
+对于契约改动，可选在 `docs/context/consumers.yml` 登记已知外部消费者：
+
+```yaml
+version: v1
+consumers:
+  - id: payment-sdk
+    owner: payments
+    sourceRevision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    reviewedAt: 2026-09-04
+    expiresAt: 2027-03-04
+    authority: approved
+    status: active
+    contractPaths:
+      - contracts/openapi.yaml
+```
+
+目录会校验每个登记的契约路径在当前 `HEAD` 存在，并仅输出已登记消费者的 ID、owner 和不可变快照版本。它不代表全部生产消费者，
+也不会证明兼容性；目录缺失、过期、无效或不可读时，消费者上下文为不可用而非“没有消费者”。
+
+### 模型输入预算
+
+`REVIEW_MAX_MODEL_INPUT_CHARS` 同时约束安全 diff 与影响包：75% 预算用于按 diff 顺序保留的分块，25% 用于仍能关联到这些分块的
+影响、测试、契约与业务上下文。若影响包无法完整容纳，会标注 `impact-package-truncated`；AI 必须将未包含的上下文视为未知。若最小
+安全影响摘要也无法放入剩余预算，则不发送影响包，绝不会绕过预算或用裁剪结果断言“没有影响”。
 
 ### Java 语法检查
 

@@ -23,7 +23,7 @@ export const createTestObligations = (
             impactId: impact.id,
             kind: "compatibility" as const,
             rationale: "A versioned contract changed; obtain explicit compatibility evidence for known consumers.",
-            requiredEvidence: ["contract-validation"] as const,
+            requiredEvidence: ["consumer-compatibility"] as const,
         }];
     }
     return [{

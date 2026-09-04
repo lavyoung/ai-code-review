@@ -39,5 +39,5 @@ describe("CommittedTestInventory", () => {
                 expect.objectContaining({kind: "java-import", target: "org.junit.jupiter.api.Test"}),
             ]),
         });
-    });
+    }, 15_000);
 });

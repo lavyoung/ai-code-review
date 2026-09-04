@@ -32,6 +32,8 @@ describe("createImpactPackage", () => {
                 limitation: "test-inventory-unavailable",
             })],
             testInventory: {status: "unavailable", frameworks: [], assetCount: 0, staticReferences: []},
+            businessContext: {status: "unavailable", associations: []},
+            consumerContext: {status: "unavailable", associations: []},
             limitations: ["dynamic-dependency-unavailable"],
         });
     });
@@ -101,6 +103,33 @@ describe("createImpactPackage", () => {
         });
     });
 
+    it("associates a test with a changed source file even when the source changed no import", () => {
+        expect(createImpactPackage([{
+            id: "source-change-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "src/example.ts",
+            sourceLine: 4,
+            target: "changed-typescript-source",
+            kind: "typescript-source-change",
+            completeness: "partial",
+        }], [], {
+            status: "available",
+            frameworks: ["vitest"],
+            assetCount: 1,
+            staticReferences: [{
+                id: "test-reference:1",
+                testId: "test-asset:1",
+                target: "src/example",
+                kind: "module-import",
+            }],
+        })).toMatchObject({
+            impactCoverage: [{
+                status: "partial",
+                evidence: [{kind: "impact-association", referenceId: "test-reference:1"}],
+            }],
+        });
+    });
+
     it("demonstrates an impact only when an associated test has signed execution evidence", () => {
         expect(createImpactPackage([{
             id: "relation-1",
@@ -148,8 +177,104 @@ describe("createImpactPackage", () => {
             ],
             impactCoverage: [
                 {status: "not-assessable", limitation: "contract-validation-unavailable"},
-                {status: "not-assessable", limitation: "contract-validation-unavailable"},
+                {status: "not-assessable", limitation: "consumer-compatibility-unavailable"},
             ],
+        });
+    });
+
+    it("demonstrates contract validation without claiming consumer compatibility", () => {
+        expect(createImpactPackage([{
+            id: "contract-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "contracts/openapi.yaml",
+            sourceLine: 2,
+            target: "openapi",
+            kind: "contract-definition",
+            completeness: "partial",
+        }], [], undefined, undefined, undefined, undefined, ["contract-1"])).toMatchObject({
+            impactCoverage: [
+                {
+                    status: "demonstrated",
+                    evidence: [{kind: "contract-validation", referenceId: "contract-validation:contract-1"}],
+                },
+                {status: "not-assessable", limitation: "consumer-compatibility-unavailable"},
+            ],
+        });
+    });
+
+    it("demonstrates compatibility only for every current known consumer snapshot", () => {
+        expect(createImpactPackage([{
+            id: "contract-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "contracts/openapi.yaml",
+            sourceLine: 2,
+            target: "openapi",
+            kind: "contract-definition",
+            completeness: "partial",
+        }], [], undefined, undefined, undefined, {
+            status: "available",
+            associations: [{
+                changeAnchorId: "chunk-1",
+                consumer: {id: "payment-sdk", owner: "payments", sourceRevision: "a".repeat(40)},
+            }],
+        }, ["contract-1"], [{
+            changeAnchorId: "chunk-1",
+            consumerId: "payment-sdk",
+            consumerSourceRevision: "a".repeat(40),
+        }])).toMatchObject({
+            impactCoverage: [
+                {status: "demonstrated", evidence: [{kind: "contract-validation"}]},
+                {
+                    status: "demonstrated",
+                    evidence: [{
+                        kind: "consumer-compatibility",
+                        referenceId: "consumer-compatibility:impact:chunk-1:payment-sdk",
+                    }],
+                },
+            ],
+        });
+    });
+
+    it("includes only explicit capability mappings for the affected change anchor", () => {
+        expect(createImpactPackage([{
+            id: "relation-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "src/payment/example.ts",
+            sourceLine: 4,
+            target: "./service.js",
+            kind: "module-import",
+            completeness: "partial",
+        }], [], undefined, undefined, {
+            status: "available",
+            associations: [{
+                changeAnchorId: "chunk-1",
+                capability: {id: "order-payment", owner: "payment-platform"},
+            }, {
+                changeAnchorId: "other-chunk",
+                capability: {id: "order-fulfillment", owner: "fulfillment-platform"},
+            }],
+        })).toMatchObject({
+            impacts: [{businessCapabilities: [{id: "order-payment", owner: "payment-platform"}]}],
+        });
+    });
+
+    it("includes only known consumers explicitly mapped to a changed contract", () => {
+        expect(createImpactPackage([{
+            id: "contract-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "contracts/openapi.yaml",
+            sourceLine: 2,
+            target: "openapi",
+            kind: "contract-definition",
+            completeness: "partial",
+        }], [], undefined, undefined, undefined, {
+            status: "available",
+            associations: [{
+                changeAnchorId: "chunk-1",
+                consumer: {id: "payment-sdk", owner: "payments", sourceRevision: "a".repeat(40)},
+            }],
+        })).toMatchObject({
+            impacts: [{knownConsumers: [{id: "payment-sdk", owner: "payments"}]}],
         });
     });
 });

@@ -196,4 +196,72 @@ describe("reviewCodeChangeUseCase", () => {
         expect(testInventory.discover).toHaveBeenCalledWith(expect.any(AbortSignal));
         expect(testExecutionEvidence.readPassedTestIds).toHaveBeenCalledWith(expect.any(AbortSignal));
     });
+
+    it("requires a current catalog snapshot before signed consumer evidence can prove compatibility", async () => {
+        const analyze = vi.fn().mockResolvedValue({summary: "No issues.", findings: []});
+        const contractCodeChange = {
+            ...codeChange,
+            files: [{path: "contracts/openapi.yaml", status: "modified" as const}],
+            chunks: [{
+                id: "contract-chunk",
+                path: "contracts/openapi.yaml",
+                newRange: {startLine: 2, endLine: 2},
+                content: "@@ -1 +2 @@\n+openapi: 3.1.0\n",
+            }],
+        };
+        const contractRelation = {
+            id: "contract-1",
+            changeAnchorId: "contract-chunk",
+            sourcePath: "contracts/openapi.yaml",
+            sourceLine: 2,
+            target: "openapi",
+            kind: "contract-definition" as const,
+            completeness: "partial" as const,
+        };
+
+        await reviewCodeChangeUseCase({
+            reviewInput: {rawCodeChange: {fileChanges: []}, codeChange: contractCodeChange},
+            failOn: ["critical"],
+        }, {
+            reviewAnalyzerRegistry: new StaticReviewAnalyzerRegistry([{
+                identity: {kind: "ai" as const, id: "deepseek"},
+                capabilities: {inputAccess: "sanitized-model-input" as const, supportsChangedOnly: true, supportsRepositoryScan: false},
+                analyze,
+            }]),
+            analyzerPlans: [{analyzerId: "deepseek", required: true, timeoutMs: 1_000, failureMode: "fail"}],
+            analyzerBudget: {totalTimeoutMs: 1_000, maxConcurrency: 1, maxAiRequestCount: 1, maxModelInputChars: 10_000},
+            findingVerifiers: [],
+            semanticImpactIndex: {analyze: vi.fn().mockResolvedValue({relations: [], limitations: []})},
+            contractCatalog: {analyze: vi.fn().mockResolvedValue({relations: [contractRelation], limitations: []})},
+            externalConsumerCatalog: {
+                resolve: vi.fn().mockResolvedValue({
+                    status: "available" as const,
+                    associations: [{
+                        changeAnchorId: "contract-chunk",
+                        consumer: {id: "payment-sdk", owner: "payments", sourceRevision: "a".repeat(40)},
+                    }],
+                }),
+            },
+            contractValidationEvidence: {readValidatedContractPaths: vi.fn().mockResolvedValue(["contracts/openapi.yaml"])},
+            consumerCompatibilityEvidence: {
+                readValidatedConsumers: vi.fn().mockResolvedValue([{
+                    consumerId: "payment-sdk",
+                    consumerSourceRevision: "b".repeat(40),
+                    contractPath: "contracts/openapi.yaml",
+                }]),
+            },
+        });
+
+        expect(analyze).toHaveBeenCalledWith(expect.objectContaining({
+            impactPackage: expect.objectContaining({
+                impactCoverage: [
+                    expect.objectContaining({status: "demonstrated"}),
+                    expect.objectContaining({
+                        status: "not-assessable",
+                        limitation: "consumer-compatibility-unavailable",
+                    }),
+                ],
+            }),
+        }));
+    });
 });

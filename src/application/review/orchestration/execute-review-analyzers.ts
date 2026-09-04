@@ -1,5 +1,6 @@
 import type {ReviewChangeInput} from "../../../domain/review/model/code-change.js";
 import {boundSanitizedModelInput} from "../changes/bound-sanitized-model-input.js";
+import {boundImpactPackage} from "../changes/bound-impact-package.js";
 import type {AnalyzerIdentity} from "../../../domain/review/model/analyzer-identity.js";
 import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
 import type {ImpactPackage} from "../../../domain/impact/model/impact-package.js";
@@ -127,12 +128,21 @@ export const executeReviewAnalyzers = async (
             let attempts = 0;
             const planSignal = AbortSignal.any([globalTimeout, AbortSignal.timeout(plan.timeoutMs)]);
             try {
+                const modelInputBudget = Math.floor(budget.maxModelInputChars * 0.75);
                 const codeChange = analyzer.capabilities.inputAccess === "sanitized-model-input"
                     ? boundSanitizedModelInput(
                         reviewInput.codeChange,
-                        budget.maxModelInputChars,
+                        modelInputBudget,
                     )
                     : reviewInput.codeChange;
+                const boundedImpactPackage = analyzer.capabilities.inputAccess === "sanitized-model-input"
+                    && impactPackage !== undefined
+                    ? boundImpactPackage(
+                        impactPackage,
+                        new Set(codeChange.chunks.map((chunk) => chunk.id)),
+                        budget.maxModelInputChars - modelInputBudget,
+                    )
+                    : impactPackage;
                 let analysis: ReviewAnalysis | undefined;
                 const maxAttempts = getRetryCount(plan) + 1;
                 for (attempts = 1; attempts <= maxAttempts; attempts += 1) {
@@ -140,7 +150,7 @@ export const executeReviewAnalyzers = async (
                         analysis = await analyzer.analyze({
                             codeChange,
                             signal: planSignal,
-                            ...(impactPackage === undefined ? {} : {impactPackage}),
+                            ...(boundedImpactPackage === undefined ? {} : {impactPackage: boundedImpactPackage}),
                             ...(analyzer.capabilities.inputAccess === "trusted-raw-local"
                                 ? { rawCodeChange: reviewInput.rawCodeChange }
                                 : {}),

@@ -20,6 +20,8 @@ describe("buildStructuredReviewPrompt", () => {
                 id: "impact:chunk-1",
                 changeAnchorId: "chunk-1",
                 kind: "local-behavior",
+                businessCapabilities: [],
+                knownConsumers: [],
                 relations: [],
                 closure: {
                     implementation: "unknown",
@@ -30,6 +32,8 @@ describe("buildStructuredReviewPrompt", () => {
             testObligations: [],
             impactCoverage: [],
             testInventory: {status: "unavailable", frameworks: [], assetCount: 0, staticReferences: []},
+            businessContext: {status: "unavailable", associations: []},
+            consumerContext: {status: "unavailable", associations: []},
             limitations: ["dynamic-dependency-unavailable"],
         });
 

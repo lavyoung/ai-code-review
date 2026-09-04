@@ -1,5 +1,9 @@
 import type {CodeChange, ReviewChangeInput} from "../../../domain/review/model/code-change.js";
-import type {StaticImpactRelation} from "../../../domain/impact/model/impact-package.js";
+import type {
+    BusinessContextSummary,
+    ExternalConsumerContextSummary,
+    StaticImpactRelation,
+} from "../../../domain/impact/model/impact-package.js";
 import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
 import type {CandidateValidationResult, ValidatedFinding,} from "../../../domain/review/model/review-candidate.js";
 import {validateReviewCandidates} from "../../../domain/review/policy/validate-review-candidates.js";
@@ -20,6 +24,10 @@ import type {SemanticImpactIndexPort} from "../ports/semantic-impact-index-port.
 import type {TestInventoryPort} from "../ports/test-inventory-port.js";
 import type {TestExecutionEvidencePort} from "../ports/test-execution-evidence-port.js";
 import type {ContractCatalogPort} from "../ports/contract-catalog-port.js";
+import type {BusinessContextPort} from "../ports/business-context-port.js";
+import type {ExternalConsumerCatalogPort} from "../ports/external-consumer-catalog-port.js";
+import type {ContractValidationEvidencePort} from "../ports/contract-validation-evidence-port.js";
+import type {ConsumerCompatibilityEvidencePort} from "../ports/consumer-compatibility-evidence-port.js";
 import {createImpactPackage} from "../changes/create-impact-package.js";
 
 /** 对已获取代码变更执行统一分析器集合所需的外部能力。 */
@@ -38,6 +46,14 @@ export interface ReviewCodeChangeDependencies {
     testExecutionEvidence?: TestExecutionEvidencePort;
     /** 可选的本地契约目录；只发现变更，不能得出兼容性结论。 */
     contractCatalog?: ContractCatalogPort;
+    /** 可选的经审核业务能力目录；无效或过期目录不得产生业务结论。 */
+    businessContext?: BusinessContextPort;
+    /** 可选的已知外部消费者目录；只能提供人工复核上下文。 */
+    externalConsumerCatalog?: ExternalConsumerCatalogPort;
+    /** 可选的受控契约验证证明；不会替代消费者兼容性证明。 */
+    contractValidationEvidence?: ContractValidationEvidencePort;
+    /** 可选的受控消费者兼容性证明；必须和当前已审核目录交叉校验。 */
+    consumerCompatibilityEvidence?: ConsumerCompatibilityEvidencePort;
 }
 
 /** 对同一次受控原始/安全变更执行评审的输入。 */
@@ -71,6 +87,14 @@ export const reviewCodeChangeUseCase = async (
     let passedTestIds: readonly string[] = [];
     let contractRelations: StaticImpactRelation[] = [];
     let contractLimitations: ("contract-catalog-unavailable")[] = [];
+    let businessContext: BusinessContextSummary = {status: "unavailable", associations: []};
+    let consumerContext: ExternalConsumerContextSummary = {status: "unavailable", associations: []};
+    let validatedContractRelationIds: readonly string[] = [];
+    let validatedConsumerCompatibility: readonly {
+        changeAnchorId: string;
+        consumerId: string;
+        consumerSourceRevision: string;
+    }[] = [];
     if (dependencies.testInventory !== undefined) {
         try {
             testInventory = await dependencies.testInventory.discover(
@@ -102,6 +126,57 @@ export const reviewCodeChangeUseCase = async (
             contractLimitations = ["contract-catalog-unavailable"];
         }
     }
+    if (dependencies.businessContext !== undefined) {
+        try {
+            businessContext = await dependencies.businessContext.resolve(
+                command.reviewInput.codeChange,
+                AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
+            );
+        } catch {
+            // 目录读取失败时明确保持不可用，禁止回退到启发式业务推断。
+        }
+    }
+    if (dependencies.externalConsumerCatalog !== undefined) {
+        try {
+            consumerContext = await dependencies.externalConsumerCatalog.resolve(
+                contractRelations,
+                AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
+            );
+        } catch {
+            // 目录或其契约快照不可读时不得将其解释为“没有消费者”。
+        }
+    }
+    if (dependencies.contractValidationEvidence !== undefined) {
+        try {
+            const validatedPaths = await dependencies.contractValidationEvidence.readValidatedContractPaths(
+                AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
+            );
+            validatedContractRelationIds = contractRelations
+                .filter((relation) => validatedPaths.includes(relation.sourcePath))
+                .map((relation) => relation.id);
+        } catch {
+            // 签名、revision 或读取失败时保持没有契约验证证明。
+        }
+    }
+    if (dependencies.consumerCompatibilityEvidence !== undefined) {
+        try {
+            const claims = await dependencies.consumerCompatibilityEvidence.readValidatedConsumers(
+                AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
+            );
+            validatedConsumerCompatibility = consumerContext.associations.flatMap((association) => contractRelations
+                .filter((relation) => relation.changeAnchorId === association.changeAnchorId)
+                .filter((relation) => claims.some((claim) => claim.contractPath === relation.sourcePath
+                    && claim.consumerId === association.consumer.id
+                    && claim.consumerSourceRevision === association.consumer.sourceRevision))
+                .map(() => ({
+                    changeAnchorId: association.changeAnchorId,
+                    consumerId: association.consumer.id,
+                    consumerSourceRevision: association.consumer.sourceRevision,
+                })));
+        } catch {
+            // 签名、revision、目录匹配或读取失败时不得产生消费者兼容性证明。
+        }
+    }
     if (dependencies.semanticImpactIndex !== undefined) {
         try {
             const result = await dependencies.semanticImpactIndex.analyze(
@@ -114,6 +189,10 @@ export const reviewCodeChangeUseCase = async (
                 [...result.limitations, ...contractLimitations],
                 testInventory,
                 passedTestIds,
+                businessContext,
+                consumerContext,
+                validatedContractRelationIds,
+                validatedConsumerCompatibility,
             );
         } catch {
             impactPackage = createImpactPackage(
@@ -121,10 +200,23 @@ export const reviewCodeChangeUseCase = async (
                 ["impact-index-unavailable", ...contractLimitations],
                 testInventory,
                 passedTestIds,
+                businessContext,
+                consumerContext,
+                validatedContractRelationIds,
+                validatedConsumerCompatibility,
             );
         }
     } else if (dependencies.contractCatalog !== undefined) {
-        impactPackage = createImpactPackage(contractRelations, contractLimitations, testInventory, passedTestIds);
+        impactPackage = createImpactPackage(
+            contractRelations,
+            contractLimitations,
+            testInventory,
+            passedTestIds,
+            businessContext,
+            consumerContext,
+            validatedContractRelationIds,
+            validatedConsumerCompatibility,
+        );
     }
     const execution = await executeReviewAnalyzers(
         command.reviewInput,

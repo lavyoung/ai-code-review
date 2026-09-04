@@ -560,8 +560,9 @@ TypeScript 分析器、高置信度密钥扫描器，以及证明有效的 SARIF
 ：验证任务不能伪造证明，且任何报告或提交替换都会失败。密钥扫描器只输出安全锚点与通用说明，敏感路径和原始值不离开本地边界。输出发现已具有仅基于安全定位与规范化语义的稳定指纹；同次运行的等价发现会合并来源与验证方法。可选
 JSONL 记录器保存带类型标识的运行摘要，并可追加只含固定状态、指纹、运行 ID 与时间的人工反馈事件；本地指标命令只输出这些记录的脱敏聚合值，不提供跨仓库指标。GitHub
 
-当前影响索引只提取新增 TypeScript/Java 静态 import 与 CommonJS require，生成不含源码正文的 `ImpactPackage` 供 AI
-解释已知关联。动态依赖、反射、未支持语言及索引失败均明确保留为 `unknown`，不能表示无影响，也不能单独构成回归、缺失测试或门禁结论。
+当前影响索引提取新增 TypeScript/Java 静态 import、CommonJS require 与已锚定的源码改动，生成不含源码正文的 `ImpactPackage` 供 AI
+解释已知关联。源码变更关系允许已发现测试对被修改源码的静态引用形成有限关联，但它不是调用图、控制流或行为覆盖证明。动态依赖、反射、
+未支持语言、仅删除且无法锚定的新行或索引失败均明确保留为 `unknown`，不能表示无影响，也不能单独构成回归、缺失测试或门禁结论。
 每个已锚定的关系还会由领域策略生成最小测试义务。`TestInventoryPort` 当前仅在受限数量内发现已提交的 Vitest、Jest 与 JUnit
 测试资产，输出无正文、无路径的框架与数量摘要；未建立影响关联时覆盖为 `not-demonstrated`，不等于没有测试。发现超出上限或
 不可用时覆盖为 `not-assessable`，并分别附带 `test-inventory-partial` 或 `test-inventory-unavailable` 限制。测试义务仅表示需要的
@@ -572,9 +573,25 @@ JSONL 记录器保存带类型标识的运行摘要，并可追加只含固定�
 受控沙箱可在签名 `v1` 报告中可选提供已通过测试文件；报告先按原始 payload 验签，再校验 `sourceRevision` 与当前 `HEAD`，
 最后把路径投影为不透明测试资产 ID。只有该 ID 已有静态影响关联时，系统才写入 `test-execution` 与 `impact-association` 双重
 证据并标记 `demonstrated`。旧版报告省略通过列表时保持兼容，但只可用于失败发现，不能证明覆盖。
+同一签名报告可选提供已验证契约路径。路径仅在本地与本次 `contract-definition` 关系匹配后产生 `contract-validation` 证据并完成
+`contract` 义务；原始路径不进入模型输入。报告也可提供 `{id, sourceRevision, contractFile}` 形式的已验证消费者声明。应用层必须把它同时
+匹配到当前已审核消费者目录、当前不可变消费者快照和本次契约锚点；仅当同一影响关联的全部已登记消费者均被证明时，才写入
+`consumer-compatibility` 证据并完成范围限定的 `compatibility` 义务。它不代表完整生产消费者集合，不形成全局兼容性或门禁结论；任何
+遗漏、目录失效、签名/revision 不匹配均保持 `not-assessable`。
 `ContractCatalogPort` 当前只识别明确的 OpenAPI、AsyncAPI 与 `docs/context/contracts/` JSON/YAML Schema 新增改动，并将其锚定为
 `contract-definition` 关系；它不会将名称相似的文档作为契约，也不会解析消费者或做兼容性判定。契约影响产生 `contract` 和
 `compatibility` 测试义务；在引入受控契约验证与消费者目录前，二者的覆盖状态均为 `not-assessable`。
+`BusinessContextPort` 只读取 HEAD 中可选的 `docs/context/capabilities.yml`。每条能力必须有稳定 `id`、`owner`、审核和过期日期、
+`authority: approved` 及无通配符路径前缀；任何一条失效、过期或格式不合规时整个目录降级为不可用。只有安全 diff chunk 的路径与
+有效前缀精确匹配时才将能力 ID 与 owner 写入对应影响；目录路径、描述和其他原文不进入模型输入。未配置、未匹配或不可用时，AI 不得
+根据代码、文档或命名猜测业务能力、owner 或用户影响。
+`ExternalConsumerCatalogPort` 可读取 HEAD 中的 `docs/context/consumers.yml`，仅为本次已锚定的契约改动列出已登记消费者。每项必须
+包含稳定 ID、owner、40 位不可变 `sourceRevision`、审核/过期日期、`authority: approved`、`status: active` 与无通配符的精确契约路径；
+所有登记路径必须在 HEAD 存在，否则目录整体不可用。输出只保留消费者 ID、owner 与快照版本，明确是“已知消费者”而非全量生产消费者；
+它不会形成兼容性证据或门禁依据。
+模型输入预算覆盖安全 diff 与 `ImpactPackage` 的组合：当前固定将 75% 分配给按 diff 顺序的分块、25% 分配给只含保留 chunk 锚点的
+影响上下文。影响包在预算不足时按影响顺序裁剪并追加 `impact-package-truncated`；被裁剪的关联必须被视为 `unknown`。最小安全摘要
+无法容纳时直接省略影响包，禁止超预算发送，也禁止把省略解释为无影响。
 示例工作流按 PR 编号串行运行，评论与通知失败都最多尝试三次并将最终脱敏状态写入 CI 日志。ESLint、CodeQL 与 Semgrep
 可沿用同一边界接入，不能通过伪造 AI 输出或配置开关绕过该边界。
 

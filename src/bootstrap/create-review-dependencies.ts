@@ -15,6 +15,10 @@ import {ChangedImportSemanticImpactIndex} from "../infrastructure/impact/changed
 import {CommittedTestInventory} from "../infrastructure/impact/committed-test-inventory.js";
 import {SignedSandboxTestExecutionEvidence} from "../infrastructure/impact/signed-sandbox-test-execution-evidence.js";
 import {ChangedContractCatalog} from "../infrastructure/impact/changed-contract-catalog.js";
+import {CommittedBusinessContextCatalog} from "../infrastructure/impact/committed-business-context-catalog.js";
+import {CommittedExternalConsumerCatalog} from "../infrastructure/impact/committed-external-consumer-catalog.js";
+import {SignedSandboxContractValidationEvidence} from "../infrastructure/impact/signed-sandbox-contract-validation-evidence.js";
+import {SignedSandboxConsumerCompatibilityEvidence} from "../infrastructure/impact/signed-sandbox-consumer-compatibility-evidence.js";
 import {StaticReviewAnalyzerRegistry} from "../application/review/orchestration/static-review-analyzer-registry.js";
 import {StaticAutomationParserRegistry} from "../application/review/orchestration/static-automation-parser-registry.js";
 import {
@@ -93,6 +97,22 @@ export const createReviewDependencies = (
     && configuration.analyzers.sandboxTests.reportPath !== undefined
     && configuration.analyzers.sandboxTests.signingSecret !== undefined
         ? new SignedSandboxTestExecutionEvidence({
+            reportPath: configuration.analyzers.sandboxTests.reportPath,
+            signingSecret: configuration.analyzers.sandboxTests.signingSecret,
+        }, createCommittedRevisionProvider(workingDirectory))
+        : undefined;
+    const contractValidationEvidence = configuration.analyzers.sandboxTests.enabled
+    && configuration.analyzers.sandboxTests.reportPath !== undefined
+    && configuration.analyzers.sandboxTests.signingSecret !== undefined
+        ? new SignedSandboxContractValidationEvidence({
+            reportPath: configuration.analyzers.sandboxTests.reportPath,
+            signingSecret: configuration.analyzers.sandboxTests.signingSecret,
+        }, createCommittedRevisionProvider(workingDirectory))
+        : undefined;
+    const consumerCompatibilityEvidence = configuration.analyzers.sandboxTests.enabled
+    && configuration.analyzers.sandboxTests.reportPath !== undefined
+    && configuration.analyzers.sandboxTests.signingSecret !== undefined
+        ? new SignedSandboxConsumerCompatibilityEvidence({
             reportPath: configuration.analyzers.sandboxTests.reportPath,
             signingSecret: configuration.analyzers.sandboxTests.signingSecret,
         }, createCommittedRevisionProvider(workingDirectory))
@@ -197,8 +217,12 @@ export const createReviewDependencies = (
         findingVerifiers: [deterministicAnalyzerFindingVerifier],
         semanticImpactIndex: new ChangedImportSemanticImpactIndex(),
         contractCatalog: new ChangedContractCatalog(),
+        businessContext: new CommittedBusinessContextCatalog(new LocalCommittedFileReader(workingDirectory)),
+        externalConsumerCatalog: new CommittedExternalConsumerCatalog(new LocalCommittedFileReader(workingDirectory)),
         testInventory: new CommittedTestInventory(workingDirectory),
         ...(testExecutionEvidence === undefined ? {} : {testExecutionEvidence}),
+        ...(contractValidationEvidence === undefined ? {} : {contractValidationEvidence}),
+        ...(consumerCompatibilityEvidence === undefined ? {} : {consumerCompatibilityEvidence}),
         ...(configuration.recording.localPath === undefined
             ? {}
             : {findingSuppressionPort: new LocalJsonlFindingSuppressionReader(configuration.recording.localPath)}),

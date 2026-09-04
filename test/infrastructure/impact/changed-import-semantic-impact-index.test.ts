@@ -38,7 +38,14 @@ describe("ChangedImportSemanticImpactIndex", () => {
             }],
         }, codeChange, AbortSignal.timeout(1_000));
 
-        expect(result.relations).toEqual([
+        expect(result.relations).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                changeAnchorId: "typescript-chunk",
+                sourceLine: 1,
+                target: "changed-typescript-source",
+                kind: "typescript-source-change",
+                completeness: "partial",
+            }),
             expect.objectContaining({
                 changeAnchorId: "typescript-chunk",
                 sourceLine: 1,
@@ -52,7 +59,13 @@ describe("ChangedImportSemanticImpactIndex", () => {
                 target: "com.example.Service",
                 kind: "java-import",
             }),
-        ]);
+            expect.objectContaining({
+                changeAnchorId: "java-chunk",
+                sourceLine: 1,
+                target: "changed-java-source",
+                kind: "java-source-change",
+            }),
+        ]));
         expect(result.limitations).toEqual([
             "dynamic-dependency-unavailable",
             "unsupported-language",

@@ -16,6 +16,7 @@ const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 const typeScriptImport = /^\+\s*(?:import|export)\s+(?:.+?\s+from\s+)?["']([^"']+)["']/u;
 const commonJsRequire = /^\+.*?require\(\s*["']([^"']+)["']\s*\)/u;
 const javaImport = /^\+\s*import\s+(?:static\s+)?([A-Za-z_$][\w.$]*(?:\.\*)?);/u;
+const testPath = /(?:^|\/)(?:__tests__|test|tests)\/|\.(?:test|spec)\.(?:[cm]?[jt]sx?)$/iu;
 
 interface AddedLine {
     line: number;
@@ -53,7 +54,7 @@ const toSafeTarget = (target: string): string =>
     redactSensitiveFilePaths(redactSensitiveValues(target).content).slice(0, 256);
 
 /**
- * 从新增 TypeScript/Java import 与 CommonJS require 中提取已锚定的静态依赖关系。
+ * 从新增 TypeScript/Java import、CommonJS require 及已锚定源码变更中提取静态关系。
  *
  * 动态 import、反射和不受支持语言不会被假定为无影响，而是作为限制返回。
  */
@@ -70,6 +71,7 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
         const relations: StaticImpactRelation[] = [];
         let dynamicDependencySeen = false;
         let unsupportedLanguageSeen = false;
+        let unanchoredSourceChangeSeen = false;
         for (const fileChange of rawCodeChange.fileChanges) {
             if (isSensitiveFile(fileChange.file)) {
                 continue;
@@ -84,7 +86,30 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
                 unsupportedLanguageSeen = true;
                 continue;
             }
-            for (const addedLine of findAddedLines(fileChange.diff)) {
+            const addedLines = findAddedLines(fileChange.diff);
+            const firstAddedLine = addedLines[0];
+            if (!testPath.test(path)) {
+                if (firstAddedLine === undefined) {
+                    unanchoredSourceChangeSeen = true;
+                } else {
+                    const located = findAddedLineEvidence(codeChange, path, firstAddedLine.line);
+                    if (located === undefined) {
+                        unanchoredSourceChangeSeen = true;
+                    } else {
+                        const target = language === "typescript" ? "changed-typescript-source" : "changed-java-source";
+                        relations.push({
+                            id: relationId(located.chunk.id, target),
+                            changeAnchorId: located.chunk.id,
+                            sourcePath: located.chunk.path,
+                            sourceLine: firstAddedLine.line,
+                            target,
+                            kind: language === "typescript" ? "typescript-source-change" : "java-source-change",
+                            completeness: "partial",
+                        });
+                    }
+                }
+            }
+            for (const addedLine of addedLines) {
                 if (language === "typescript" && /\+.*?\bimport\s*\(/u.test(addedLine.content)) {
                     dynamicDependencySeen = true;
                 }
@@ -116,6 +141,7 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
             limitations: [
                 ...(dynamicDependencySeen ? ["dynamic-dependency-unavailable" as const] : []),
                 ...(unsupportedLanguageSeen ? ["unsupported-language" as const] : []),
+                ...(unanchoredSourceChangeSeen ? ["source-change-unanchored" as const] : []),
             ],
         };
     }

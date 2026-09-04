@@ -1,5 +1,9 @@
 /** 对外可用的静态影响关系类型；动态分派必须显式保持未知。 */
-export type ImpactRelationKind = "module-import" | "java-import" | "contract-definition";
+export type ImpactRelationKind = "module-import"
+    | "java-import"
+    | "typescript-source-change"
+    | "java-source-change"
+    | "contract-definition";
 
 /** 可安全引用本次变更的单条静态关系，不保存源文件正文。 */
 export interface StaticImpactRelation {
@@ -18,11 +22,50 @@ export interface ChangeImpact {
     changeAnchorId: string;
     kind: "local-behavior" | "contract" | "configuration" | "workflow";
     relations: readonly StaticImpactRelation[];
+    businessCapabilities: readonly BusinessCapabilityReference[];
+    knownConsumers: readonly ExternalConsumerReference[];
     closure: {
         implementation: "unknown";
         compatibility: "unknown";
         validation: "not-assessable";
     };
+}
+
+/** 经审核目录显式映射的业务能力；只允许安全稳定标识与 owner 进入模型上下文。 */
+export interface BusinessCapabilityReference {
+    id: string;
+    owner: string;
+}
+
+/** 能力目录对某个本次变更锚点的明确映射。 */
+export interface BusinessCapabilityAssociation {
+    changeAnchorId: string;
+    capability: BusinessCapabilityReference;
+}
+
+/** 业务能力目录的可用性及脱敏映射摘要。 */
+export interface BusinessContextSummary {
+    status: "available" | "unavailable";
+    associations: readonly BusinessCapabilityAssociation[];
+}
+
+/** 显式登记且带不可变快照版本的外部消费者；不代表全部生产消费者。 */
+export interface ExternalConsumerReference {
+    id: string;
+    owner: string;
+    sourceRevision: string;
+}
+
+/** 已知消费者对本次契约变更的映射。 */
+export interface ExternalConsumerAssociation {
+    changeAnchorId: string;
+    consumer: ExternalConsumerReference;
+}
+
+/** 消费者目录状态；不可用时不得声称没有消费者。 */
+export interface ExternalConsumerContextSummary {
+    status: "available" | "unavailable";
+    associations: readonly ExternalConsumerAssociation[];
 }
 
 /** 一项由已知影响路径导出的最小验证目标；它不是“测试缺失”的断言。 */
@@ -31,12 +74,17 @@ export interface TestObligation {
     impactId: string;
     kind: "happy-path" | "contract" | "authorization" | "persistence" | "compatibility";
     rationale: string;
-    requiredEvidence: readonly ("test-execution" | "impact-association" | "contract-validation")[];
+    requiredEvidence: readonly (
+        | "test-execution"
+        | "impact-association"
+        | "contract-validation"
+        | "consumer-compatibility"
+    )[];
 }
 
 /** 可追溯的测试覆盖证明引用；当前发现阶段尚不产生此类证明。 */
 export interface TestCoverageEvidenceReference {
-    kind: "test-execution" | "impact-association";
+    kind: "test-execution" | "impact-association" | "contract-validation" | "consumer-compatibility";
     referenceId: string;
 }
 
@@ -49,7 +97,8 @@ export interface ImpactCoverage {
         | "test-inventory-partial"
         | "impact-association-unavailable"
         | "test-execution-unavailable"
-        | "contract-validation-unavailable";
+        | "contract-validation-unavailable"
+        | "consumer-compatibility-unavailable";
 }
 
 /** 可被安全引用的测试静态依赖；测试路径被不透明 ID 替代。 */
@@ -57,7 +106,7 @@ export interface StaticTestReference {
     id: string;
     testId: string;
     target: string;
-    kind: ImpactRelationKind;
+    kind: "module-import" | "java-import";
 }
 
 /** 测试资产发现的安全摘要；既不包含测试正文，也不把名称当作覆盖证明。 */
@@ -75,10 +124,14 @@ export interface ImpactPackage {
     testObligations: readonly TestObligation[];
     impactCoverage: readonly ImpactCoverage[];
     testInventory: TestInventorySummary;
+    businessContext: BusinessContextSummary;
+    consumerContext: ExternalConsumerContextSummary;
     limitations: readonly (
         | "dynamic-dependency-unavailable"
         | "unsupported-language"
         | "impact-index-unavailable"
         | "contract-catalog-unavailable"
+        | "impact-package-truncated"
+        | "source-change-unanchored"
     )[];
 }
