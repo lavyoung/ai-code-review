@@ -3,6 +3,13 @@
 > 产品目标与不可违反的统一入口约束见[项目军规：统一 AI 代码质量审查](./PROJECT_CHARTER.md)。平台无关的 Push
 > 触发设计见 [Push 自动审查架构](./PUSH-REVIEW-ARCHITECTURE.md)，平台、AI 与交付 Provider
 > 的注册边界见 [可扩展 Provider 架构调整方案](./EXTENSIBLE-PROVIDER-ARCHITECTURE.md)。本文的分层、验证和安全设计必须服务于该目标。
+>
+> AI 结论准确性、通用自动化配置解析、外部事实核验及持续评测的增量实施设计见
+> [AI 评审质量优化架构](./AI-REVIEW-QUALITY-OPTIMIZATION.md)。该设计细化本文的“证据先于结论”原则，
+> 不以 GitHub Actions 作为领域模型前提。
+>
+> 术语兼容说明：本文中现有实现的 `grounded` 表示“证据已锚定”，不是正确性结论；对外应呈现为人工审查建议。
+> 后续演进以增量设计定义的 `EvidenceStatus` 与 `FindingDisposition` 双维模型为准。
 
 ## 1. 决策摘要
 
