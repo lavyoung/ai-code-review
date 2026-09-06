@@ -569,7 +569,10 @@ JSONL 记录器保存带类型标识的运行摘要，并可追加只含固定�
 不可用、扫描截断或索引失败均明确保留为限制，不能表示无影响，也不能单独构成回归、缺失测试或门禁结论。
 TypeScript 跨文件调用使用 AST 解析默认、具名、namespace import 及别名；Java 使用语法树确认方法调用和对象创建，再以显式 import、
 同包规则及字段/参数类型约束接收者。继承/实现目标只在显式 import 或同包候选唯一时写入 `targetSymbol`。当前重载分派只接受参数个数
-唯一匹配；同参数个数的类型重载、动态接收者、通配符 import 和无法唯一解析的 barrel re-export 均保持未知。
+唯一匹配；无法从字面量区分的同参数个数类型重载、动态接收者、歧义通配符 import 和无法唯一解析的 barrel re-export 均保持未知。
+完整 TypeScript 快照通过 AST 将类方法标识为 `模块.类#方法`，并仅对实际导出的函数或类解析跨文件调用。类类型参数、字段和明确 `new`
+初始化可约束实例接收者；字符串、数字、布尔及 `null` 字面量可进一步筛选同参数数量的重载。一跳 barrel re-export 可在源模块唯一且导出
+名称明确时传播别名，多跳、循环和同名歧义不解析。Java 通配符 import 只在包与简单类型名共同确定唯一候选时使用。
 每个已锚定的关系还会由领域策略生成最小测试义务。`TestInventoryPort` 当前仅在受限数量内发现已提交的 Vitest、Jest 与 JUnit
 测试资产，输出无正文、无路径的框架与数量摘要；未建立影响关联时覆盖为 `not-demonstrated`，不等于没有测试。发现超出上限或
 不可用时覆盖为 `not-assessable`，并分别附带 `test-inventory-partial` 或 `test-inventory-unavailable` 限制。测试义务仅表示需要的
