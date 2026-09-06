@@ -1,6 +1,6 @@
 # 后续实施交接清单
 
-> 最后更新：2026-09-04
+> 最后更新：2026-09-06
 >
 > 目标：本仓库是 AI 辅助代码质量审查工具。它以已提交 Git 变更为范围，先提供可验证的静态/受控执行证据，再让 AI 解释变更影响、潜在缺陷和测试义务，供人工审查决策。AI 建议本身不得成为 CI 门禁。
 
@@ -28,21 +28,21 @@
 
 ## 2. 当前工作区（先提交）
 
-当前工作区包含一组相互关联、尚未提交的影响上下文增强改动。建议先完成检查并提交，避免后续任务与该批次混杂。
+当前工作区包含一组相互关联、尚未提交的符号与语义影响索引改动。建议先完成检查并提交，避免后续任务与该批次混杂。
 
 建议提交信息：
 
 ```text
-feat(impact): enrich governed review context and compatibility evidence
+feat(impact): add symbol and semantic impact relations
 ```
 
 该批次的关键内容：
 
-- `ImpactPackage` 受预算约束并只投影仍关联安全 diff 的上下文；
-- 业务能力和外部消费者目录均为 HEAD 中的受审核、可过期目录；
-- 签名报告可产生契约验证与已登记消费者兼容性证明；
-- 消费者兼容性必须同时匹配目录中的消费者 ID、不可变快照 SHA、契约路径和本次契约锚点；
-- 不满足任何条件时 `compatibility` 必须保持 `not-assessable`；
+- TypeScript/Java 变更声明产生安全、稳定的 `SymbolIdentity` 与 base/head 映射；
+- 重命名、移动、重载变化、实现替换、多个候选和无法匹配均保留明确状态；
+- 新增调用、实现/继承、配置、事件和持久化影响边；
+- 动态 import、动态分派、反射、代码生成和不支持语言显式降级；
+- 关系仍处于观察模式，未解析调用目标保持 `unknown`，不参与门禁；
 - README、架构文档及单元测试已同步。
 
 注意：不要误把未跟踪的 `AGENTS.md` 加入暂存区。提交前先确认 `git status --short` 和暂存内容。
@@ -52,9 +52,11 @@ feat(impact): enrich governed review context and compatibility evidence
 ### P0：完成阶段 C 的影响证据
 
 1. TypeScript / Java 符号身份与调用关系
-   - 建立跨 base/head 的 `SymbolIdentity`，覆盖重命名、移动、重载、实现替换、多候选和无法匹配。
-   - 增加调用、实现、继承/接口、配置、事件和持久化影响边。
-   - 动态 import、反射、代码生成和不支持语言必须显式标记 `unknown`/`not-assessable`，不得静默遗漏。
+   - 已完成观察模式基础：从已提交 diff 的变更声明建立跨 base/head 的 `SymbolIdentity`，覆盖重命名、移动、重载变化、实现替换、
+     多候选和无法匹配。
+   - 已增加变更行内的调用、实现、继承/接口、配置、事件和持久化影响边，并按锚点写入 `ImpactPackage`；持久化边会生成对应测试义务。
+   - 动态 import、动态分派、反射、代码生成、不支持语言和歧义身份均显式降级，当前不参与门禁。
+   - 下一增量：使用语言解析器解析已提交 base/head 文件及未修改调用方，将当前 `partial`/`unknown` 调用目标提升为有证据的跨文件影响路径。
 
 2. 契约差异与兼容策略
    - 解析受支持的 OpenAPI、AsyncAPI、JSON Schema 变更。

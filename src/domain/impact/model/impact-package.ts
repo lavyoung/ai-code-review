@@ -3,7 +3,38 @@ export type ImpactRelationKind = "module-import"
     | "java-import"
     | "typescript-source-change"
     | "java-source-change"
+    | "symbol-change"
+    | "calls"
+    | "implements"
+    | "inherits"
+    | "configures"
+    | "publishes"
+    | "consumes"
+    | "persists"
     | "contract-definition";
+
+/** 跨 revision 使用的语言级符号身份；稳定 ID 不包含源码摘要。 */
+export interface SymbolIdentity {
+    language: "typescript" | "java";
+    qualifiedName: string;
+    signature?: string;
+    sourceDigest: string;
+    stableId: string;
+}
+
+/** base/head 符号的保守匹配结果；歧义或缺失不得被强行合并。 */
+export interface SymbolIdentityMapping {
+    status: "matched"
+        | "renamed"
+        | "moved"
+        | "overload-changed"
+        | "implementation-replaced"
+        | "ambiguous"
+        | "unmatched";
+    base?: SymbolIdentity;
+    head?: SymbolIdentity;
+    candidates?: readonly SymbolIdentity[];
+}
 
 /** 可安全引用本次变更的单条静态关系，不保存源文件正文。 */
 export interface StaticImpactRelation {
@@ -14,13 +45,16 @@ export interface StaticImpactRelation {
     target: string;
     kind: ImpactRelationKind;
     completeness: "complete" | "partial" | "unknown";
+    sourceSymbol?: SymbolIdentity;
+    targetSymbol?: SymbolIdentity;
+    symbolMapping?: SymbolIdentityMapping;
 }
 
 /** 当前变更可追溯的影响结论；它不宣称运行时行为或完整调用图。 */
 export interface ChangeImpact {
     id: string;
     changeAnchorId: string;
-    kind: "local-behavior" | "contract" | "configuration" | "workflow";
+    kind: "local-behavior" | "contract" | "persistence" | "configuration" | "workflow";
     relations: readonly StaticImpactRelation[];
     businessCapabilities: readonly BusinessCapabilityReference[];
     knownConsumers: readonly ExternalConsumerReference[];
@@ -133,5 +167,10 @@ export interface ImpactPackage {
         | "contract-catalog-unavailable"
         | "impact-package-truncated"
         | "source-change-unanchored"
+        | "symbol-identity-ambiguous"
+        | "symbol-identity-unmatched"
+        | "dynamic-dispatch-unavailable"
+        | "reflection-unavailable"
+        | "code-generation-unavailable"
     )[];
 }

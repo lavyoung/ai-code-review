@@ -46,23 +46,35 @@ export const createImpactPackage = (
     validatedConsumerCompatibility: readonly {changeAnchorId: string; consumerId: string; consumerSourceRevision: string}[] = [],
 ): ImpactPackage => {
     const impacts = [...new Map(relations.map((relation) => [relation.changeAnchorId, relation])).values()]
-        .map((relation) => ({
-            id: `impact:${relation.changeAnchorId}`,
-            changeAnchorId: relation.changeAnchorId,
-            kind: relation.kind === "contract-definition" ? "contract" as const : "local-behavior" as const,
-            relations: relations.filter((candidate) => candidate.changeAnchorId === relation.changeAnchorId),
-            businessCapabilities: businessContext.associations
-                .filter((association) => association.changeAnchorId === relation.changeAnchorId)
-                .map((association) => association.capability),
-            knownConsumers: consumerContext.associations
-                .filter((association) => association.changeAnchorId === relation.changeAnchorId)
-                .map((association) => association.consumer),
-            closure: {
-                implementation: "unknown" as const,
-                compatibility: "unknown" as const,
-                validation: "not-assessable" as const,
-            },
-        }));
+        .map((relation) => {
+            const anchoredRelations = relations.filter((candidate) => candidate.changeAnchorId === relation.changeAnchorId);
+            const kind = anchoredRelations.some((candidate) => candidate.kind === "contract-definition")
+                ? "contract" as const
+                : anchoredRelations.some((candidate) => candidate.kind === "configures")
+                    ? "configuration" as const
+                    : anchoredRelations.some((candidate) => candidate.kind === "persists")
+                        ? "persistence" as const
+                        : anchoredRelations.some((candidate) => candidate.kind === "publishes" || candidate.kind === "consumes")
+                            ? "workflow" as const
+                            : "local-behavior" as const;
+            return {
+                id: `impact:${relation.changeAnchorId}`,
+                changeAnchorId: relation.changeAnchorId,
+                kind,
+                relations: anchoredRelations,
+                businessCapabilities: businessContext.associations
+                    .filter((association) => association.changeAnchorId === relation.changeAnchorId)
+                    .map((association) => association.capability),
+                knownConsumers: consumerContext.associations
+                    .filter((association) => association.changeAnchorId === relation.changeAnchorId)
+                    .map((association) => association.consumer),
+                closure: {
+                    implementation: "unknown" as const,
+                    compatibility: "unknown" as const,
+                    validation: "not-assessable" as const,
+                },
+            };
+        });
     const testObligations = createTestObligations(impacts);
     const referencesByImpactId = new Map<string, StaticTestReference[]>();
     for (const impact of impacts) {

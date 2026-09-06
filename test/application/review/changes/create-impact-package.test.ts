@@ -2,6 +2,29 @@ import {describe, expect, it} from "vitest";
 import {createImpactPackage} from "../../../../src/application/review/changes/create-impact-package.js";
 
 describe("createImpactPackage", () => {
+    it("classifies observed persistence edges even when symbol metadata is the first relation", () => {
+        const result = createImpactPackage([{
+            id: "symbol-relation",
+            changeAnchorId: "chunk-persistence",
+            sourcePath: "src/repository.ts",
+            sourceLine: 4,
+            target: "src.repository.saveUser",
+            kind: "symbol-change",
+            completeness: "partial",
+        }, {
+            id: "persistence-relation",
+            changeAnchorId: "chunk-persistence",
+            sourcePath: "src/repository.ts",
+            sourceLine: 5,
+            target: "repository.save",
+            kind: "persists",
+            completeness: "partial",
+        }]);
+
+        expect(result.impacts).toMatchObject([{kind: "persistence"}]);
+        expect(result.testObligations).toMatchObject([{kind: "persistence"}]);
+    });
+
     it("groups only anchored static relations and preserves explicit limitations", () => {
         expect(createImpactPackage([{
             id: "relation-1",

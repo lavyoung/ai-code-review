@@ -26,6 +26,15 @@ export const createTestObligations = (
             requiredEvidence: ["consumer-compatibility"] as const,
         }];
     }
+    if (impact.kind === "persistence") {
+        return [{
+            id: `test-obligation:${impact.id}:persistence`,
+            impactId: impact.id,
+            kind: "persistence" as const,
+            rationale: "A persistence write relation changed; verify the affected data behavior on the current revision.",
+            requiredEvidence: ["test-execution", "impact-association"] as const,
+        }];
+    }
     return [{
         id: `test-obligation:${impact.id}:happy-path`,
         impactId: impact.id,
