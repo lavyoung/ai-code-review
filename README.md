@@ -191,6 +191,10 @@ Java 语法树确认，再使用显式类型 import、同包类型和字段/参�
 保持未知。TypeScript 导入继承链同样最多传播四层，因此派生类实例调用可关联到继承获得的已修改方法。Java 显式通配符 import 仅在目标
 候选唯一时参与实例、静态、继承和实现解析。
 
+若当前提交包含根 `tsconfig.json`，索引会读取其编译选项并在内存中创建只包含已提交 TypeScript 快照的 `Program`，用于识别局部函数
+返回值等标识符类型。该过程强制 `noEmit`、`noLib`、禁用插件且不会访问工作区或执行构建；非法配置、`extends` 和 project references
+当前以 `typescript-configuration-unavailable` 降级。Java 已修改方法可沿最多四层、显式 import/同包可解析的类继承链关联到派生类型调用。
+
 对已锚定的静态关系，系统还会生成“应寻找何种验证证据”的最小测试义务。它会在受限数量内从当前提交发现 Vitest、Jest 与
 JUnit 测试资产，但不运行仓库脚本。尚未建立测试与影响路径的证据关联时，覆盖状态是 `not-demonstrated`；这意味着“尚未证明”，
 而非“缺少测试”。发现不完整或不可用时状态为 `not-assessable`。AI 只能据此提出可供人工确认的测试建议，不能因此报告缺失测试

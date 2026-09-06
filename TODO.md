@@ -33,14 +33,15 @@
 建议提交信息：
 
 ```text
-feat(impact): traverse bounded semantic graphs
+feat(impact): infer committed types and inherited calls
 ```
 
 该批次的关键内容：
 
-- 局部标识符具备明确基础类型注解或常量初始化时，可用于同参数数量重载筛选；
-- barrel re-export 图在四层上限内传播别名，并显式报告循环与深度截断；
-- TypeScript 派生类调用可沿最多四层显式继承链关联到继承获得的已修改方法；
+- 根 `tsconfig.json` 的编译选项进入纯内存、`noEmit`/`noLib` 且禁用插件的 TypeScript Program；
+- 类型检查器可使用局部函数返回值等已提交信息筛选标识符实参的重载；
+- Java 已修改方法可沿最多四层显式类继承链关联到派生类型调用；
+- 非法配置、`extends`、project references 和继承深度截断均显式降级；
 - 关系仍处于观察模式，未解析调用目标保持 `unknown`，不参与门禁；
 - README、架构文档及单元测试已同步。
 
@@ -59,7 +60,8 @@ feat(impact): traverse bounded semantic graphs
    - 已使用 TypeScript/Java AST 扩展 import 别名、实例/静态调用和跨包继承关系；重载按参数个数唯一匹配，歧义保持未知。
    - 已增加字面量类型重载筛选、TypeScript 类实例方法、一跳 barrel re-export 和 Java 通配符 import 解析。
    - 已增加局部标识符类型筛选、最多四层的继承方法传播和 barrel 图遍历；循环、超深或不唯一映射均保持未知。
-   - 下一增量：引入项目配置感知但不执行构建的 TypeScript 类型检查器，以及 Java 继承方法传播；无法加载配置或类型不唯一时必须降级。
+   - 已引入只消费已提交快照的内存 TypeScript 类型检查器，并增加 Java 继承方法传播；配置不完整或类型不唯一时保持未知。
+   - 下一增量：安全解析受控 `tsconfig extends`/project references，增强 Java 接口默认方法与泛型继承替换；不得访问快照外文件。
 
 2. 契约差异与兼容策略
    - 解析受支持的 OpenAPI、AsyncAPI、JSON Schema 变更。

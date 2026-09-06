@@ -12,6 +12,11 @@ export interface CommittedSourceFile {
 export interface CommittedRevisionSourceSnapshot {
     status: "available" | "partial" | "unavailable";
     files: readonly CommittedSourceFile[];
+    /** 仅允许当前 revision 根目录的 TypeScript 配置；适配器不会解析或执行插件。 */
+    typeScriptConfiguration?: {
+        path: "tsconfig.json";
+        content: string;
+    };
 }
 
 /** 读取 Git 对比范围实际 base/head 中的受支持源码，不得读取工作区文件。 */

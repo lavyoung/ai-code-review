@@ -445,6 +445,109 @@ interface LocatedCall {
     argumentTypes: readonly string[];
 }
 
+type TypeScriptTypeResolver = (path: string, position: number) => string;
+
+const createTypeScriptTypeResolver = (
+    files: readonly CommittedSourceFile[],
+    configuration: {path: "tsconfig.json"; content: string} | undefined,
+    limitations: Set<ImpactPackage["limitations"][number]>,
+): TypeScriptTypeResolver | undefined => {
+    const typeScriptFiles = files.filter((file) => file.language === "typescript");
+    if (typeScriptFiles.length === 0) {
+        return undefined;
+    }
+    const parsedConfiguration = configuration === undefined
+        ? {config: {}}
+        : ts.parseConfigFileTextToJson(configuration.path, configuration.content);
+    if (parsedConfiguration.error !== undefined || parsedConfiguration.config === undefined) {
+        limitations.add("typescript-configuration-unavailable");
+        return undefined;
+    }
+    if (parsedConfiguration.config.extends !== undefined || parsedConfiguration.config.references !== undefined) {
+        limitations.add("typescript-configuration-unavailable");
+    }
+    const converted = ts.convertCompilerOptionsFromJson(parsedConfiguration.config.compilerOptions ?? {}, "/repo");
+    if (converted.errors.length > 0) {
+        limitations.add("typescript-configuration-unavailable");
+    }
+    const options: ts.CompilerOptions = {
+        ...converted.options,
+        noEmit: true,
+        noLib: true,
+        allowJs: false,
+        plugins: [],
+    };
+    const virtualPath = (path: string): string => `/repo/${canonicalPath(path).replace(/^\/+/, "")}`;
+    const contentByPath = new Map(typeScriptFiles.map((file) => [virtualPath(file.path), file.content]));
+    const directories = new Set<string>(["/repo"]);
+    for (const path of contentByPath.keys()) {
+        let directory = pathTools.dirname(path);
+        while (directory.startsWith("/repo")) {
+            directories.add(directory);
+            if (directory === "/repo") {
+                break;
+            }
+            directory = pathTools.dirname(directory);
+        }
+    }
+    const host: ts.CompilerHost = {
+        fileExists: (path) => contentByPath.has(canonicalPath(path)),
+        readFile: (path) => contentByPath.get(canonicalPath(path)),
+        getSourceFile: (path, languageVersion) => {
+            const content = contentByPath.get(canonicalPath(path));
+            return content === undefined
+                ? undefined
+                : ts.createSourceFile(path, content, languageVersion, true, path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+        },
+        getDefaultLibFileName: () => "",
+        writeFile: () => undefined,
+        getCurrentDirectory: () => "/repo",
+        directoryExists: (path) => directories.has(canonicalPath(path)),
+        getDirectories: (path) => [...directories]
+            .filter((directory) => pathTools.dirname(directory) === canonicalPath(path)),
+        realpath: canonicalPath,
+        getCanonicalFileName: (path) => path,
+        useCaseSensitiveFileNames: () => true,
+        getNewLine: () => "\n",
+    };
+    const program = ts.createProgram({rootNames: [...contentByPath.keys()], options, host});
+    const checker = program.getTypeChecker();
+    return (path, position) => {
+        const sourceFile = program.getSourceFile(virtualPath(path));
+        if (sourceFile === undefined) {
+            return "unknown";
+        }
+        let matched: ts.Expression | undefined;
+        const visit = (node: ts.Node): void => {
+            if (node.getStart(sourceFile) === position && ts.isExpression(node)) {
+                matched = node;
+                return;
+            }
+            if (position >= node.getFullStart() && position <= node.getEnd()) {
+                ts.forEachChild(node, visit);
+            }
+        };
+        visit(sourceFile);
+        if (matched === undefined) {
+            return "unknown";
+        }
+        const type = checker.getTypeAtLocation(matched);
+        if ((type.flags & ts.TypeFlags.StringLike) !== 0) {
+            return "string";
+        }
+        if ((type.flags & ts.TypeFlags.NumberLike) !== 0) {
+            return "number";
+        }
+        if ((type.flags & ts.TypeFlags.BooleanLike) !== 0) {
+            return "boolean";
+        }
+        if ((type.flags & ts.TypeFlags.Null) !== 0) {
+            return "null";
+        }
+        return "unknown";
+    };
+};
+
 const matchesTypeScriptModule = (callerPath: string, moduleReference: string, targetPath: string): boolean => {
     if (!moduleReference.startsWith(".")) {
         return false;
@@ -627,6 +730,7 @@ const findImportedTypeScriptCalls = (
     files: readonly CommittedSourceFile[],
     limitations: Set<ImpactPackage["limitations"][number]>,
     methodOwners: readonly SymbolCandidate[],
+    typeResolver: TypeScriptTypeResolver | undefined,
 ): LocatedCall[] => {
     const [ownerQualifiedName, methodName] = target.identity.qualifiedName.split("#");
     const targetName = methodName ?? symbolName(target.identity);
@@ -739,6 +843,10 @@ const findImportedTypeScriptCalls = (
     };
     collectReceiver(sourceFile);
     const inferArgumentType = (argument: ts.Expression): string => {
+        const checkedType = typeResolver?.(file.path, argument.getStart(sourceFile)) ?? "unknown";
+        if (checkedType !== "unknown") {
+            return checkedType;
+        }
         return ts.isIdentifier(argument)
             ? localValueTypes.get(argument.text) ?? "unknown"
             : inferLiteralType(argument);
@@ -774,26 +882,86 @@ const findImportedTypeScriptCalls = (
     return calls;
 };
 
+const javaFileImportsOwner = (file: CommittedSourceFile, owner: SymbolCandidate): boolean => {
+    const qualifiedName = owner.identity.qualifiedName;
+    const packageName = qualifiedName.split(".").slice(0, -1).join(".");
+    const callerPackage = /^\s*package\s+([\w.]+)\s*;/mu.exec(file.content)?.[1];
+    return file.content.includes(`import ${qualifiedName};`)
+        || file.content.includes(`import ${packageName}.*;`)
+        || callerPackage === packageName;
+};
+
+const findJavaMethodOwners = (
+    target: SymbolCandidate,
+    files: readonly CommittedSourceFile[],
+    repositorySymbols: readonly SymbolCandidate[],
+    limitations: Set<ImpactPackage["limitations"][number]>,
+): SymbolCandidate[] => {
+    const ownerQualifiedName = target.identity.qualifiedName.split("#")[0];
+    if (ownerQualifiedName === undefined || !target.identity.qualifiedName.includes("#")) {
+        return [];
+    }
+    const directOwner = repositorySymbols.find((candidate) => candidate.revision === "head"
+        && candidate.identity.language === "java"
+        && candidate.identity.qualifiedName === ownerQualifiedName
+        && candidate.identity.signature === "class");
+    if (directOwner === undefined) {
+        return [];
+    }
+    const owners = [directOwner];
+    const visited = new Set([directOwner.identity.stableId]);
+    let frontier = [directOwner];
+    for (let depth = 0; depth < 4 && frontier.length > 0; depth += 1) {
+        const next: SymbolCandidate[] = [];
+        for (const currentOwner of frontier) {
+            const currentName = symbolName(currentOwner.identity);
+            const extendsPattern = new RegExp(
+                `\\bextends\\s+${escapeRegExp(currentName)}(?:\\s*<[^>{}]+>)?(?=\\s|\\{|implements\\b)`,
+                "u",
+            );
+            for (const candidate of repositorySymbols.filter((symbol) => symbol.revision === "head"
+                && symbol.identity.language === "java"
+                && symbol.identity.signature === "class"
+                && !visited.has(symbol.identity.stableId))) {
+                const file = files.find((source) => source.path === candidate.path);
+                if (file === undefined || !javaFileImportsOwner(file, currentOwner) || !extendsPattern.test(file.content)) {
+                    continue;
+                }
+                visited.add(candidate.identity.stableId);
+                owners.push(candidate);
+                next.push(candidate);
+            }
+        }
+        frontier = next;
+    }
+    if (frontier.length > 0) {
+        limitations.add("inheritance-depth-unavailable");
+    }
+    return owners;
+};
+
 const findImportedJavaCalls = (
     file: CommittedSourceFile,
     target: SymbolCandidate,
+    methodOwners: readonly SymbolCandidate[],
 ): LocatedCall[] => {
-    const [owner, method] = target.identity.qualifiedName.split("#");
-    if (owner === undefined) {
+    const [, method] = target.identity.qualifiedName.split("#");
+    if (method === undefined) {
         return [];
     }
-    const ownerName = owner.split(".").at(-1);
-    const ownerPackage = owner.split(".").slice(0, -1).join(".");
-    const callerPackage = /^\s*package\s+([\w.]+)\s*;/mu.exec(file.content)?.[1];
-    const importedOwner = file.content.includes(`import ${owner};`) || file.content.includes(`import ${ownerPackage}.*;`);
-    if (ownerName === undefined || (!importedOwner && callerPackage !== ownerPackage)) {
+    const importedOwners = methodOwners.filter((owner) => javaFileImportsOwner(file, owner));
+    if (importedOwners.length === 0) {
         return [];
     }
-    const receiverNames = new Set<string>([ownerName]);
-    const bindingPattern = new RegExp(`\\b${escapeRegExp(ownerName)}(?:<[^;=,)]+>)?\\s+([A-Za-z_$][\\w$]*)`, "gu");
-    for (const binding of file.content.matchAll(bindingPattern)) {
-        if (binding[1] !== undefined) {
-            receiverNames.add(binding[1]);
+    const receiverNames = new Set<string>();
+    for (const owner of importedOwners) {
+        const ownerName = symbolName(owner.identity);
+        receiverNames.add(ownerName);
+        const bindingPattern = new RegExp(`\\b${escapeRegExp(ownerName)}(?:<[^;=,)]+>)?\\s+([A-Za-z_$][\\w$]*)`, "gu");
+        for (const binding of file.content.matchAll(bindingPattern)) {
+            if (binding[1] !== undefined) {
+                receiverNames.add(binding[1]);
+            }
         }
     }
     const localValueTypes = new Map<string, string>();
@@ -802,9 +970,10 @@ const findImportedJavaCalls = (
             localValueTypes.set(binding[2], binding[1]);
         }
     }
-    const methodPattern = method === undefined
-        ? new RegExp(`\\bnew\\s+${escapeRegExp(ownerName)}\\s*\\(`, "u")
-        : new RegExp(`\\b(?:${[...receiverNames].map(escapeRegExp).join("|")})\\s*\\.\\s*${escapeRegExp(method)}\\s*\\(`, "u");
+    const methodPattern = new RegExp(
+        `\\b(?:${[...receiverNames].map(escapeRegExp).join("|")})\\s*\\.\\s*${escapeRegExp(method)}\\s*\\(`,
+        "u",
+    );
     const calls: LocatedCall[] = [];
     const cursor = javaParser.parse(file.content).cursor();
     do {
@@ -906,6 +1075,7 @@ const appendRepositoryCallRelations = (
     headSymbols: readonly SymbolCandidate[],
     repositorySymbols: readonly SymbolCandidate[],
     limitations: Set<ImpactPackage["limitations"][number]>,
+    typeResolver: TypeScriptTypeResolver | undefined,
 ): void => {
     const acceptsArgumentType = (parameterType: string, argumentType: string, language: Language): boolean => {
         if (argumentType === "unknown") {
@@ -937,13 +1107,16 @@ const appendRepositoryCallRelations = (
         const typeScriptMethodOwners = target.identity.language === "typescript"
             ? findTypeScriptMethodOwners(target, files, repositorySymbols, limitations)
             : [];
+        const javaMethodOwners = target.identity.language === "java"
+            ? findJavaMethodOwners(target, files, repositorySymbols, limitations)
+            : [];
         for (const file of files) {
             if (file.path === target.path || file.language !== target.identity.language) {
                 continue;
             }
             const calls = file.language === "typescript"
-                ? findImportedTypeScriptCalls(file, target, files, limitations, typeScriptMethodOwners)
-                : findImportedJavaCalls(file, target);
+                ? findImportedTypeScriptCalls(file, target, files, limitations, typeScriptMethodOwners, typeResolver)
+                : findImportedJavaCalls(file, target, javaMethodOwners);
             for (const call of calls) {
                 const signature = target.identity.signature;
                 if (signature?.startsWith("(") === true) {
@@ -1101,6 +1274,7 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
 
         let repositorySymbols: SymbolCandidate[] = [];
         let headSourceFiles: readonly CommittedSourceFile[] = [];
+        let headTypeScriptConfiguration: {path: "tsconfig.json"; content: string} | undefined;
         if (this.revisionSource !== undefined && rawCodeChange.revisionRange !== undefined) {
             const [baseSnapshot, headSnapshot] = await Promise.all([
                 this.revisionSource.read(rawCodeChange.revisionRange, "base", signal),
@@ -1117,6 +1291,7 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
                 ...headSnapshot.files.flatMap((file) => extractRepositorySymbols(file, "head")),
             ];
             headSourceFiles = headSnapshot.files;
+            headTypeScriptConfiguration = headSnapshot.typeScriptConfiguration;
         }
         const changedSnapshotSymbols = selectChangedSymbols(repositorySymbols, parsedFiles);
         const snapshotCoveredFiles = new Set(changedSnapshotSymbols.map((symbol) => `${symbol.revision}:${symbol.path}`));
@@ -1233,12 +1408,18 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
             repositorySymbols,
             limitations,
         );
+        const typeResolver = createTypeScriptTypeResolver(
+            headSourceFiles,
+            headTypeScriptConfiguration,
+            limitations,
+        );
         appendRepositoryCallRelations(
             relations,
             headSourceFiles,
             headSymbols,
             repositorySymbols.filter((symbol) => symbol.revision === "head"),
             limitations,
+            typeResolver,
         );
 
         return {

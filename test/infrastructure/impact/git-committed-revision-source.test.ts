@@ -2,6 +2,30 @@ import {describe, expect, it, vi} from "vitest";
 import {GitCommittedRevisionSource} from "../../../src/infrastructure/impact/git-committed-revision-source.js";
 
 describe("GitCommittedRevisionSource", () => {
+    it("loads the root TypeScript configuration from the committed object database", async () => {
+        const run = vi.fn()
+            .mockResolvedValueOnce("head-sha\n")
+            .mockResolvedValueOnce("tsconfig.json\0src/service.ts\0")
+            .mockResolvedValueOnce("{\"compilerOptions\":{\"strict\":true}}")
+            .mockResolvedValueOnce("export function execute() {}\n");
+        const source = new GitCommittedRevisionSource("D:/repository", {run});
+
+        const snapshot = await source.read({
+            baseRef: "base",
+            headRef: "head",
+            comparison: "two-dot",
+        }, "head", AbortSignal.timeout(1_000));
+
+        expect(snapshot).toMatchObject({
+            status: "available",
+            typeScriptConfiguration: {
+                path: "tsconfig.json",
+                content: "{\"compilerOptions\":{\"strict\":true}}",
+            },
+            files: [{path: "src/service.ts", language: "typescript"}],
+        });
+    });
+
     it("reads the three-dot merge base from Git objects without using workspace files", async () => {
         const run = vi.fn()
             .mockResolvedValueOnce("base-ref-sha\n")

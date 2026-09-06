@@ -6,6 +6,108 @@ const analyze = async (rawCodeChange: RawCodeChange, codeChange: CodeChange) =>
     new ChangedImportSemanticImpactIndex().analyze(rawCodeChange, codeChange, AbortSignal.timeout(1_000));
 
 describe("semantic impact symbol identity", () => {
+    it("uses the committed TypeScript program to infer an identifier returned by a local function", async () => {
+        const diff = "@@ -2 +2 @@\n-export declare function parse(value: number): string;\n+export declare function parse(value: number): number;";
+        const base = "export declare function parse(value: string): string;\nexport declare function parse(value: number): string;\n";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                typeScriptConfiguration: {path: "tsconfig.json" as const, content: "{\"compilerOptions\":{\"strict\":true}}"},
+                files: revision === "base" ? [{path: "src/parser.ts", language: "typescript" as const, content: base}] : [{
+                    path: "src/parser.ts", language: "typescript" as const, content: base.replace("number): string", "number): number"),
+                }, {
+                    path: "src/program-consumer.ts",
+                    language: "typescript" as const,
+                    content: "import {parse} from './parser.js';\nfunction input(): number { return 1; }\nconst value = input();\nparse(value);\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/parser.ts", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/parser.ts", status: "modified"}],
+            chunks: [{id: "program-type-chunk", path: "src/parser.ts", oldRange: {startLine: 2, endLine: 2}, newRange: {startLine: 2, endLine: 2}, content: diff}],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.relations).toContainEqual(expect.objectContaining({
+            kind: "calls",
+            sourcePath: "src/program-consumer.ts",
+            targetSymbol: expect.objectContaining({signature: "(number)"}),
+        }));
+    });
+
+    it("degrades an invalid committed TypeScript configuration without losing syntax relations", async () => {
+        const diff = "@@ -1 +1 @@\n-export function convert() { return 1; }\n+export function convert() { return 2; }";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                typeScriptConfiguration: {path: "tsconfig.json" as const, content: "{"},
+                files: [{
+                    path: "src/converter.ts",
+                    language: "typescript" as const,
+                    content: revision === "base" ? "export function convert() { return 1; }" : "export function convert() { return 2; }",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/converter.ts", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/converter.ts", status: "modified"}],
+            chunks: [{id: "invalid-config-chunk", path: "src/converter.ts", oldRange: {startLine: 1, endLine: 1}, newRange: {startLine: 1, endLine: 1}, content: diff}],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.limitations).toContain("typescript-configuration-unavailable");
+        expect(result.relations).toContainEqual(expect.objectContaining({kind: "symbol-change"}));
+    });
+
+    it("links a Java derived instance call to an inherited changed method", async () => {
+        const diff = "@@ -4 +4 @@\n-    oldStore(user);\n+    newStore(user);";
+        const baseService = "package service;\npublic class UserService {\n  public void save(User user) {\n    oldStore(user);\n  }\n}\n";
+        const headService = baseService.replace("oldStore(user)", "newStore(user)");
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                files: revision === "base" ? [{
+                    path: "src/main/java/service/UserService.java", language: "java" as const, content: baseService,
+                }] : [{
+                    path: "src/main/java/service/UserService.java", language: "java" as const, content: headService,
+                }, {
+                    path: "src/main/java/service/ManagedUserService.java",
+                    language: "java" as const,
+                    content: "package service;\npublic class ManagedUserService extends UserService {}\n",
+                }, {
+                    path: "src/main/java/api/UserController.java",
+                    language: "java" as const,
+                    content: "package api;\nimport service.ManagedUserService;\nclass UserController {\n  ManagedUserService service;\n  void handle(User user) { service.save(user); }\n}\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/main/java/service/UserService.java", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/main/java/service/UserService.java", status: "modified"}],
+            chunks: [{id: "java-inherited-call", path: "src/main/java/service/UserService.java", oldRange: {startLine: 4, endLine: 4}, newRange: {startLine: 4, endLine: 4}, content: diff}],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.relations).toContainEqual(expect.objectContaining({
+            kind: "calls",
+            sourcePath: "src/main/java/api/UserController.java",
+            targetSymbol: expect.objectContaining({qualifiedName: "service.UserService#save"}),
+        }));
+    });
+
     it("resolves a one-hop aliased TypeScript barrel re-export", async () => {
         const diff = "@@ -2 +2 @@\n-  return oldValue;\n+  return newValue;";
         const base = "export function convert() {\n  return oldValue;\n}\n";

@@ -178,5 +178,6 @@ export interface ImpactPackage {
         | "barrel-cycle-unavailable"
         | "barrel-depth-unavailable"
         | "inheritance-depth-unavailable"
+        | "typescript-configuration-unavailable"
     )[];
 }

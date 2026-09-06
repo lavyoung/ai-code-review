@@ -81,16 +81,17 @@ export class GitCommittedRevisionSource implements CommittedRevisionSourcePort {
             const listed = await this.runner.run(["ls-tree", "-r", "-z", "--name-only", resolvedRevision, "--"], signal);
             const supportedPaths = listed.split("\0")
                 .filter((path) => path !== "")
-                .filter((path) => languageOf(path) !== undefined)
+                .filter((path) => languageOf(path) !== undefined || path === "tsconfig.json")
                 .filter((path) => !isSensitiveFile({path, status: "modified"}));
             const selectedPaths = supportedPaths.slice(0, MAX_SOURCE_FILES);
             const loaded = await this.readFiles(resolvedRevision, selectedPaths, signal);
             const files: CommittedSourceFile[] = [];
+            let typeScriptConfiguration: CommittedRevisionSourceSnapshot["typeScriptConfiguration"];
             let totalChars = 0;
             let partial = supportedPaths.length > selectedPaths.length || loaded.some((entry) => entry.content === undefined);
             for (const entry of loaded) {
                 const language = languageOf(entry.path);
-                if (entry.content === undefined || language === undefined || entry.content.length > MAX_FILE_CHARS) {
+                if (entry.content === undefined || entry.content.length > MAX_FILE_CHARS) {
                     partial = true;
                     continue;
                 }
@@ -99,9 +100,21 @@ export class GitCommittedRevisionSource implements CommittedRevisionSourcePort {
                     break;
                 }
                 totalChars += entry.content.length;
+                if (entry.path === "tsconfig.json") {
+                    typeScriptConfiguration = {path: "tsconfig.json", content: entry.content};
+                    continue;
+                }
+                if (language === undefined) {
+                    partial = true;
+                    continue;
+                }
                 files.push({path: entry.path, language, content: entry.content});
             }
-            return {status: partial ? "partial" : "available", files};
+            return {
+                status: partial ? "partial" : "available",
+                files,
+                ...(typeScriptConfiguration === undefined ? {} : {typeScriptConfiguration}),
+            };
         } catch {
             return {status: "unavailable", files: []};
         }
