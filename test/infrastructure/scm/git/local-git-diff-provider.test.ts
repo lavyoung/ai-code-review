@@ -19,6 +19,7 @@ describe("LocalGitDiffProvider", () => {
         });
 
         expect(change).toMatchObject({
+            revisionRange: {baseRef: "main", headRef: "HEAD", comparison: "three-dot"},
             fileChanges: expect.arrayContaining([{
                 file: { path: ".env", status: "added" },
                 diff: "",

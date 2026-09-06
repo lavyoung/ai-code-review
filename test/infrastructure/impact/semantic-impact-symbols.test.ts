@@ -6,6 +6,60 @@ const analyze = async (rawCodeChange: RawCodeChange, codeChange: CodeChange) =>
     new ChangedImportSemanticImpactIndex().analyze(rawCodeChange, codeChange, AbortSignal.timeout(1_000));
 
 describe("semantic impact symbol identity", () => {
+    it("uses committed snapshots to anchor an implementation change and find an unchanged caller", async () => {
+        const diff = "@@ -2 +2 @@\n-  return oldNormalizer(value);\n+  return newNormalizer(value);";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                files: revision === "base" ? [{
+                    path: "src/converter.ts",
+                    language: "typescript" as const,
+                    content: "export function convert(value: string) {\n  return oldNormalizer(value);\n}\n",
+                }] : [{
+                    path: "src/converter.ts",
+                    language: "typescript" as const,
+                    content: "export function convert(value: string) {\n  return newNormalizer(value);\n}\n",
+                }, {
+                    path: "src/consumer.ts",
+                    language: "typescript" as const,
+                    content: "import {convert} from './converter.js';\nexport function consume() {\n  return convert('value');\n}\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/converter.ts", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/converter.ts", status: "modified"}],
+            chunks: [{
+                id: "implementation-chunk",
+                path: "src/converter.ts",
+                oldRange: {startLine: 2, endLine: 2},
+                newRange: {startLine: 2, endLine: 2},
+                content: diff,
+            }],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.relations).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                kind: "symbol-change",
+                changeAnchorId: "implementation-chunk",
+                symbolMapping: expect.objectContaining({status: "implementation-replaced"}),
+            }),
+            expect.objectContaining({
+                kind: "calls",
+                sourcePath: "src/consumer.ts",
+                sourceLine: 3,
+                target: "src.converter.convert",
+                completeness: "partial",
+                targetSymbol: expect.objectContaining({qualifiedName: "src.converter.convert"}),
+            }),
+        ]));
+    });
+
     it.each([{
         label: "changed signature",
         before: "export function convert(value: string) { return normalize(value); }",

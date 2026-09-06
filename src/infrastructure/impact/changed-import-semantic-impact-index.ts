@@ -1,4 +1,5 @@
 import {createHash} from "node:crypto";
+import {posix as pathTools} from "node:path";
 import type {CodeChange, DiffChunk, RawCodeChange} from "../../domain/review/model/code-change.js";
 import type {
     ImpactPackage,
@@ -16,6 +17,10 @@ import type {
     SemanticImpactIndexPort,
     SemanticImpactIndexResult,
 } from "../../application/review/ports/semantic-impact-index-port.js";
+import type {
+    CommittedRevisionSourcePort,
+    CommittedSourceFile,
+} from "../../application/review/ports/committed-revision-source-port.js";
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/u;
 const typeScriptImport = /^\s*(?:import|export)\s+(?:.+?\s+from\s+)?["']([^"']+)["']/u;
@@ -97,6 +102,9 @@ const parseChangedLines = (diff: string): DiffLine[] => {
     return result;
 };
 
+const sourceLines = (content: string, revision: Revision): DiffLine[] => content.split(/\r?\n/u)
+    .map((line, index) => ({revision, line: index + 1, content: line}));
+
 const normalizeParameters = (parameters: string, language: Language): string => {
     if (parameters.trim() === "") {
         return "()";
@@ -133,6 +141,7 @@ const extractSymbols = (
     language: Language,
     lines: readonly DiffLine[],
     previousPath?: string,
+    includeFollowingSource = false,
 ): SymbolCandidate[] => {
     const packageName = language === "java"
         ? lines.map((line) => /^\s*package\s+([\w.]+)\s*;/u.exec(line.content)?.[1]).find((value) => value !== undefined)
@@ -163,6 +172,9 @@ const extractSymbols = (
         if (name === undefined) {
             continue;
         }
+        if (callKeywords.has(name)) {
+            continue;
+        }
         const isTypeDeclaration = typeDeclaration !== null;
         const javaOwner = canonicalPath(identityPath).split("/").at(-1)?.replace(/\.java$/iu, "");
         const qualifiedName = language === "java"
@@ -180,7 +192,26 @@ const extractSymbols = (
             shapeDigest: digest(content.replace(new RegExp(`\\b${name}\\b`, "gu"), "$symbol").replace(/\s+/gu, " ")),
         });
     }
-    return candidates;
+    if (!includeFollowingSource) {
+        return candidates;
+    }
+    return candidates.map((candidate) => {
+        const nextLine = candidates
+            .filter((other) => other.revision === candidate.revision && other.line > candidate.line)
+            .sort((left, right) => left.line - right.line)[0]?.line ?? Number.POSITIVE_INFINITY;
+        const source = lines
+            .filter((line) => line.revision === candidate.revision && line.line >= candidate.line && line.line < nextLine)
+            .map((line) => line.content)
+            .join("\n");
+        return {
+            ...candidate,
+            identity: {
+                ...candidate.identity,
+                sourceDigest: digest(source.replace(/\s+/gu, " ").trim(), 24),
+            },
+            shapeDigest: digest(source.replace(new RegExp(`\\b${candidate.name}\\b`, "gu"), "$symbol").replace(/\s+/gu, " ")),
+        };
+    });
 };
 
 const matchCandidates = (
@@ -263,6 +294,128 @@ const findNearestSourceSymbol = (
     .filter((symbol) => symbol.revision === "head" && symbol.path === path && symbol.line <= line)
     .sort((left, right) => right.line - left.line)[0]?.identity;
 
+const findNearestSymbolCandidate = (
+    symbols: readonly SymbolCandidate[],
+    path: string,
+    line: number,
+    revision: Revision,
+): SymbolCandidate | undefined => [...symbols]
+    .filter((symbol) => symbol.revision === revision && symbol.path === path && symbol.line <= line)
+    .sort((left, right) => right.line - left.line)[0];
+
+const selectChangedSymbols = (
+    repositorySymbols: readonly SymbolCandidate[],
+    parsedFiles: readonly {path: string; language: Language; lines: DiffLine[]}[],
+): SymbolCandidate[] => {
+    const selected = new Map<string, SymbolCandidate>();
+    for (const file of parsedFiles) {
+        for (const line of file.lines) {
+            const symbol = findNearestSymbolCandidate(repositorySymbols, file.path, line.line, line.revision);
+            if (symbol === undefined) {
+                continue;
+            }
+            const anchored = {...symbol, line: line.line};
+            selected.set(`${symbol.revision}:${symbol.identity.stableId}`, anchored);
+        }
+    }
+    return [...selected.values()];
+};
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
+const symbolName = (symbol: SymbolIdentity): string => {
+    const methodSeparator = symbol.qualifiedName.lastIndexOf("#");
+    return symbol.qualifiedName.slice(methodSeparator >= 0 ? methodSeparator + 1 : symbol.qualifiedName.lastIndexOf(".") + 1);
+};
+
+const findImportedTypeScriptCall = (
+    file: CommittedSourceFile,
+    target: SymbolCandidate,
+): {line: number; content: string} | undefined => {
+    const name = symbolName(target.identity);
+    const escapedName = escapeRegExp(name);
+    const importPattern = new RegExp(`^\\s*import\\s+(?:${escapedName}\\b|\\{[^}]*\\b${escapedName}\\b[^}]*\\})\\s+from\\s+["']([^"']+)["']`, "u");
+    const callPattern = new RegExp(`\\b${escapedName}\\s*\\(`, "u");
+    const lines = file.content.split(/\r?\n/u);
+    const moduleReference = lines.map((line) => importPattern.exec(line)?.[1]).find((value) => value !== undefined);
+    if (moduleReference === undefined || !moduleReference.startsWith(".")) {
+        return undefined;
+    }
+    const importedModule = pathTools.normalize(pathTools.join(pathTools.dirname(file.path), moduleReference))
+        .replace(/\.(?:[cm]?[jt]sx?|js)$/iu, "");
+    const targetModule = canonicalPath(target.path).replace(/\.(?:[cm]?[jt]sx?)$/iu, "");
+    if (importedModule !== targetModule && `${importedModule}/index` !== targetModule) {
+        return undefined;
+    }
+    const index = lines.findIndex((line) => callPattern.test(line) && !importPattern.test(line));
+    return index < 0 ? undefined : {line: index + 1, content: lines[index] ?? ""};
+};
+
+const findImportedJavaCall = (
+    file: CommittedSourceFile,
+    target: SymbolCandidate,
+): {line: number; content: string} | undefined => {
+    const [owner, method] = target.identity.qualifiedName.split("#");
+    if (owner === undefined) {
+        return undefined;
+    }
+    const ownerName = owner.split(".").at(-1);
+    if (ownerName === undefined || !file.content.includes(`import ${owner};`)) {
+        return undefined;
+    }
+    const expression = method === undefined
+        ? `\\bnew\\s+${escapeRegExp(ownerName)}\\s*\\(`
+        : `\\b${escapeRegExp(ownerName)}\\s*\\.\\s*${escapeRegExp(method)}\\s*\\(`;
+    const callPattern = new RegExp(expression, "u");
+    const lines = file.content.split(/\r?\n/u);
+    const index = lines.findIndex((line) => callPattern.test(line));
+    return index < 0 ? undefined : {line: index + 1, content: lines[index] ?? ""};
+};
+
+const appendRepositoryCallRelations = (
+    relations: StaticImpactRelation[],
+    files: readonly CommittedSourceFile[],
+    headSymbols: readonly SymbolCandidate[],
+    repositorySymbols: readonly SymbolCandidate[],
+): void => {
+    const anchors = new Map<string, string>();
+    for (const relation of relations) {
+        if (relation.kind === "symbol-change" && relation.targetSymbol !== undefined) {
+            anchors.set(relation.targetSymbol.stableId, relation.changeAnchorId);
+        }
+    }
+    for (const target of headSymbols) {
+        const anchorId = anchors.get(target.identity.stableId);
+        if (anchorId === undefined) {
+            continue;
+        }
+        for (const file of files) {
+            if (file.path === target.path || file.language !== target.identity.language) {
+                continue;
+            }
+            const call = file.language === "typescript"
+                ? findImportedTypeScriptCall(file, target)
+                : findImportedJavaCall(file, target);
+            if (call === undefined) {
+                continue;
+            }
+            const safeTarget = toSafeTarget(target.identity.qualifiedName);
+            const sourceSymbol = findNearestSourceSymbol(repositorySymbols, file.path, call.line);
+            relations.push({
+                id: relationId(anchorId, "calls", call.line, `${file.path}:${safeTarget}`),
+                changeAnchorId: anchorId,
+                sourcePath: file.path,
+                sourceLine: call.line,
+                target: safeTarget,
+                kind: "calls",
+                completeness: "partial",
+                ...(sourceSymbol === undefined ? {} : {sourceSymbol}),
+                targetSymbol: target.identity,
+            });
+        }
+    }
+};
+
 const inheritanceTargets = (content: string, language: Language): {kind: "implements" | "inherits"; target: string}[] => {
     const results: {kind: "implements" | "inherits"; target: string}[] = [];
     const extendsMatch = /\bextends\s+([^\s{]+)/u.exec(content)?.[1];
@@ -312,6 +465,8 @@ const callTargets = (content: string, declaredName: string | undefined): string[
  * 该索引只使用已锚定的变更行；动态分派、反射、代码生成及歧义身份均显式降级。
  */
 export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort {
+    public constructor(private readonly revisionSource?: CommittedRevisionSourcePort) {}
+
     public async analyze(
         rawCodeChange: RawCodeChange,
         codeChange: CodeChange,
@@ -323,7 +478,7 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
 
         const relations: StaticImpactRelation[] = [];
         const limitations = new Set<ImpactPackage["limitations"][number]>();
-        const allSymbols: SymbolCandidate[] = [];
+        const changedLineSymbols: SymbolCandidate[] = [];
         const parsedFiles: {path: string; language: Language; lines: DiffLine[]}[] = [];
 
         for (const fileChange of rawCodeChange.fileChanges) {
@@ -345,7 +500,7 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
             }
             const lines = parseChangedLines(fileChange.diff);
             parsedFiles.push({path, language, lines});
-            allSymbols.push(...extractSymbols(path, language, lines, fileChange.file.previousPath));
+            changedLineSymbols.push(...extractSymbols(path, language, lines, fileChange.file.previousPath));
 
             const text = lines.map((line) => line.content).join("\n");
             if (unsupportedDynamicDependency.test(text)) {
@@ -360,6 +515,40 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
             }
         }
 
+        let repositorySymbols: SymbolCandidate[] = [];
+        let headSourceFiles: readonly CommittedSourceFile[] = [];
+        if (this.revisionSource !== undefined && rawCodeChange.revisionRange !== undefined) {
+            const [baseSnapshot, headSnapshot] = await Promise.all([
+                this.revisionSource.read(rawCodeChange.revisionRange, "base", signal),
+                this.revisionSource.read(rawCodeChange.revisionRange, "head", signal),
+            ]);
+            if (baseSnapshot.status === "unavailable" || headSnapshot.status === "unavailable") {
+                limitations.add("revision-source-unavailable");
+            }
+            if (baseSnapshot.status === "partial" || headSnapshot.status === "partial") {
+                limitations.add("repository-scan-partial");
+            }
+            repositorySymbols = [
+                ...baseSnapshot.files.flatMap((file) => extractSymbols(
+                    file.path,
+                    file.language,
+                    sourceLines(file.content, "base"),
+                    undefined,
+                    true,
+                )),
+                ...headSnapshot.files.flatMap((file) => extractSymbols(
+                    file.path,
+                    file.language,
+                    sourceLines(file.content, "head"),
+                    undefined,
+                    true,
+                )),
+            ];
+            headSourceFiles = headSnapshot.files;
+        }
+        const changedSnapshotSymbols = selectChangedSymbols(repositorySymbols, parsedFiles);
+        const allSymbols = [...new Map([...changedLineSymbols, ...changedSnapshotSymbols]
+            .map((symbol) => [`${symbol.revision}:${symbol.identity.stableId}`, symbol])).values()];
         const baseSymbols = allSymbols.filter((symbol) => symbol.revision === "base");
         const headSymbols = allSymbols.filter((symbol) => symbol.revision === "head");
         for (const {candidate, mapping} of matchCandidates(baseSymbols, headSymbols)) {
@@ -462,6 +651,13 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
                 }
             }
         }
+
+        appendRepositoryCallRelations(
+            relations,
+            headSourceFiles,
+            headSymbols,
+            repositorySymbols.filter((symbol) => symbol.revision === "head"),
+        );
 
         return {
             relations: [...new Map(relations.map((relation) => [relation.id, relation])).values()],

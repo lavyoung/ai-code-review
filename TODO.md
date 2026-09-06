@@ -39,6 +39,8 @@ feat(impact): add symbol and semantic impact relations
 该批次的关键内容：
 
 - TypeScript/Java 变更声明产生安全、稳定的 `SymbolIdentity` 与 base/head 映射；
+- 有资源上限地读取 Git 对象数据库中的实际 base/head 源码，不接触未提交工作区；
+- 方法体变更可关联到所属符号，明确导入该符号的未修改调用方可形成跨文件调用边；
 - 重命名、移动、重载变化、实现替换、多个候选和无法匹配均保留明确状态；
 - 新增调用、实现/继承、配置、事件和持久化影响边；
 - 动态 import、动态分派、反射、代码生成和不支持语言显式降级；
@@ -56,7 +58,8 @@ feat(impact): add symbol and semantic impact relations
      多候选和无法匹配。
    - 已增加变更行内的调用、实现、继承/接口、配置、事件和持久化影响边，并按锚点写入 `ImpactPackage`；持久化边会生成对应测试义务。
    - 动态 import、动态分派、反射、代码生成、不支持语言和歧义身份均显式降级，当前不参与门禁。
-   - 下一增量：使用语言解析器解析已提交 base/head 文件及未修改调用方，将当前 `partial`/`unknown` 调用目标提升为有证据的跨文件影响路径。
+   - 已使用受限的 Git base/head 快照关联方法体变更和未修改调用方；ref 会先验证为 commit，三点比较使用实际 merge base，读取不会接触工作区文件。
+   - 下一增量：使用语言 AST/类型解析扩展别名、实例方法、重载分派和跨包继承关系，将更多 `partial`/`unknown` 目标提升为有证据的影响路径。
 
 2. 契约差异与兼容策略
    - 解析受支持的 OpenAPI、AsyncAPI、JSON Schema 变更。

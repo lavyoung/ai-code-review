@@ -172,5 +172,7 @@ export interface ImpactPackage {
         | "dynamic-dispatch-unavailable"
         | "reflection-unavailable"
         | "code-generation-unavailable"
+        | "revision-source-unavailable"
+        | "repository-scan-partial"
     )[];
 }

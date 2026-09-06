@@ -12,6 +12,7 @@ import {GitHubActionsAutomationReviewAnalyzer} from "../infrastructure/analyzers
 import {GitHubActionsAutomationParser} from "../infrastructure/automation/github-actions/github-actions-automation-parser.js";
 import {LocalCommittedFileReader} from "../infrastructure/scm/git/local-committed-file-reader.js";
 import {ChangedImportSemanticImpactIndex} from "../infrastructure/impact/changed-import-semantic-impact-index.js";
+import {GitCommittedRevisionSource} from "../infrastructure/impact/git-committed-revision-source.js";
 import {CommittedTestInventory} from "../infrastructure/impact/committed-test-inventory.js";
 import {SignedSandboxTestExecutionEvidence} from "../infrastructure/impact/signed-sandbox-test-execution-evidence.js";
 import {ChangedContractCatalog} from "../infrastructure/impact/changed-contract-catalog.js";
@@ -215,7 +216,7 @@ export const createReviewDependencies = (
             maxModelInputChars: configuration.execution.maxModelInputChars,
         },
         findingVerifiers: [deterministicAnalyzerFindingVerifier],
-        semanticImpactIndex: new ChangedImportSemanticImpactIndex(),
+        semanticImpactIndex: new ChangedImportSemanticImpactIndex(new GitCommittedRevisionSource(workingDirectory)),
         contractCatalog: new ChangedContractCatalog(),
         businessContext: new CommittedBusinessContextCatalog(new LocalCommittedFileReader(workingDirectory)),
         externalConsumerCatalog: new CommittedExternalConsumerCatalog(new LocalCommittedFileReader(workingDirectory)),

@@ -47,6 +47,12 @@ export interface RawFileChange {
  */
 export interface RawCodeChange {
     fileChanges: RawFileChange[];
+    /** 仅供受信任本地适配器读取已提交 base/head 快照；不得进入外部边界。 */
+    revisionRange?: {
+        baseRef: string;
+        headRef: string;
+        comparison: "two-dot" | "three-dot";
+    };
 }
 
 /**

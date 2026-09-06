@@ -151,6 +151,7 @@ export class LocalGitDiffProvider implements DiffProvider {
 
         return {
             fileChanges: splitRawFileChanges(diff, allFiles),
+            revisionRange: range,
         };
     }
 }
