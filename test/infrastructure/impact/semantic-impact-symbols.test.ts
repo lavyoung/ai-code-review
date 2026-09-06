@@ -6,6 +6,228 @@ const analyze = async (rawCodeChange: RawCodeChange, codeChange: CodeChange) =>
     new ChangedImportSemanticImpactIndex().analyze(rawCodeChange, codeChange, AbortSignal.timeout(1_000));
 
 describe("semantic impact symbol identity", () => {
+    it("resolves an aliased TypeScript default import", async () => {
+        const diff = "@@ -2 +2 @@\n-  return oldValue;\n+  return newValue;";
+        const base = "export default function convert() {\n  return oldValue;\n}\n";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                files: revision === "base" ? [{
+                    path: "src/converter.ts", language: "typescript" as const, content: base,
+                }] : [{
+                    path: "src/converter.ts", language: "typescript" as const, content: base.replace("oldValue", "newValue"),
+                }, {
+                    path: "src/default-consumer.ts",
+                    language: "typescript" as const,
+                    content: "import convertAlias from './converter.js';\nconvertAlias();\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/converter.ts", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/converter.ts", status: "modified"}],
+            chunks: [{id: "default-chunk", path: "src/converter.ts", oldRange: {startLine: 2, endLine: 2}, newRange: {startLine: 2, endLine: 2}, content: diff}],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.relations).toContainEqual(expect.objectContaining({
+            kind: "calls",
+            sourcePath: "src/default-consumer.ts",
+            targetSymbol: expect.objectContaining({qualifiedName: "src.converter.convert"}),
+        }));
+    });
+
+    it("uses call arity to avoid linking a changed TypeScript overload to another overload", async () => {
+        const diff = "@@ -2 +2 @@\n-export declare function convert(value: string, radix: number): string;\n+export declare function convert(value: string, radix: number): number;";
+        const baseFile = {
+            path: "src/converter.ts",
+            language: "typescript" as const,
+            content: "export declare function convert(value: string): string;\nexport declare function convert(value: string, radix: number): string;\n",
+        };
+        const headFile = {...baseFile, content: baseFile.content.replace("radix: number): string", "radix: number): number")};
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                files: revision === "base" ? [baseFile] : [headFile, {
+                    path: "src/one-argument.ts",
+                    language: "typescript" as const,
+                    content: "import {convert} from './converter.js';\nconvert('10');\n",
+                }, {
+                    path: "src/two-arguments.ts",
+                    language: "typescript" as const,
+                    content: "import {convert} from './converter.js';\nconvert('10', 10);\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/converter.ts", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/converter.ts", status: "modified"}],
+            chunks: [{
+                id: "overload-chunk",
+                path: "src/converter.ts",
+                oldRange: {startLine: 2, endLine: 2},
+                newRange: {startLine: 2, endLine: 2},
+                content: diff,
+            }],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        const callers = result.relations
+            .filter((relation) => relation.kind === "calls" && relation.targetSymbol !== undefined)
+            .map((relation) => relation.sourcePath);
+        expect(callers).toContain("src/two-arguments.ts");
+        expect(callers).not.toContain("src/one-argument.ts");
+    });
+
+    it("resolves TypeScript named and namespace import aliases with the AST", async () => {
+        const diff = "@@ -2 +2 @@\n-  return oldNormalizer(value);\n+  return newNormalizer(value);";
+        const baseFile = {
+            path: "src/converter.ts",
+            language: "typescript" as const,
+            content: "export function convert(value: string) {\n  return oldNormalizer(value);\n}\n",
+        };
+        const headFile = {...baseFile, content: "export function convert(value: string) {\n  return newNormalizer(value);\n}\n"};
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                files: revision === "base" ? [baseFile] : [headFile, {
+                    path: "src/named-consumer.ts",
+                    language: "typescript" as const,
+                    content: "import {convert as convertValue} from './converter.js';\nconvertValue('x');\n",
+                }, {
+                    path: "src/namespace-consumer.ts",
+                    language: "typescript" as const,
+                    content: "import * as converter from './converter.js';\nconverter.convert('x');\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/converter.ts", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/converter.ts", status: "modified"}],
+            chunks: [{
+                id: "alias-chunk",
+                path: "src/converter.ts",
+                oldRange: {startLine: 2, endLine: 2},
+                newRange: {startLine: 2, endLine: 2},
+                content: diff,
+            }],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        const callerPaths = result.relations
+            .filter((relation) => relation.kind === "calls" && relation.targetSymbol?.qualifiedName === "src.converter.convert")
+            .map((relation) => relation.sourcePath);
+        expect(callerPaths).toEqual(expect.arrayContaining(["src/named-consumer.ts", "src/namespace-consumer.ts"]));
+    });
+
+    it("resolves a Java instance call through an imported field type", async () => {
+        const diff = "@@ -4 +4 @@\n-    oldStore(user);\n+    newStore(user);";
+        const baseService = "package service;\npublic class UserService {\n  public void save(User user) {\n    oldStore(user);\n  }\n}\n";
+        const headService = baseService.replace("oldStore(user)", "newStore(user)");
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                files: revision === "base" ? [{
+                    path: "src/main/java/service/UserService.java",
+                    language: "java" as const,
+                    content: baseService,
+                }] : [{
+                    path: "src/main/java/service/UserService.java",
+                    language: "java" as const,
+                    content: headService,
+                }, {
+                    path: "src/main/java/api/UserController.java",
+                    language: "java" as const,
+                    content: "package api;\nimport service.UserService;\npublic class UserController {\n  private final UserService service;\n  void handle(User user) { service.save(user); }\n}\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/main/java/service/UserService.java", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/main/java/service/UserService.java", status: "modified"}],
+            chunks: [{
+                id: "java-call-chunk",
+                path: "src/main/java/service/UserService.java",
+                oldRange: {startLine: 4, endLine: 4},
+                newRange: {startLine: 4, endLine: 4},
+                content: diff,
+            }],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.relations).toContainEqual(expect.objectContaining({
+            kind: "calls",
+            sourcePath: "src/main/java/api/UserController.java",
+            targetSymbol: expect.objectContaining({qualifiedName: "service.UserService#save"}),
+            completeness: "partial",
+        }));
+    });
+
+    it("resolves Java cross-package inheritance targets", async () => {
+        const diff = "@@ -3 +3 @@\n-public class Handler {\n+public class Handler extends BaseHandler<String> implements Contract<Map<String, User>> {";
+        const baseHandler = "package app;\npublic class Handler {\n}\n";
+        const headHandler = "package app;\nimport base.BaseHandler;\nimport api.Contract;\npublic class Handler extends BaseHandler<String> implements Contract<Map<String, User>> {\n}\n";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                files: revision === "base" ? [{
+                    path: "src/main/java/app/Handler.java",
+                    language: "java" as const,
+                    content: baseHandler,
+                }] : [{
+                    path: "src/main/java/app/Handler.java",
+                    language: "java" as const,
+                    content: headHandler,
+                }, {
+                    path: "src/main/java/base/BaseHandler.java",
+                    language: "java" as const,
+                    content: "package base;\npublic class BaseHandler {}\n",
+                }, {
+                    path: "src/main/java/api/Contract.java",
+                    language: "java" as const,
+                    content: "package api;\npublic interface Contract {}\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/main/java/app/Handler.java", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/main/java/app/Handler.java", status: "modified"}],
+            chunks: [{
+                id: "inheritance-chunk",
+                path: "src/main/java/app/Handler.java",
+                oldRange: {startLine: 3, endLine: 3},
+                newRange: {startLine: 3, endLine: 3},
+                content: diff,
+            }],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.relations).toEqual(expect.arrayContaining([
+            expect.objectContaining({kind: "inherits", targetSymbol: expect.objectContaining({qualifiedName: "base.BaseHandler"})}),
+            expect.objectContaining({kind: "implements", targetSymbol: expect.objectContaining({qualifiedName: "api.Contract"})}),
+        ]));
+    });
+
     it("uses committed snapshots to anchor an implementation change and find an unchanged caller", async () => {
         const diff = "@@ -2 +2 @@\n-  return oldNormalizer(value);\n+  return newNormalizer(value);";
         const revisionSource = {

@@ -174,5 +174,6 @@ export interface ImpactPackage {
         | "code-generation-unavailable"
         | "revision-source-unavailable"
         | "repository-scan-partial"
+        | "overload-resolution-unavailable"
     )[];
 }

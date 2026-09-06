@@ -1,5 +1,7 @@
 import {createHash} from "node:crypto";
 import {posix as pathTools} from "node:path";
+import * as ts from "@typescript/typescript6";
+import {parser as javaParser} from "@lezer/java";
 import type {CodeChange, DiffChunk, RawCodeChange} from "../../domain/review/model/code-change.js";
 import type {
     ImpactPackage,
@@ -48,6 +50,7 @@ interface SymbolCandidate {
     line: number;
     name: string;
     shapeDigest: string;
+    isDefaultExport: boolean;
 }
 
 const digest = (value: string, length = 16): string =>
@@ -190,6 +193,7 @@ const extractSymbols = (
             line: line.line,
             name,
             shapeDigest: digest(content.replace(new RegExp(`\\b${name}\\b`, "gu"), "$symbol").replace(/\s+/gu, " ")),
+            isDefaultExport: language === "typescript" && /^export\s+default\b/u.test(content),
         });
     }
     if (!includeFollowingSource) {
@@ -328,48 +332,182 @@ const symbolName = (symbol: SymbolIdentity): string => {
     return symbol.qualifiedName.slice(methodSeparator >= 0 ? methodSeparator + 1 : symbol.qualifiedName.lastIndexOf(".") + 1);
 };
 
-const findImportedTypeScriptCall = (
-    file: CommittedSourceFile,
-    target: SymbolCandidate,
-): {line: number; content: string} | undefined => {
-    const name = symbolName(target.identity);
-    const escapedName = escapeRegExp(name);
-    const importPattern = new RegExp(`^\\s*import\\s+(?:${escapedName}\\b|\\{[^}]*\\b${escapedName}\\b[^}]*\\})\\s+from\\s+["']([^"']+)["']`, "u");
-    const callPattern = new RegExp(`\\b${escapedName}\\s*\\(`, "u");
-    const lines = file.content.split(/\r?\n/u);
-    const moduleReference = lines.map((line) => importPattern.exec(line)?.[1]).find((value) => value !== undefined);
-    if (moduleReference === undefined || !moduleReference.startsWith(".")) {
-        return undefined;
+interface LocatedCall {
+    line: number;
+    argumentCount: number;
+}
+
+const matchesTypeScriptModule = (callerPath: string, moduleReference: string, targetPath: string): boolean => {
+    if (!moduleReference.startsWith(".")) {
+        return false;
     }
-    const importedModule = pathTools.normalize(pathTools.join(pathTools.dirname(file.path), moduleReference))
+    const importedModule = pathTools.normalize(pathTools.join(pathTools.dirname(callerPath), moduleReference))
         .replace(/\.(?:[cm]?[jt]sx?|js)$/iu, "");
-    const targetModule = canonicalPath(target.path).replace(/\.(?:[cm]?[jt]sx?)$/iu, "");
-    if (importedModule !== targetModule && `${importedModule}/index` !== targetModule) {
-        return undefined;
-    }
-    const index = lines.findIndex((line) => callPattern.test(line) && !importPattern.test(line));
-    return index < 0 ? undefined : {line: index + 1, content: lines[index] ?? ""};
+    const targetModule = canonicalPath(targetPath).replace(/\.(?:[cm]?[jt]sx?)$/iu, "");
+    return importedModule === targetModule || `${importedModule}/index` === targetModule;
 };
 
-const findImportedJavaCall = (
+const findImportedTypeScriptCalls = (
     file: CommittedSourceFile,
     target: SymbolCandidate,
-): {line: number; content: string} | undefined => {
+): LocatedCall[] => {
+    const targetName = symbolName(target.identity);
+    const sourceFile = ts.createSourceFile(
+        file.path,
+        file.content,
+        ts.ScriptTarget.Latest,
+        true,
+        file.path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    );
+    const localNames = new Set<string>();
+    const namespaceNames = new Set<string>();
+    for (const statement of sourceFile.statements) {
+        if (!ts.isImportDeclaration(statement)
+            || !ts.isStringLiteral(statement.moduleSpecifier)
+            || !matchesTypeScriptModule(file.path, statement.moduleSpecifier.text, target.path)) {
+            continue;
+        }
+        const clause = statement.importClause;
+        if (clause?.name !== undefined && (target.isDefaultExport || clause.name.text === targetName)) {
+            localNames.add(clause.name.text);
+        }
+        if (clause?.namedBindings !== undefined && ts.isNamedImports(clause.namedBindings)) {
+            for (const element of clause.namedBindings.elements) {
+                if ((element.propertyName?.text ?? element.name.text) === targetName) {
+                    localNames.add(element.name.text);
+                }
+            }
+        }
+        if (clause?.namedBindings !== undefined && ts.isNamespaceImport(clause.namedBindings)) {
+            namespaceNames.add(clause.namedBindings.name.text);
+        }
+    }
+    const calls: LocatedCall[] = [];
+    const visit = (node: ts.Node): void => {
+        if (ts.isCallExpression(node)) {
+            const direct = ts.isIdentifier(node.expression) && localNames.has(node.expression.text);
+            const namespaced = ts.isPropertyAccessExpression(node.expression)
+                && ts.isIdentifier(node.expression.expression)
+                && namespaceNames.has(node.expression.expression.text)
+                && node.expression.name.text === targetName;
+            if (direct || namespaced) {
+                calls.push({
+                    line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
+                    argumentCount: node.arguments.length,
+                });
+            }
+        }
+        ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    return calls;
+};
+
+const findImportedJavaCalls = (
+    file: CommittedSourceFile,
+    target: SymbolCandidate,
+): LocatedCall[] => {
     const [owner, method] = target.identity.qualifiedName.split("#");
     if (owner === undefined) {
-        return undefined;
+        return [];
     }
     const ownerName = owner.split(".").at(-1);
-    if (ownerName === undefined || !file.content.includes(`import ${owner};`)) {
-        return undefined;
+    const ownerPackage = owner.split(".").slice(0, -1).join(".");
+    const callerPackage = /^\s*package\s+([\w.]+)\s*;/mu.exec(file.content)?.[1];
+    if (ownerName === undefined || (!file.content.includes(`import ${owner};`) && callerPackage !== ownerPackage)) {
+        return [];
     }
-    const expression = method === undefined
-        ? `\\bnew\\s+${escapeRegExp(ownerName)}\\s*\\(`
-        : `\\b${escapeRegExp(ownerName)}\\s*\\.\\s*${escapeRegExp(method)}\\s*\\(`;
-    const callPattern = new RegExp(expression, "u");
-    const lines = file.content.split(/\r?\n/u);
-    const index = lines.findIndex((line) => callPattern.test(line));
-    return index < 0 ? undefined : {line: index + 1, content: lines[index] ?? ""};
+    const receiverNames = new Set<string>([ownerName]);
+    const bindingPattern = new RegExp(`\\b${escapeRegExp(ownerName)}(?:<[^;=,)]+>)?\\s+([A-Za-z_$][\\w$]*)`, "gu");
+    for (const binding of file.content.matchAll(bindingPattern)) {
+        if (binding[1] !== undefined) {
+            receiverNames.add(binding[1]);
+        }
+    }
+    const methodPattern = method === undefined
+        ? new RegExp(`\\bnew\\s+${escapeRegExp(ownerName)}\\s*\\(`, "u")
+        : new RegExp(`\\b(?:${[...receiverNames].map(escapeRegExp).join("|")})\\s*\\.\\s*${escapeRegExp(method)}\\s*\\(`, "u");
+    const calls: LocatedCall[] = [];
+    const cursor = javaParser.parse(file.content).cursor();
+    do {
+        if (cursor.name !== "MethodInvocation" && cursor.name !== "ObjectCreationExpression") {
+            continue;
+        }
+        const invocation = file.content.slice(cursor.from, cursor.to);
+        if (methodPattern.test(invocation)) {
+            const argumentsText = invocation.slice(invocation.indexOf("(") + 1, invocation.lastIndexOf(")")).trim();
+            calls.push({
+                line: file.content.slice(0, cursor.from).split(/\r?\n/u).length,
+                argumentCount: argumentsText === "" ? 0 : argumentsText.split(",").length,
+            });
+        }
+    } while (cursor.next());
+    return calls;
+};
+
+const importsTypeScriptType = (
+    file: CommittedSourceFile,
+    localName: string,
+    target: SymbolCandidate,
+): boolean => {
+    const sourceFile = ts.createSourceFile(file.path, file.content, ts.ScriptTarget.Latest, true);
+    for (const statement of sourceFile.statements) {
+        if (!ts.isImportDeclaration(statement)
+            || !ts.isStringLiteral(statement.moduleSpecifier)
+            || !matchesTypeScriptModule(file.path, statement.moduleSpecifier.text, target.path)) {
+            continue;
+        }
+        const bindings = statement.importClause?.namedBindings;
+        if (bindings !== undefined && ts.isNamedImports(bindings)
+            && bindings.elements.some((element) => element.name.text === localName
+                && (element.propertyName?.text ?? element.name.text) === symbolName(target.identity))) {
+            return true;
+        }
+        if (statement.importClause?.name?.text === localName) {
+            return true;
+        }
+    }
+    return false;
+};
+
+const resolveInheritanceRelations = (
+    relations: StaticImpactRelation[],
+    files: readonly CommittedSourceFile[],
+    repositorySymbols: readonly SymbolCandidate[],
+    limitations: Set<ImpactPackage["limitations"][number]>,
+): void => {
+    for (const relation of relations.filter((candidate) => candidate.kind === "inherits" || candidate.kind === "implements")) {
+        const source = relation.sourceSymbol;
+        const file = files.find((candidate) => candidate.path === relation.sourcePath);
+        if (source === undefined || file === undefined) {
+            continue;
+        }
+        const localName = relation.target.split(".").at(-1)?.replace(/<.*$/u, "");
+        if (localName === undefined) {
+            continue;
+        }
+        const candidates = repositorySymbols.filter((candidate) => candidate.revision === "head"
+            && candidate.identity.language === source.language
+            && candidate.identity.signature !== undefined
+            && ["class", "interface", "type", "record"].includes(candidate.identity.signature)
+            && (source.language === "typescript" || symbolName(candidate.identity) === localName))
+            .filter((candidate) => {
+                if (source.language === "typescript") {
+                    return importsTypeScriptType(file, relation.target, candidate);
+                }
+                const packageName = candidate.identity.qualifiedName.split(".").slice(0, -1).join(".");
+                const callerPackage = /^\s*package\s+([\w.]+)\s*;/mu.exec(file.content)?.[1];
+                return file.content.includes(`import ${candidate.identity.qualifiedName};`) || callerPackage === packageName;
+            });
+        if (candidates.length === 1 && candidates[0] !== undefined) {
+            relation.target = toSafeTarget(candidates[0].identity.qualifiedName);
+            relation.targetSymbol = candidates[0].identity;
+            relation.completeness = "partial";
+        } else if (candidates.length > 1) {
+            relation.completeness = "unknown";
+            limitations.add("symbol-identity-ambiguous");
+        }
+    }
 };
 
 const appendRepositoryCallRelations = (
@@ -377,6 +515,7 @@ const appendRepositoryCallRelations = (
     files: readonly CommittedSourceFile[],
     headSymbols: readonly SymbolCandidate[],
     repositorySymbols: readonly SymbolCandidate[],
+    limitations: Set<ImpactPackage["limitations"][number]>,
 ): void => {
     const anchors = new Map<string, string>();
     for (const relation of relations) {
@@ -393,42 +532,73 @@ const appendRepositoryCallRelations = (
             if (file.path === target.path || file.language !== target.identity.language) {
                 continue;
             }
-            const call = file.language === "typescript"
-                ? findImportedTypeScriptCall(file, target)
-                : findImportedJavaCall(file, target);
-            if (call === undefined) {
-                continue;
+            const calls = file.language === "typescript"
+                ? findImportedTypeScriptCalls(file, target)
+                : findImportedJavaCalls(file, target);
+            for (const call of calls) {
+                const signature = target.identity.signature;
+                if (signature?.startsWith("(") === true) {
+                    const overloads = [...new Map(repositorySymbols
+                        .filter((candidate) => candidate.revision === "head"
+                            && candidate.identity.qualifiedName === target.identity.qualifiedName
+                            && candidate.identity.signature?.startsWith("(") === true)
+                        .map((candidate) => [candidate.identity.stableId, candidate])).values()];
+                    const compatible = overloads.filter((candidate) => {
+                        const parameters = candidate.identity.signature?.slice(1, -1);
+                        return (parameters === "" ? 0 : parameters?.split(",").length) === call.argumentCount;
+                    });
+                    if (compatible.length !== 1 || compatible[0]?.identity.stableId !== target.identity.stableId) {
+                        limitations.add("overload-resolution-unavailable");
+                        continue;
+                    }
+                }
+                const safeTarget = toSafeTarget(target.identity.qualifiedName);
+                const sourceSymbol = findNearestSourceSymbol(repositorySymbols, file.path, call.line);
+                relations.push({
+                    id: relationId(anchorId, "calls", call.line, `${file.path}:${safeTarget}`),
+                    changeAnchorId: anchorId,
+                    sourcePath: file.path,
+                    sourceLine: call.line,
+                    target: safeTarget,
+                    kind: "calls",
+                    completeness: "partial",
+                    ...(sourceSymbol === undefined ? {} : {sourceSymbol}),
+                    targetSymbol: target.identity,
+                });
             }
-            const safeTarget = toSafeTarget(target.identity.qualifiedName);
-            const sourceSymbol = findNearestSourceSymbol(repositorySymbols, file.path, call.line);
-            relations.push({
-                id: relationId(anchorId, "calls", call.line, `${file.path}:${safeTarget}`),
-                changeAnchorId: anchorId,
-                sourcePath: file.path,
-                sourceLine: call.line,
-                target: safeTarget,
-                kind: "calls",
-                completeness: "partial",
-                ...(sourceSymbol === undefined ? {} : {sourceSymbol}),
-                targetSymbol: target.identity,
-            });
         }
     }
 };
 
 const inheritanceTargets = (content: string, language: Language): {kind: "implements" | "inherits"; target: string}[] => {
+    const splitTypes = (value: string): string[] => {
+        const types: string[] = [];
+        let start = 0;
+        let depth = 0;
+        for (let index = 0; index < value.length; index += 1) {
+            const character = value[index];
+            depth += character === "<" ? 1 : character === ">" ? -1 : 0;
+            if (character === "," && depth === 0) {
+                types.push(value.slice(start, index));
+                start = index + 1;
+            }
+        }
+        types.push(value.slice(start));
+        return types;
+    };
+    const normalizeType = (value: string): string => value.trim().replace(/<.*>$/u, "");
     const results: {kind: "implements" | "inherits"; target: string}[] = [];
-    const extendsMatch = /\bextends\s+([^\s{]+)/u.exec(content)?.[1];
+    const extendsMatch = /\bextends\s+([^\s{]+(?:\s*<[^>{}]+>)?)/u.exec(content)?.[1];
     if (extendsMatch !== undefined) {
-        results.push({kind: "inherits", target: extendsMatch.replace(/[<>{}]/gu, "")});
+        results.push({kind: "inherits", target: normalizeType(extendsMatch)});
     }
     const implementsMatch = /\bimplements\s+([^\{]+)/u.exec(content)?.[1];
     if (implementsMatch !== undefined) {
-        for (const target of implementsMatch.split(",")) {
-            results.push({kind: "implements", target: target.trim().replace(/[<>{}]/gu, "")});
+        for (const target of splitTypes(implementsMatch)) {
+            results.push({kind: "implements", target: normalizeType(target)});
         }
     } else if (language === "java" && /^\s*interface\b/u.test(content) && extendsMatch !== undefined) {
-        results[0] = {kind: "implements", target: extendsMatch.replace(/[<>{}]/gu, "")};
+        results[0] = {kind: "implements", target: normalizeType(extendsMatch)};
     }
     return results.filter((result) => result.target !== "");
 };
@@ -652,11 +822,18 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
             }
         }
 
+        resolveInheritanceRelations(
+            relations,
+            headSourceFiles,
+            repositorySymbols,
+            limitations,
+        );
         appendRepositoryCallRelations(
             relations,
             headSourceFiles,
             headSymbols,
             repositorySymbols.filter((symbol) => symbol.revision === "head"),
+            limitations,
         );
 
         return {

@@ -33,17 +33,16 @@
 建议提交信息：
 
 ```text
-feat(impact): add symbol and semantic impact relations
+feat(impact): resolve ast-backed semantic relations
 ```
 
 该批次的关键内容：
 
 - TypeScript/Java 变更声明产生安全、稳定的 `SymbolIdentity` 与 base/head 映射；
-- 有资源上限地读取 Git 对象数据库中的实际 base/head 源码，不接触未提交工作区；
-- 方法体变更可关联到所属符号，明确导入该符号的未修改调用方可形成跨文件调用边；
-- 重命名、移动、重载变化、实现替换、多个候选和无法匹配均保留明确状态；
-- 新增调用、实现/继承、配置、事件和持久化影响边；
-- 动态 import、动态分派、反射、代码生成和不支持语言显式降级；
+- TypeScript AST 解析默认、具名、namespace import 及别名调用；
+- Java 语法树确认静态/实例调用，并使用显式 import、同包及字段/参数类型约束接收者；
+- 跨包继承/实现目标可解析为具体 `targetSymbol`，泛型列表按顶层类型安全拆分；
+- 重载调用仅在参数个数唯一匹配时建立关系，其他情况显式降级；
 - 关系仍处于观察模式，未解析调用目标保持 `unknown`，不参与门禁；
 - README、架构文档及单元测试已同步。
 
@@ -59,7 +58,8 @@ feat(impact): add symbol and semantic impact relations
    - 已增加变更行内的调用、实现、继承/接口、配置、事件和持久化影响边，并按锚点写入 `ImpactPackage`；持久化边会生成对应测试义务。
    - 动态 import、动态分派、反射、代码生成、不支持语言和歧义身份均显式降级，当前不参与门禁。
    - 已使用受限的 Git base/head 快照关联方法体变更和未修改调用方；ref 会先验证为 commit，三点比较使用实际 merge base，读取不会接触工作区文件。
-   - 下一增量：使用语言 AST/类型解析扩展别名、实例方法、重载分派和跨包继承关系，将更多 `partial`/`unknown` 目标提升为有证据的影响路径。
+   - 已使用 TypeScript/Java AST 扩展 import 别名、实例/静态调用和跨包继承关系；重载按参数个数唯一匹配，歧义保持未知。
+   - 下一增量：增加同参数个数重载的受控类型推断、TypeScript 类实例方法、barrel re-export 与 Java 通配符 import 解析。
 
 2. 契约差异与兼容策略
    - 解析受支持的 OpenAPI、AsyncAPI、JSON Schema 变更。

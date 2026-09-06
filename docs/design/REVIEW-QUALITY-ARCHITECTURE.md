@@ -567,6 +567,9 @@ JSONL 记录器保存带类型标识的运行摘要，并可追加只含固定�
 工作区文件。完整快照用于把方法体变更关联到所属符号，并解析具有明确 TypeScript import 或 Java 类型 import 的未修改调用方。调用边仍
 保持 `partial`/`unknown`，不是完整仓库调用图、控制流或行为覆盖证明。动态依赖、动态分派、反射、代码生成、未支持语言、无法锚定、快照
 不可用、扫描截断或索引失败均明确保留为限制，不能表示无影响，也不能单独构成回归、缺失测试或门禁结论。
+TypeScript 跨文件调用使用 AST 解析默认、具名、namespace import 及别名；Java 使用语法树确认方法调用和对象创建，再以显式 import、
+同包规则及字段/参数类型约束接收者。继承/实现目标只在显式 import 或同包候选唯一时写入 `targetSymbol`。当前重载分派只接受参数个数
+唯一匹配；同参数个数的类型重载、动态接收者、通配符 import 和无法唯一解析的 barrel re-export 均保持未知。
 每个已锚定的关系还会由领域策略生成最小测试义务。`TestInventoryPort` 当前仅在受限数量内发现已提交的 Vitest、Jest 与 JUnit
 测试资产，输出无正文、无路径的框架与数量摘要；未建立影响关联时覆盖为 `not-demonstrated`，不等于没有测试。发现超出上限或
 不可用时覆盖为 `not-assessable`，并分别附带 `test-inventory-partial` 或 `test-inventory-unavailable` 限制。测试义务仅表示需要的
