@@ -469,6 +469,9 @@ const exportedNamesForModule = (
     files: readonly CommittedSourceFile[],
     subjectName: string,
     subjectIsDefault: boolean,
+    limitations: Set<ImpactPackage["limitations"][number]>,
+    visited: ReadonlySet<string> = new Set(),
+    depth = 0,
 ): Set<string> => {
     if (matchesTypeScriptModule(callerPath, moduleReference, target.path)) {
         const subjectIsExported = target.identity.qualifiedName.includes("#") ? target.isOwnerExported : target.isExported;
@@ -481,17 +484,40 @@ const exportedNamesForModule = (
     if (barrel === undefined || barrel.path === target.path) {
         return new Set();
     }
+    if (visited.has(barrel.path)) {
+        limitations.add("barrel-cycle-unavailable");
+        return new Set();
+    }
+    if (depth >= 4) {
+        limitations.add("barrel-depth-unavailable");
+        return new Set();
+    }
+    const nextVisited = new Set(visited).add(barrel.path);
     const sourceFile = ts.createSourceFile(barrel.path, barrel.content, ts.ScriptTarget.Latest, true);
     const exportedNames = new Set<string>();
     for (const statement of sourceFile.statements) {
         if (!ts.isExportDeclaration(statement)
             || statement.moduleSpecifier === undefined
-            || !ts.isStringLiteral(statement.moduleSpecifier)
-            || !matchesTypeScriptModule(barrel.path, statement.moduleSpecifier.text, target.path)) {
+            || !ts.isStringLiteral(statement.moduleSpecifier)) {
             continue;
         }
+        const downstreamNames = exportedNamesForModule(
+            barrel.path,
+            statement.moduleSpecifier.text,
+            target,
+            files,
+            subjectName,
+            subjectIsDefault,
+            limitations,
+            nextVisited,
+            depth + 1,
+        );
         if (statement.exportClause === undefined) {
-            exportedNames.add(subjectName);
+            for (const downstreamName of downstreamNames) {
+                if (downstreamName !== "default") {
+                    exportedNames.add(downstreamName);
+                }
+            }
             continue;
         }
         if (!ts.isNamedExports(statement.exportClause)) {
@@ -499,7 +525,7 @@ const exportedNamesForModule = (
         }
         for (const element of statement.exportClause.elements) {
             const originalName = element.propertyName?.text ?? element.name.text;
-            if (originalName === subjectName || (subjectIsDefault && originalName === "default")) {
+            if (downstreamNames.has(originalName)) {
                 exportedNames.add(element.name.text);
             }
         }
@@ -507,10 +533,100 @@ const exportedNamesForModule = (
     return exportedNames;
 };
 
+const importBindsTypeScriptName = (
+    file: CommittedSourceFile,
+    localName: string,
+    owner: SymbolCandidate,
+    files: readonly CommittedSourceFile[],
+    limitations: Set<ImpactPackage["limitations"][number]>,
+): boolean => {
+    const sourceFile = ts.createSourceFile(file.path, file.content, ts.ScriptTarget.Latest, true);
+    for (const statement of sourceFile.statements) {
+        if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+            continue;
+        }
+        const exportedNames = exportedNamesForModule(
+            file.path,
+            statement.moduleSpecifier.text,
+            owner,
+            files,
+            symbolName(owner.identity),
+            owner.isDefaultExport,
+            limitations,
+        );
+        if (exportedNames.has("default") && statement.importClause?.name?.text === localName) {
+            return true;
+        }
+        const bindings = statement.importClause?.namedBindings;
+        if (bindings !== undefined && ts.isNamedImports(bindings)
+            && bindings.elements.some((element) => element.name.text === localName
+                && exportedNames.has(element.propertyName?.text ?? element.name.text))) {
+            return true;
+        }
+    }
+    return false;
+};
+
+const findTypeScriptMethodOwners = (
+    target: SymbolCandidate,
+    files: readonly CommittedSourceFile[],
+    repositorySymbols: readonly SymbolCandidate[],
+    limitations: Set<ImpactPackage["limitations"][number]>,
+): SymbolCandidate[] => {
+    const ownerQualifiedName = target.identity.qualifiedName.split("#")[0];
+    if (ownerQualifiedName === undefined || !target.identity.qualifiedName.includes("#")) {
+        return [];
+    }
+    const directOwner = repositorySymbols.find((candidate) => candidate.revision === "head"
+        && candidate.identity.qualifiedName === ownerQualifiedName
+        && candidate.identity.signature === "class");
+    if (directOwner === undefined) {
+        return [];
+    }
+    const owners = [directOwner];
+    const visited = new Set([directOwner.identity.stableId]);
+    let frontier = [directOwner];
+    for (let depth = 0; depth < 4 && frontier.length > 0; depth += 1) {
+        const next: SymbolCandidate[] = [];
+        for (const currentOwner of frontier) {
+            for (const candidate of repositorySymbols.filter((symbol) => symbol.revision === "head"
+                && symbol.identity.language === "typescript"
+                && symbol.identity.signature === "class"
+                && !visited.has(symbol.identity.stableId))) {
+                const file = files.find((source) => source.path === candidate.path);
+                if (file === undefined) {
+                    continue;
+                }
+                const sourceFile = ts.createSourceFile(file.path, file.content, ts.ScriptTarget.Latest, true);
+                const declaration = sourceFile.statements.find((statement): statement is ts.ClassDeclaration =>
+                    ts.isClassDeclaration(statement) && statement.name?.text === symbolName(candidate.identity));
+                const baseExpression = declaration?.heritageClauses
+                    ?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)
+                    ?.types[0]?.expression;
+                if (baseExpression !== undefined && ts.isIdentifier(baseExpression)
+                    && (importBindsTypeScriptName(file, baseExpression.text, currentOwner, files, limitations)
+                        || (file.path === currentOwner.path
+                            && baseExpression.text === symbolName(currentOwner.identity)))) {
+                    visited.add(candidate.identity.stableId);
+                    owners.push(candidate);
+                    next.push(candidate);
+                }
+            }
+        }
+        frontier = next;
+    }
+    if (frontier.length > 0) {
+        limitations.add("inheritance-depth-unavailable");
+    }
+    return owners;
+};
+
 const findImportedTypeScriptCalls = (
     file: CommittedSourceFile,
     target: SymbolCandidate,
     files: readonly CommittedSourceFile[],
+    limitations: Set<ImpactPackage["limitations"][number]>,
+    methodOwners: readonly SymbolCandidate[],
 ): LocatedCall[] => {
     const [ownerQualifiedName, methodName] = target.identity.qualifiedName.split("#");
     const targetName = methodName ?? symbolName(target.identity);
@@ -531,16 +647,22 @@ const findImportedTypeScriptCalls = (
             || !ts.isStringLiteral(statement.moduleSpecifier)) {
             continue;
         }
-        const subjectName = ownerName ?? targetName;
-        const subjectIsDefault = ownerName === undefined ? target.isDefaultExport : target.isOwnerDefaultExport;
-        const exportedNames = exportedNamesForModule(
-            file.path,
-            statement.moduleSpecifier.text,
-            target,
-            files,
-            subjectName,
-            subjectIsDefault,
-        );
+        const exportedNames = new Set<string>();
+        const subjects = ownerName === undefined ? [target] : methodOwners;
+        for (const subject of subjects) {
+            const names = exportedNamesForModule(
+                file.path,
+                statement.moduleSpecifier.text,
+                subject,
+                files,
+                symbolName(subject.identity),
+                subject.isDefaultExport,
+                limitations,
+            );
+            for (const name of names) {
+                exportedNames.add(name);
+            }
+        }
         if (exportedNames.size === 0) {
             continue;
         }
@@ -572,6 +694,22 @@ const findImportedTypeScriptCalls = (
         }
     }
     const receiverNames = new Set<string>();
+    const localValueTypes = new Map<string, string>();
+    const inferLiteralType = (expression: ts.Expression): string => {
+        if (ts.isStringLiteralLike(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+            return "string";
+        }
+        if (ts.isNumericLiteral(expression)) {
+            return "number";
+        }
+        if (expression.kind === ts.SyntaxKind.TrueKeyword || expression.kind === ts.SyntaxKind.FalseKeyword) {
+            return "boolean";
+        }
+        if (expression.kind === ts.SyntaxKind.NullKeyword) {
+            return "null";
+        }
+        return "unknown";
+    };
     const collectReceiver = (node: ts.Node): void => {
         if ((ts.isVariableDeclaration(node) || ts.isPropertyDeclaration(node) || ts.isParameter(node))
             && ts.isIdentifier(node.name)) {
@@ -587,30 +725,29 @@ const findImportedTypeScriptCalls = (
                 || (constructedType !== undefined && ownerLocalNames.has(constructedType))) {
                 receiverNames.add(node.name.text);
             }
+            const annotatedType = node.type?.getText(sourceFile).replace(/\s+/gu, "");
+            const valueType = annotatedType !== undefined && ["string", "number", "boolean", "null"].includes(annotatedType)
+                ? annotatedType
+                : node.initializer === undefined
+                    ? "unknown"
+                    : inferLiteralType(node.initializer);
+            if (valueType !== "unknown") {
+                localValueTypes.set(node.name.text, valueType);
+            }
         }
         ts.forEachChild(node, collectReceiver);
     };
     collectReceiver(sourceFile);
     const inferArgumentType = (argument: ts.Expression): string => {
-        if (ts.isStringLiteralLike(argument) || ts.isNoSubstitutionTemplateLiteral(argument)) {
-            return "string";
-        }
-        if (ts.isNumericLiteral(argument)) {
-            return "number";
-        }
-        if (argument.kind === ts.SyntaxKind.TrueKeyword || argument.kind === ts.SyntaxKind.FalseKeyword) {
-            return "boolean";
-        }
-        if (argument.kind === ts.SyntaxKind.NullKeyword) {
-            return "null";
-        }
-        return "unknown";
+        return ts.isIdentifier(argument)
+            ? localValueTypes.get(argument.text) ?? "unknown"
+            : inferLiteralType(argument);
     };
     const calls: LocatedCall[] = [];
     const visit = (node: ts.Node): void => {
         if (ts.isCallExpression(node)) {
             const direct = methodName === undefined && ts.isIdentifier(node.expression) && localNames.has(node.expression.text);
-            const namespaced = ts.isPropertyAccessExpression(node.expression)
+            const namespaced = methodName === undefined && ts.isPropertyAccessExpression(node.expression)
                 && ts.isIdentifier(node.expression.expression)
                 && namespaceNames.has(node.expression.expression.text)
                 && namespaceMemberNames.has(node.expression.name.text);
@@ -659,6 +796,12 @@ const findImportedJavaCalls = (
             receiverNames.add(binding[1]);
         }
     }
+    const localValueTypes = new Map<string, string>();
+    for (const binding of file.content.matchAll(/\b(String|java\.lang\.String|boolean|Boolean|byte|short|int|long|float|double|Number|Integer)\s+([A-Za-z_$][\w$]*)/gu)) {
+        if (binding[1] !== undefined && binding[2] !== undefined) {
+            localValueTypes.set(binding[2], binding[1]);
+        }
+    }
     const methodPattern = method === undefined
         ? new RegExp(`\\bnew\\s+${escapeRegExp(ownerName)}\\s*\\(`, "u")
         : new RegExp(`\\b(?:${[...receiverNames].map(escapeRegExp).join("|")})\\s*\\.\\s*${escapeRegExp(method)}\\s*\\(`, "u");
@@ -682,7 +825,7 @@ const findImportedJavaCalls = (
                             ? "number"
                             : /^(?:true|false)$/u.test(value)
                                 ? "boolean"
-                                : "unknown";
+                                : localValueTypes.get(value) ?? "unknown";
                 }),
             });
         }
@@ -791,12 +934,15 @@ const appendRepositoryCallRelations = (
         if (anchorId === undefined) {
             continue;
         }
+        const typeScriptMethodOwners = target.identity.language === "typescript"
+            ? findTypeScriptMethodOwners(target, files, repositorySymbols, limitations)
+            : [];
         for (const file of files) {
             if (file.path === target.path || file.language !== target.identity.language) {
                 continue;
             }
             const calls = file.language === "typescript"
-                ? findImportedTypeScriptCalls(file, target, files)
+                ? findImportedTypeScriptCalls(file, target, files, limitations, typeScriptMethodOwners)
                 : findImportedJavaCalls(file, target);
             for (const call of calls) {
                 const signature = target.identity.signature;

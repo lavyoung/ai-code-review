@@ -175,5 +175,8 @@ export interface ImpactPackage {
         | "revision-source-unavailable"
         | "repository-scan-partial"
         | "overload-resolution-unavailable"
+        | "barrel-cycle-unavailable"
+        | "barrel-depth-unavailable"
+        | "inheritance-depth-unavailable"
     )[];
 }

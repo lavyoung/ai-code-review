@@ -33,15 +33,14 @@
 建议提交信息：
 
 ```text
-feat(impact): resolve typed calls and barrel exports
+feat(impact): traverse bounded semantic graphs
 ```
 
 该批次的关键内容：
 
-- TypeScript AST 为类方法建立 `模块.类#方法` 身份，并解析导入类型约束的实例调用；
-- 字符串、数字、布尔和 `null` 字面量可筛选同参数数量的重载，剩余歧义显式降级；
-- 支持一跳、目标明确的 barrel re-export 及两侧别名，多跳/循环不猜测；
-- Java 通配符 import 可在唯一候选条件下解析实例、静态及继承/实现关系；
+- 局部标识符具备明确基础类型注解或常量初始化时，可用于同参数数量重载筛选；
+- barrel re-export 图在四层上限内传播别名，并显式报告循环与深度截断；
+- TypeScript 派生类调用可沿最多四层显式继承链关联到继承获得的已修改方法；
 - 关系仍处于观察模式，未解析调用目标保持 `unknown`，不参与门禁；
 - README、架构文档及单元测试已同步。
 
@@ -59,7 +58,8 @@ feat(impact): resolve typed calls and barrel exports
    - 已使用受限的 Git base/head 快照关联方法体变更和未修改调用方；ref 会先验证为 commit，三点比较使用实际 merge base，读取不会接触工作区文件。
    - 已使用 TypeScript/Java AST 扩展 import 别名、实例/静态调用和跨包继承关系；重载按参数个数唯一匹配，歧义保持未知。
    - 已增加字面量类型重载筛选、TypeScript 类实例方法、一跳 barrel re-export 和 Java 通配符 import 解析。
-   - 下一增量：接入受控类型检查器处理标识符参数、继承获得的方法与多跳 barrel 图；循环或不唯一映射必须继续保持未知。
+   - 已增加局部标识符类型筛选、最多四层的继承方法传播和 barrel 图遍历；循环、超深或不唯一映射均保持未知。
+   - 下一增量：引入项目配置感知但不执行构建的 TypeScript 类型检查器，以及 Java 继承方法传播；无法加载配置或类型不唯一时必须降级。
 
 2. 契约差异与兼容策略
    - 解析受支持的 OpenAPI、AsyncAPI、JSON Schema 变更。

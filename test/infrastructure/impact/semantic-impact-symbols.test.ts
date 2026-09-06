@@ -17,13 +17,17 @@ describe("semantic impact symbol identity", () => {
                 }] : [{
                     path: "src/converter.ts", language: "typescript" as const, content: base.replace("oldValue", "newValue"),
                 }, {
-                    path: "src/index.ts",
+                    path: "src/internal-index.ts",
                     language: "typescript" as const,
                     content: "export {convert as parse} from './converter.js';\n",
                 }, {
+                    path: "src/public-index.ts",
+                    language: "typescript" as const,
+                    content: "export {parse as publicParse} from './internal-index.js';\n",
+                }, {
                     path: "src/barrel-consumer.ts",
                     language: "typescript" as const,
-                    content: "import {parse as parseValue} from './index.js';\nparseValue();\n",
+                    content: "import {publicParse as parseValue} from './public-index.js';\nparseValue();\n",
                 }],
             }),
         };
@@ -45,6 +49,38 @@ describe("semantic impact symbol identity", () => {
         }));
     });
 
+    it("detects a TypeScript barrel cycle without inventing a call relation", async () => {
+        const diff = "@@ -2 +2 @@\n-  return oldValue;\n+  return newValue;";
+        const base = "export function convert() {\n  return oldValue;\n}\n";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                files: revision === "base" ? [{path: "src/converter.ts", language: "typescript" as const, content: base}] : [{
+                    path: "src/converter.ts", language: "typescript" as const, content: base.replace("oldValue", "newValue"),
+                }, {
+                    path: "src/a.ts", language: "typescript" as const, content: "export * from './b.js';\n",
+                }, {
+                    path: "src/b.ts", language: "typescript" as const, content: "export * from './a.js';\n",
+                }, {
+                    path: "src/cycle-consumer.ts", language: "typescript" as const, content: "import {convert} from './a.js';\nconvert();\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/converter.ts", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/converter.ts", status: "modified"}],
+            chunks: [{id: "cycle-chunk", path: "src/converter.ts", oldRange: {startLine: 2, endLine: 2}, newRange: {startLine: 2, endLine: 2}, content: diff}],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.limitations).toContain("barrel-cycle-unavailable");
+        expect(result.relations).not.toContainEqual(expect.objectContaining({sourcePath: "src/cycle-consumer.ts"}));
+    });
+
     it("resolves a TypeScript class instance method through an imported type alias", async () => {
         const diff = "@@ -3 +3 @@\n-    return oldRun(value);\n+    return newRun(value);";
         const base = "export class Service {\n  run(value: string) {\n    return oldRun(value);\n  }\n}\n";
@@ -56,9 +92,17 @@ describe("semantic impact symbol identity", () => {
                 }] : [{
                     path: "src/service.ts", language: "typescript" as const, content: base.replace("oldRun", "newRun"),
                 }, {
+                    path: "src/derived-service.ts",
+                    language: "typescript" as const,
+                    content: "import {Service as BaseService} from './service.js';\nexport class DerivedService extends BaseService {}\n",
+                }, {
+                    path: "src/final-service.ts",
+                    language: "typescript" as const,
+                    content: "import {DerivedService} from './derived-service.js';\nexport class FinalService extends DerivedService {}\n",
+                }, {
                     path: "src/consumer.ts",
                     language: "typescript" as const,
-                    content: "import {Service as Engine} from './service.js';\nexport function consume(engine: Engine) {\n  return engine.run('value');\n}\n",
+                    content: "import {FinalService as Engine} from './final-service.js';\nexport function consume(engine: Engine) {\n  return engine.run('value');\n}\n",
                 }],
             }),
         };
@@ -91,7 +135,7 @@ describe("semantic impact symbol identity", () => {
                 }, {
                     path: "src/string-consumer.ts", language: "typescript" as const, content: "import {parse} from './parser.js';\nparse('1');\n",
                 }, {
-                    path: "src/number-consumer.ts", language: "typescript" as const, content: "import {parse} from './parser.js';\nparse(1);\n",
+                    path: "src/number-consumer.ts", language: "typescript" as const, content: "import {parse} from './parser.js';\nconst value: number = 1;\nparse(value);\n",
                 }],
             }),
         };
