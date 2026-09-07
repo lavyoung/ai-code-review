@@ -591,12 +591,18 @@ Java 编译器，复杂边界、通配符捕获和运行时分派仍保持未知
 测试资产，输出无正文、无路径的框架与数量摘要；未建立影响关联时覆盖为 `not-demonstrated`，不等于没有测试。发现超出上限或
 不可用时覆盖为 `not-assessable`，并分别附带 `test-inventory-partial` 或 `test-inventory-unavailable` 限制。测试义务仅表示需要的
 证据类型，不可由“未改测试文件”推导为缺失测试。
-当前仅把相对 TypeScript/CommonJS 引用及 Java import 与本次变更源码作机械匹配，匹配结果产生不透明测试资产 ID 的
-`impact-association` 证据，并最多将状态提升为 `partial`；由于没有当前提交的受控执行结果，绝不能标记为 `demonstrated`。
-测试名称、目录接近、动态加载、别名和反射不参与关联。
+相对 TypeScript/CommonJS 引用及 Java import 与本次变更源码的机械匹配标记为 `direct-static-import`，只产生结构性
+`impact-association`，即使测试文件通过也最多为 `partial`。进一步的 `direct-symbol-call` 关联要求测试语法中的调用绑定到本次已改符号：
+Vitest/Jest 使用不访问文件系统的纯内存 TypeScript `Program` 排除局部遮蔽，并只接收 `it/test` 回调内的调用；JUnit 使用 Java 语法树与
+显式 import/接收者映射，并只接收 `@Test` 方法内的调用。
+每条引用记录不透明测试 ID、框架、当前提交 SHA 与关联方式，不记录测试路径或正文；敏感测试文件以及其引用的敏感目标路径均在本地提取阶段
+剔除。测试名称、目录接近、动态加载、无法解析的别名、反射和
+仅文件级通过均不能形成完整关联。
 受控沙箱可在签名 `v1` 报告中可选提供已通过测试文件；报告先按原始 payload 验签，再校验 `sourceRevision` 与当前 `HEAD`，
-最后把路径投影为不透明测试资产 ID。只有该 ID 已有静态影响关联时，系统才写入 `test-execution` 与 `impact-association` 双重
-证据并标记 `demonstrated`。旧版报告省略通过列表时保持兼容，但只可用于失败发现，不能证明覆盖。
+最后把路径投影为不透明测试资产 ID。只有报告 revision 与测试清单 revision 一致、同一影响锚点上全部系统已知变更符号均有直接调用关联，
+且相应测试资产通过时，系统才写入 `test-execution` 与 `impact-association` 双重证据并标记 `demonstrated`。该状态仅证明当前 revision
+上的已知符号调用验证，不证明未观测分支、错误路径、权限、集成行为或 base/head 回归。旧版报告省略通过列表时保持兼容，但只可用于失败
+发现，不能证明覆盖。
 同一签名报告可选提供已验证契约路径。路径仅在本地与本次 `contract-definition` 关系匹配后产生 `contract-validation` 证据并完成
 `contract` 义务；原始路径不进入模型输入。报告也可提供 `{id, sourceRevision, contractFile}` 形式的已验证消费者声明。应用层必须把它同时
 匹配到当前已审核消费者目录、当前不可变消费者快照和本次契约锚点；仅当同一影响关联的全部已登记消费者均被证明时，才写入

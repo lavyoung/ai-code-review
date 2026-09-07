@@ -1,6 +1,8 @@
 import {describe, expect, it} from "vitest";
 import {createImpactPackage} from "../../../../src/application/review/changes/create-impact-package.js";
 
+const revision = "a".repeat(40);
+
 describe("createImpactPackage", () => {
     it("classifies observed persistence edges even when symbol metadata is the first relation", () => {
         const result = createImpactPackage([{
@@ -70,7 +72,7 @@ describe("createImpactPackage", () => {
             target: "./service.js",
             kind: "module-import",
             completeness: "partial",
-        }], [], {status: "available", frameworks: ["vitest"], assetCount: 2, staticReferences: []}))
+        }], [], {status: "available", sourceRevision: revision, frameworks: ["vitest"], assetCount: 2, staticReferences: []}))
             .toMatchObject({
                 impactCoverage: [{
                     status: "not-demonstrated",
@@ -89,7 +91,7 @@ describe("createImpactPackage", () => {
             target: "./service.js",
             kind: "module-import",
             completeness: "partial",
-        }], [], {status: "partial", frameworks: ["vitest"], assetCount: 64, staticReferences: []}))
+        }], [], {status: "partial", sourceRevision: revision, frameworks: ["vitest"], assetCount: 64, staticReferences: []}))
             .toMatchObject({
                 impactCoverage: [{
                     status: "not-assessable",
@@ -109,6 +111,7 @@ describe("createImpactPackage", () => {
             completeness: "partial",
         }], [], {
             status: "available",
+            sourceRevision: revision,
             frameworks: ["vitest"],
             assetCount: 1,
             staticReferences: [{
@@ -116,12 +119,15 @@ describe("createImpactPackage", () => {
                 testId: "test-asset:1",
                 target: "src/example",
                 kind: "module-import",
+                framework: "vitest",
+                sourceRevision: revision,
+                association: "direct-static-import",
             }],
-        })).toMatchObject({
+        }, {sourceRevision: revision, passedTestIds: ["test-asset:1"]})).toMatchObject({
             impactCoverage: [{
                 status: "partial",
                 evidence: [{kind: "impact-association", referenceId: "test-reference:1"}],
-                limitation: "test-execution-unavailable",
+                limitation: "impact-association-insufficient",
             }],
         });
     });
@@ -137,6 +143,7 @@ describe("createImpactPackage", () => {
             completeness: "partial",
         }], [], {
             status: "available",
+            sourceRevision: revision,
             frameworks: ["vitest"],
             assetCount: 1,
             staticReferences: [{
@@ -144,6 +151,9 @@ describe("createImpactPackage", () => {
                 testId: "test-asset:1",
                 target: "src/example",
                 kind: "module-import",
+                framework: "vitest",
+                sourceRevision: revision,
+                association: "direct-static-import",
             }],
         })).toMatchObject({
             impactCoverage: [{
@@ -159,20 +169,31 @@ describe("createImpactPackage", () => {
             changeAnchorId: "chunk-1",
             sourcePath: "src/example.ts",
             sourceLine: 4,
-            target: "./service.js",
-            kind: "module-import",
+            target: "changed-typescript-source",
+            kind: "typescript-source-change",
             completeness: "partial",
+            sourceSymbol: {
+                language: "typescript",
+                qualifiedName: "src.example.example",
+                signature: "()",
+                sourceDigest: "source",
+                stableId: "symbol:example",
+            },
         }], [], {
             status: "available",
+            sourceRevision: revision,
             frameworks: ["vitest"],
             assetCount: 1,
             staticReferences: [{
                 id: "test-reference:1",
                 testId: "test-asset:1",
-                target: "src/example",
-                kind: "module-import",
+                target: "src.example.example",
+                kind: "typescript-symbol-call",
+                framework: "vitest",
+                sourceRevision: revision,
+                association: "direct-symbol-call",
             }],
-        }, ["test-asset:1"])).toMatchObject({
+        }, {sourceRevision: revision, passedTestIds: ["test-asset:1"]})).toMatchObject({
             impactCoverage: [{
                 status: "demonstrated",
                 evidence: [
@@ -203,6 +224,90 @@ describe("createImpactPackage", () => {
                 {status: "not-assessable", limitation: "consumer-compatibility-unavailable"},
             ],
         });
+    });
+
+    it("does not demonstrate coverage when execution and inventory revisions differ", () => {
+        const result = createImpactPackage([{
+            id: "source-change-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "src/example.ts",
+            sourceLine: 4,
+            target: "changed-typescript-source",
+            kind: "typescript-source-change",
+            completeness: "partial",
+            sourceSymbol: {
+                language: "typescript",
+                qualifiedName: "src.example.example",
+                sourceDigest: "source",
+                stableId: "symbol:example",
+            },
+        }], [], {
+            status: "available",
+            sourceRevision: revision,
+            frameworks: ["vitest"],
+            assetCount: 1,
+            staticReferences: [{
+                id: "test-reference:1",
+                testId: "test-asset:1",
+                target: "src.example.example",
+                kind: "typescript-symbol-call",
+                framework: "vitest",
+                sourceRevision: revision,
+                association: "direct-symbol-call",
+            }],
+        }, {sourceRevision: "b".repeat(40), passedTestIds: ["test-asset:1"]});
+
+        expect(result.impactCoverage).toMatchObject([{
+            status: "partial",
+            limitation: "test-execution-unavailable",
+        }]);
+    });
+
+    it("requires every changed symbol on an impact anchor to have passing direct-call evidence", () => {
+        const symbol = (name: string) => ({
+            language: "typescript" as const,
+            qualifiedName: `src.example.${name}`,
+            sourceDigest: name,
+            stableId: `symbol:${name}`,
+        });
+        const result = createImpactPackage([{
+            id: "source-change-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "src/example.ts",
+            sourceLine: 4,
+            target: "changed-typescript-source",
+            kind: "typescript-source-change",
+            completeness: "partial",
+            sourceSymbol: symbol("first"),
+        }, {
+            id: "symbol-change-2",
+            changeAnchorId: "chunk-1",
+            sourcePath: "src/example.ts",
+            sourceLine: 8,
+            target: "src.example.second",
+            kind: "symbol-change",
+            completeness: "partial",
+            targetSymbol: symbol("second"),
+        }], [], {
+            status: "available",
+            sourceRevision: revision,
+            frameworks: ["vitest"],
+            assetCount: 1,
+            staticReferences: [{
+                id: "test-reference:first",
+                testId: "test-asset:1",
+                target: "src.example.first",
+                kind: "typescript-symbol-call",
+                framework: "vitest",
+                sourceRevision: revision,
+                association: "direct-symbol-call",
+            }],
+        }, {sourceRevision: revision, passedTestIds: ["test-asset:1"]});
+
+        expect(result.impactCoverage).toMatchObject([{
+            status: "partial",
+            limitation: "impact-association-insufficient",
+        }]);
     });
 
     it("keeps consumer compatibility closure unknown for a ruleset-confirmed structural break", () => {

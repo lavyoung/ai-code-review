@@ -35,8 +35,10 @@ describe("SignedSandboxTestExecutionEvidence", () => {
             resolve: async () => revision,
         });
 
-        await expect(evidence.readPassedTestIds(AbortSignal.timeout(1_000)))
-            .resolves.toEqual([createOpaqueTestAssetId("tests/example.test.ts")]);
+        await expect(evidence.read(AbortSignal.timeout(1_000))).resolves.toEqual({
+            sourceRevision: revision,
+            passedTestIds: [createOpaqueTestAssetId("tests/example.test.ts")],
+        });
     });
 
     it("accepts a legacy report but gives no passing-test proof", async () => {
@@ -45,7 +47,10 @@ describe("SignedSandboxTestExecutionEvidence", () => {
             resolve: async () => revision,
         });
 
-        await expect(evidence.readPassedTestIds(AbortSignal.timeout(1_000))).resolves.toEqual([]);
+        await expect(evidence.read(AbortSignal.timeout(1_000))).resolves.toEqual({
+            sourceRevision: revision,
+            passedTestIds: [],
+        });
     });
 
     it("projects a signed current-revision contract validation without exposing it to the model", async () => {

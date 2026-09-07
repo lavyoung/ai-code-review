@@ -17,9 +17,12 @@ export class SignedSandboxTestExecutionEvidence implements TestExecutionEvidence
         this.reader = new SignedSandboxTestReportReader(configuration, revisionProvider);
     }
 
-    public async readPassedTestIds(signal: AbortSignal): Promise<readonly string[]> {
+    public async read(signal: AbortSignal): Promise<{sourceRevision: string; passedTestIds: readonly string[]}> {
         const report = await this.reader.read(signal);
 
-        return [...new Set(report.passedTests.map((test) => createOpaqueTestAssetId(test.file)))];
+        return {
+            sourceRevision: report.sourceRevision,
+            passedTestIds: [...new Set(report.passedTests.map((test) => createOpaqueTestAssetId(test.file)))],
+        };
     }
 }

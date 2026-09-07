@@ -4,6 +4,7 @@ import type {
     ExternalConsumerContextSummary,
     ImpactPackage,
     StaticImpactRelation,
+    TestExecutionEvidenceSummary,
 } from "../../../domain/impact/model/impact-package.js";
 import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
 import type {CandidateValidationResult, ValidatedFinding,} from "../../../domain/review/model/review-candidate.js";
@@ -85,7 +86,7 @@ export const reviewCodeChangeUseCase = async (
 ): Promise<ReviewExecutionResult> => {
     let impactPackage;
     let testInventory;
-    let passedTestIds: readonly string[] = [];
+    let testExecutionEvidence: TestExecutionEvidenceSummary | undefined;
     let contractRelations: StaticImpactRelation[] = [];
     let contractLimitations: ImpactPackage["limitations"] = [];
     let businessContext: BusinessContextSummary = {status: "unavailable", associations: []};
@@ -107,7 +108,7 @@ export const reviewCodeChangeUseCase = async (
     }
     if (dependencies.testExecutionEvidence !== undefined) {
         try {
-            passedTestIds = await dependencies.testExecutionEvidence.readPassedTestIds(
+            testExecutionEvidence = await dependencies.testExecutionEvidence.read(
                 AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
             );
         } catch {
@@ -191,7 +192,7 @@ export const reviewCodeChangeUseCase = async (
                 [...result.relations, ...contractRelations],
                 [...result.limitations, ...contractLimitations],
                 testInventory,
-                passedTestIds,
+                testExecutionEvidence,
                 businessContext,
                 consumerContext,
                 validatedContractRelationIds,
@@ -202,7 +203,7 @@ export const reviewCodeChangeUseCase = async (
                 contractRelations,
                 ["impact-index-unavailable", ...contractLimitations],
                 testInventory,
-                passedTestIds,
+                testExecutionEvidence,
                 businessContext,
                 consumerContext,
                 validatedContractRelationIds,
@@ -214,7 +215,7 @@ export const reviewCodeChangeUseCase = async (
             contractRelations,
             contractLimitations,
             testInventory,
-            passedTestIds,
+            testExecutionEvidence,
             businessContext,
             consumerContext,
             validatedContractRelationIds,

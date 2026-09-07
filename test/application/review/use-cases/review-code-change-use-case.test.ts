@@ -165,7 +165,7 @@ describe("reviewCodeChangeUseCase", () => {
             discover: vi.fn().mockResolvedValue({status: "available" as const, frameworks: ["vitest" as const], assetCount: 1, staticReferences: []}),
         };
         const testExecutionEvidence = {
-            readPassedTestIds: vi.fn().mockResolvedValue([]),
+            read: vi.fn().mockResolvedValue({sourceRevision: "a".repeat(40), passedTestIds: []}),
         };
 
         await reviewCodeChangeUseCase({
@@ -194,7 +194,7 @@ describe("reviewCodeChangeUseCase", () => {
             expect.any(AbortSignal),
         );
         expect(testInventory.discover).toHaveBeenCalledWith(expect.any(AbortSignal));
-        expect(testExecutionEvidence.readPassedTestIds).toHaveBeenCalledWith(expect.any(AbortSignal));
+        expect(testExecutionEvidence.read).toHaveBeenCalledWith(expect.any(AbortSignal));
     });
 
     it("requires a current catalog snapshot before signed consumer evidence can prove compatibility", async () => {

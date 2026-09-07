@@ -138,7 +138,7 @@ export interface TestObligation {
     )[];
 }
 
-/** 可追溯的测试覆盖证明引用；当前发现阶段尚不产生此类证明。 */
+/** 可追溯的测试覆盖证明引用；引用只指向不透明资产或受控证明，不包含测试正文。 */
 export interface TestCoverageEvidenceReference {
     kind: "test-execution" | "impact-association" | "contract-validation" | "consumer-compatibility";
     referenceId: string;
@@ -152,22 +152,33 @@ export interface ImpactCoverage {
     limitation?: "test-inventory-unavailable"
         | "test-inventory-partial"
         | "impact-association-unavailable"
+        | "impact-association-insufficient"
         | "test-execution-unavailable"
         | "contract-validation-unavailable"
         | "consumer-compatibility-unavailable";
 }
 
-/** 可被安全引用的测试静态依赖；测试路径被不透明 ID 替代。 */
+/** 可被安全引用的测试静态依赖或直接符号调用；测试路径被不透明 ID 替代。 */
 export interface StaticTestReference {
     id: string;
     testId: string;
     target: string;
-    kind: "module-import" | "java-import";
+    kind: "module-import" | "java-import" | "typescript-symbol-call" | "java-symbol-call";
+    framework: "vitest" | "jest" | "junit";
+    sourceRevision: string;
+    association: "direct-static-import" | "direct-symbol-call";
+}
+
+/** 与当前提交绑定的已验签测试执行摘要；测试路径已投影为不透明 ID。 */
+export interface TestExecutionEvidenceSummary {
+    sourceRevision: string;
+    passedTestIds: readonly string[];
 }
 
 /** 测试资产发现的安全摘要；既不包含测试正文，也不把名称当作覆盖证明。 */
 export interface TestInventorySummary {
     status: "available" | "partial" | "unavailable";
+    sourceRevision?: string;
     frameworks: readonly ("vitest" | "jest" | "junit")[];
     assetCount: number;
     staticReferences: readonly StaticTestReference[];

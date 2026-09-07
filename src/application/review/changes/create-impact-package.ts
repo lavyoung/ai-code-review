@@ -4,6 +4,7 @@ import type {
     BusinessContextSummary,
     ExternalConsumerContextSummary,
     StaticTestReference,
+    TestExecutionEvidenceSummary,
     TestInventorySummary,
 } from "../../../domain/impact/model/impact-package.js";
 import {createTestObligations} from "../../../domain/impact/policy/create-test-obligations.js";
@@ -30,16 +31,37 @@ const matchesStaticTestReference = (
     if (isJavaRelation && reference.kind === "java-import") {
         return canonicalJavaClass(relation.sourcePath) === reference.target;
     }
+    // 变更的变量
+    const changedSymbol = relation.targetSymbol?.qualifiedName ?? relation.sourceSymbol?.qualifiedName;
+    if (changedSymbol === undefined) {
+        return false;
+    }
+    if (relation.sourceSymbol?.language === "typescript" && reference.kind === "typescript-symbol-call"
+        || relation.targetSymbol?.language === "typescript" && reference.kind === "typescript-symbol-call"
+        || relation.sourceSymbol?.language === "java" && reference.kind === "java-symbol-call"
+        || relation.targetSymbol?.language === "java" && reference.kind === "java-symbol-call") {
+        return changedSymbol === reference.target;
+    }
 
     return false;
 };
+
+const changedSymbolTargets = (relations: readonly StaticImpactRelation[]): readonly string[] => [...new Set(relations
+    .filter((relation) => relation.kind === "symbol-change"
+        || relation.kind === "typescript-source-change"
+        || relation.kind === "java-source-change")
+    .map((relation) => relation.targetSymbol?.qualifiedName ?? relation.sourceSymbol?.qualifiedName)
+    .filter((target): target is string => target !== undefined))];
+
+const uniqueEvidence = <T extends {kind: string; referenceId: string}>(evidence: readonly T[]): readonly T[] =>
+    [...new Map(evidence.map((entry) => [`${entry.kind}:${entry.referenceId}`, entry])).values()];
 
 /** 将已锚定的静态关系压缩成供 AI 消费的影响包，不包含原始 diff 或仓库正文。 */
 export const createImpactPackage = (
     relations: readonly StaticImpactRelation[],
     limitations: ImpactPackage["limitations"] = [],
     testInventory: TestInventorySummary = {status: "unavailable", frameworks: [], assetCount: 0, staticReferences: []},
-    passedTestIds: readonly string[] = [],
+    testExecutionEvidence?: TestExecutionEvidenceSummary,
     businessContext: BusinessContextSummary = {status: "unavailable", associations: []},
     consumerContext: ExternalConsumerContextSummary = {status: "unavailable", associations: []},
     validatedContractRelationIds: readonly string[] = [],
@@ -79,7 +101,8 @@ export const createImpactPackage = (
     const referencesByImpactId = new Map<string, StaticTestReference[]>();
     for (const impact of impacts) {
         const references = testInventory.staticReferences.filter((reference) =>
-            impact.relations.some((relation) => matchesStaticTestReference(relation, reference)),
+            reference.sourceRevision === testInventory.sourceRevision
+            && impact.relations.some((relation) => matchesStaticTestReference(relation, reference)),
         );
         referencesByImpactId.set(impact.id, references);
     }
@@ -153,21 +176,47 @@ export const createImpactPackage = (
                     limitation: "impact-association-unavailable" as const,
                 };
             }
-            const passedReferences = references.filter((reference) => passedTestIds.includes(reference.testId));
-            if (passedReferences.length > 0) {
+            const requiredSymbols = changedSymbolTargets(
+                impacts.find((impact) => impact.id === obligation.impactId)?.relations ?? [],
+            );
+            const directCallReferences = references.filter((reference) => reference.association === "direct-symbol-call");
+            const hasCompleteAssociation = requiredSymbols.length > 0 && requiredSymbols.every((symbol) =>
+                directCallReferences.some((reference) => reference.target === symbol));
+            if (!hasCompleteAssociation) {
+                return {
+                    obligationId: obligation.id,
+                    status: "partial" as const,
+                    evidence: references.map((reference) => ({
+                        kind: "impact-association" as const,
+                        referenceId: reference.id,
+                    })),
+                    limitation: "impact-association-insufficient" as const,
+                };
+            }
+            const executionMatchesInventory = testExecutionEvidence !== undefined
+                && testExecutionEvidence.sourceRevision === testInventory.sourceRevision;
+            const passedReferences = executionMatchesInventory
+                ? directCallReferences.filter((reference) => testExecutionEvidence.passedTestIds.includes(reference.testId))
+                : [];
+            const allRequiredSymbolsPassed = requiredSymbols.every((symbol) =>
+                passedReferences.some((reference) => reference.target === symbol));
+            if (allRequiredSymbolsPassed) {
                 return {
                     obligationId: obligation.id,
                     status: "demonstrated" as const,
-                    evidence: passedReferences.flatMap((reference) => [
+                    evidence: uniqueEvidence(passedReferences.flatMap((reference) => [
                         {kind: "impact-association" as const, referenceId: reference.id},
                         {kind: "test-execution" as const, referenceId: `test-execution:${reference.testId}`},
-                    ]),
+                    ])),
                 };
             }
             return {
                 obligationId: obligation.id,
                 status: "partial" as const,
-                evidence: references.map((reference) => ({kind: "impact-association" as const, referenceId: reference.id})),
+                evidence: directCallReferences.map((reference) => ({
+                    kind: "impact-association" as const,
+                    referenceId: reference.id,
+                })),
                 limitation: "test-execution-unavailable" as const,
             };
         }),
