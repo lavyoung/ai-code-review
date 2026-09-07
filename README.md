@@ -192,10 +192,12 @@ Java 语法树确认，再使用显式类型 import、同包类型和字段/参�
 候选唯一时参与实例、静态、继承和实现解析。
 
 若当前提交包含根 `tsconfig.json`，索引会读取其编译选项并在内存中创建只包含已提交 TypeScript 快照的 `Program`，用于识别局部函数
-返回值等标识符类型。仓库内相对 `extends` 会从同一 Git revision 按最多四层、八个配置文件和 512 KiB 总量读取并合并；包名、绝对路径、
-仓库外路径、`node_modules`、循环、缺失父配置和超限链均以 `typescript-configuration-unavailable` 降级。该过程强制 `noEmit`、`noLib`、
-禁用插件且不会访问工作区或执行构建；project references 当前仍保持不可用。Java 已修改方法可沿最多四层、显式 import/同包可解析的
-类继承链关联到派生类型调用。
+返回值等标识符类型。仓库内相对 `extends` 与 project references 会从同一 Git revision 读取；继承链和项目引用图各限制为最多四层，全部
+配置合计不超过八个文件与 512 KiB。被引用项目必须启用 `composite`，拥有唯一的项目目录，且其 `files`、`include`、`rootDir` 与
+`rootDirs` 不得逃逸该目录；具体源码优先使用目录层级最深的项目配置。仅包含空 `files` 和项目引用的 solution 配置不会被视为源码项目。
+包名、绝对路径、仓库外路径、`node_modules`、循环、缺失配置、目录归属歧义和超限图均以
+`typescript-configuration-unavailable` 降级。该过程强制 `noEmit`、`noLib`、禁用插件，不执行 `tsc --build`、不读取编译产物，也不会访问
+工作区。Java 已修改方法可沿最多四层、显式 import/同包可解析的类继承链关联到派生类型调用。
 
 对已锚定的静态关系，系统还会生成“应寻找何种验证证据”的最小测试义务。它会在受限数量内从当前提交发现 Vitest、Jest 与
 JUnit 测试资产，但不运行仓库脚本。尚未建立测试与影响路径的证据关联时，覆盖状态是 `not-demonstrated`；这意味着“尚未证明”，

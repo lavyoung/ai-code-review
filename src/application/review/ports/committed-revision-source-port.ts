@@ -18,8 +18,8 @@ export interface CommittedRevisionSourceSnapshot {
     typeScriptConfiguration?: {
         path: "tsconfig.json";
         content: string;
-        /** 仅包含从根配置通过安全相对 `extends` 解析到的已提交父配置。 */
-        extendedConfigurations?: readonly {
+        /** 仅包含从根配置通过安全 extends/project references 可达的已提交支持配置。 */
+        supportingConfigurations?: readonly {
             path: string;
             content: string;
         }[];

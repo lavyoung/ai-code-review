@@ -49,7 +49,7 @@ describe("semantic impact symbol identity", () => {
                 typeScriptConfiguration: {
                     path: "tsconfig.json" as const,
                     content: "{\"extends\":\"./config/strict.json\"}",
-                    extendedConfigurations: [{
+                    supportingConfigurations: [{
                         path: "config/strict.json",
                         content: "{\"compilerOptions\":{\"strictNullChecks\":true}}",
                     }],
@@ -82,6 +82,53 @@ describe("semantic impact symbol identity", () => {
         }));
     });
 
+    it("uses the most specific committed project-reference configuration for type resolution", async () => {
+        const diff = "@@ -2 +2 @@\n-export declare function parse(value: null): string;\n+export declare function parse(value: null): number;";
+        const base = "export declare function parse(value: string): string;\nexport declare function parse(value: null): string;\n";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                typeScriptConfigurationStatus: "available" as const,
+                typeScriptConfiguration: {
+                    path: "tsconfig.json" as const,
+                    content: "{\"files\":[],\"references\":[{\"path\":\"./packages/core\"}],\"compilerOptions\":{\"strictNullChecks\":false}}",
+                    supportingConfigurations: [{
+                        path: "packages/core/tsconfig.json",
+                        content: "{\"compilerOptions\":{\"composite\":true,\"strictNullChecks\":true}}",
+                    }],
+                },
+                files: revision === "base" ? [{
+                    path: "packages/core/src/parser.ts", language: "typescript" as const, content: base,
+                }] : [{
+                    path: "packages/core/src/parser.ts",
+                    language: "typescript" as const,
+                    content: base.replace("null): string", "null): number"),
+                }, {
+                    path: "packages/core/src/consumer.ts",
+                    language: "typescript" as const,
+                    content: "import {parse} from './parser.js';\nfunction input() { return null; }\nparse(input());\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "packages/core/src/parser.ts", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "packages/core/src/parser.ts", status: "modified"}],
+            chunks: [{id: "project-reference-chunk", path: "packages/core/src/parser.ts", oldRange: {startLine: 2, endLine: 2}, newRange: {startLine: 2, endLine: 2}, content: diff}],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.limitations).not.toContain("typescript-configuration-unavailable");
+        expect(result.relations).toContainEqual(expect.objectContaining({
+            kind: "calls",
+            sourcePath: "packages/core/src/consumer.ts",
+            targetSymbol: expect.objectContaining({signature: "(null)"}),
+        }));
+    });
+
     it("degrades a cyclic committed tsconfig extends chain without losing syntax relations", async () => {
         const diff = "@@ -1 +1 @@\n-export function convert() { return 1; }\n+export function convert() { return 2; }";
         const revisionSource = {
@@ -90,7 +137,7 @@ describe("semantic impact symbol identity", () => {
                 typeScriptConfiguration: {
                     path: "tsconfig.json" as const,
                     content: "{\"extends\":\"./config/base.json\"}",
-                    extendedConfigurations: [{
+                    supportingConfigurations: [{
                         path: "config/base.json",
                         content: "{\"extends\":\"../tsconfig.json\"}",
                     }],
@@ -120,32 +167,32 @@ describe("semantic impact symbol identity", () => {
     it.each([{
         name: "missing parent",
         root: "{\"extends\":\"./config/missing.json\"}",
-        extendedConfigurations: [],
+        supportingConfigurations: [],
     }, {
         name: "repository escape",
         root: "{\"extends\":\"../outside.json\"}",
-        extendedConfigurations: [],
+        supportingConfigurations: [],
     }, {
         name: "node_modules parent",
         root: "{\"extends\":\"./node_modules/shared/tsconfig.json\"}",
-        extendedConfigurations: [{
+        supportingConfigurations: [{
             path: "node_modules/shared/tsconfig.json",
             content: "{\"compilerOptions\":{\"strict\":true}}",
         }],
     }, {
-        name: "project references",
+        name: "missing project reference",
         root: "{\"references\":[{\"path\":\"./packages/core\"}]}",
-        extendedConfigurations: [],
+        supportingConfigurations: [],
     }, {
         name: "extends depth overflow",
         root: "{\"extends\":\"./config/level-1.json\"}",
-        extendedConfigurations: [1, 2, 3, 4].map((level) => ({
+        supportingConfigurations: [1, 2, 3, 4].map((level) => ({
             path: `config/level-${level}.json`,
             content: `{\"extends\":\"./level-${level + 1}.json\"}`,
         })),
     }])("degrades $name TypeScript configuration without losing syntax relations", async ({
         root,
-        extendedConfigurations,
+        supportingConfigurations,
     }) => {
         const diff = "@@ -1 +1 @@\n-export function convert() { return 1; }\n+export function convert() { return 2; }";
         const revisionSource = {
@@ -154,7 +201,7 @@ describe("semantic impact symbol identity", () => {
                 typeScriptConfiguration: {
                     path: "tsconfig.json" as const,
                     content: root,
-                    extendedConfigurations,
+                    supportingConfigurations,
                 },
                 files: [{
                     path: "src/converter.ts",

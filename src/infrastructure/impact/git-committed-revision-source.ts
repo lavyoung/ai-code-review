@@ -9,9 +9,9 @@ import type {RawCodeChange} from "../../domain/review/model/code-change.js";
 import {isSensitiveFile} from "../../domain/review/policy/sensitive-content-policy.js";
 import {
     MAX_TYPESCRIPT_CONFIG_CHARS,
-    MAX_TYPESCRIPT_CONFIG_DEPTH,
     MAX_TYPESCRIPT_CONFIG_FILES,
     readCommittedTypeScriptExtendsReferences,
+    readCommittedTypeScriptProjectReferences,
     resolveCommittedTypeScriptConfigurationReference,
 } from "./committed-typescript-configuration.js";
 
@@ -139,18 +139,18 @@ export class GitCommittedRevisionSource implements CommittedRevisionSourcePort {
         signal: AbortSignal,
     ): Promise<CommittedRevisionSourceSnapshot["typeScriptConfiguration"]> {
         const configurations: {path: string; content: string}[] = [];
-        const pending: {path: string; depth: number}[] = [{path: "tsconfig.json", depth: 0}];
+        const pending: string[] = ["tsconfig.json"];
         const visited = new Set<string>();
         let totalConfigurationChars = 0;
         while (pending.length > 0 && configurations.length < MAX_TYPESCRIPT_CONFIG_FILES) {
             const current = pending.shift();
-            if (current === undefined || visited.has(current.path)) {
+            if (current === undefined || visited.has(current)) {
                 continue;
             }
-            visited.add(current.path);
+            visited.add(current);
             let content: string;
             try {
-                content = await this.runner.run(["show", "--no-textconv", `${revision}:${current.path}`], signal);
+                content = await this.runner.run(["show", "--no-textconv", `${revision}:${current}`], signal);
             } catch {
                 continue;
             }
@@ -159,25 +159,33 @@ export class GitCommittedRevisionSource implements CommittedRevisionSourcePort {
                 continue;
             }
             totalConfigurationChars += content.length;
-            configurations.push({path: current.path, content});
-            if (current.depth >= MAX_TYPESCRIPT_CONFIG_DEPTH) {
-                continue;
-            }
-            for (const reference of readCommittedTypeScriptExtendsReferences(current.path, content)) {
-                const resolved = resolveCommittedTypeScriptConfigurationReference(current.path, reference, committedPaths);
+            configurations.push({path: current, content});
+            for (const reference of readCommittedTypeScriptExtendsReferences(current, content)) {
+                const resolved = resolveCommittedTypeScriptConfigurationReference(current, reference, committedPaths);
                 if (resolved !== undefined && !visited.has(resolved)) {
-                    pending.push({path: resolved, depth: current.depth + 1});
+                    pending.push(resolved);
+                }
+            }
+            for (const reference of readCommittedTypeScriptProjectReferences(current, content)) {
+                const resolved = resolveCommittedTypeScriptConfigurationReference(
+                    current,
+                    reference,
+                    committedPaths,
+                    "project",
+                );
+                if (resolved !== undefined && !visited.has(resolved)) {
+                    pending.push(resolved);
                 }
             }
         }
-        const [root, ...extendedConfigurations] = configurations;
+        const [root, ...supportingConfigurations] = configurations;
         if (root?.path !== "tsconfig.json") {
             return undefined;
         }
         return {
             path: "tsconfig.json",
             content: root.content,
-            ...(extendedConfigurations.length === 0 ? {} : {extendedConfigurations}),
+            ...(supportingConfigurations.length === 0 ? {} : {supportingConfigurations}),
         };
     }
 

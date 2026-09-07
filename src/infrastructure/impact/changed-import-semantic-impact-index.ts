@@ -24,7 +24,7 @@ import type {
     CommittedRevisionSourceSnapshot,
     CommittedSourceFile,
 } from "../../application/review/ports/committed-revision-source-port.js";
-import {resolveCommittedTypeScriptCompilerOptions} from "./committed-typescript-configuration.js";
+import {resolveCommittedTypeScriptProjects} from "./committed-typescript-configuration.js";
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/u;
 const typeScriptImport = /^\s*(?:import|export)\s+(?:.+?\s+from\s+)?["']([^"']+)["']/u;
@@ -458,20 +458,13 @@ const createTypeScriptTypeResolver = (
     if (typeScriptFiles.length === 0) {
         return undefined;
     }
-    const resolvedOptions = configuration === undefined
-        ? {}
-        : resolveCommittedTypeScriptCompilerOptions(configuration);
-    if (resolvedOptions === undefined) {
+    const projects = configuration === undefined
+        ? [{configurationPath: "tsconfig.json", directory: ".", options: {}}]
+        : resolveCommittedTypeScriptProjects(configuration);
+    if (projects === undefined) {
         limitations.add("typescript-configuration-unavailable");
         return undefined;
     }
-    const options: ts.CompilerOptions = {
-        ...resolvedOptions,
-        noEmit: true,
-        noLib: true,
-        allowJs: false,
-        plugins: [],
-    };
     const virtualPath = (path: string): string => `/repo/${canonicalPath(path).replace(/^\/+/, "")}`;
     const contentByPath = new Map(typeScriptFiles.map((file) => [virtualPath(file.path), file.content]));
     const directories = new Set<string>(["/repo"]);
@@ -485,7 +478,7 @@ const createTypeScriptTypeResolver = (
             directory = pathTools.dirname(directory);
         }
     }
-    const host: ts.CompilerHost = {
+    const createHost = (directory: string): ts.CompilerHost => ({
         fileExists: (path) => contentByPath.has(canonicalPath(path)),
         readFile: (path) => contentByPath.get(canonicalPath(path)),
         getSourceFile: (path, languageVersion) => {
@@ -496,7 +489,7 @@ const createTypeScriptTypeResolver = (
         },
         getDefaultLibFileName: () => "",
         writeFile: () => undefined,
-        getCurrentDirectory: () => "/repo",
+        getCurrentDirectory: () => directory === "." ? "/repo" : `/repo/${directory}`,
         directoryExists: (path) => directories.has(canonicalPath(path)),
         getDirectories: (path) => [...directories]
             .filter((directory) => pathTools.dirname(directory) === canonicalPath(path)),
@@ -504,11 +497,32 @@ const createTypeScriptTypeResolver = (
         getCanonicalFileName: (path) => path,
         useCaseSensitiveFileNames: () => true,
         getNewLine: () => "\n",
-    };
-    const program = ts.createProgram({rootNames: [...contentByPath.keys()], options, host});
-    const checker = program.getTypeChecker();
+    });
+    const projectPrograms = projects.map((project) => {
+        const rootNames = typeScriptFiles
+            .filter((file) => project.directory === "."
+                || canonicalPath(file.path).startsWith(`${project.directory}/`))
+            .map((file) => virtualPath(file.path));
+        const options: ts.CompilerOptions = {
+            ...project.options,
+            noEmit: true,
+            noLib: true,
+            allowJs: false,
+            plugins: [],
+        };
+        const program = ts.createProgram({rootNames, options, host: createHost(project.directory)});
+        return {...project, program, checker: program.getTypeChecker()};
+    });
     return (path, position) => {
-        const sourceFile = program.getSourceFile(virtualPath(path));
+        const normalizedPath = canonicalPath(path);
+        const project = [...projectPrograms]
+            .filter((candidate) => candidate.directory === "."
+                || normalizedPath.startsWith(`${candidate.directory}/`))
+            .sort((left, right) => right.directory.length - left.directory.length)[0];
+        if (project === undefined) {
+            return "unknown";
+        }
+        const sourceFile = project.program.getSourceFile(virtualPath(path));
         if (sourceFile === undefined) {
             return "unknown";
         }
@@ -526,7 +540,7 @@ const createTypeScriptTypeResolver = (
         if (matched === undefined) {
             return "unknown";
         }
-        const type = checker.getTypeAtLocation(matched);
+        const type = project.checker.getTypeAtLocation(matched);
         if ((type.flags & ts.TypeFlags.StringLike) !== 0) {
             return "string";
         }

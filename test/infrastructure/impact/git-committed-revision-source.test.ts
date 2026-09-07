@@ -68,7 +68,7 @@ describe("GitCommittedRevisionSource", () => {
         expect(snapshot.typeScriptConfiguration).toEqual({
             path: "tsconfig.json",
             content: "{\"extends\":\"./config/strict\",\"compilerOptions\":{\"noUncheckedIndexedAccess\":true}}",
-            extendedConfigurations: [{
+            supportingConfigurations: [{
                 path: "config/strict.json",
                 content: "{\"compilerOptions\":{\"strict\":true}}",
             }],
@@ -99,6 +99,42 @@ describe("GitCommittedRevisionSource", () => {
         });
         expect(run.mock.calls.flatMap(([arguments_]) => arguments_ as string[]))
             .not.toContain("head-sha:../outside.json");
+    });
+
+    it("loads a committed project-reference configuration without executing a build", async () => {
+        const run = vi.fn(async (arguments_: readonly string[]) => {
+            const operation = arguments_.join(" ");
+            if (operation.includes("rev-parse")) {
+                return "head-sha\n";
+            }
+            if (operation.includes("ls-tree")) {
+                return "packages/core/src/index.ts\0packages/core/tsconfig.json\0tsconfig.json\0";
+            }
+            if (operation.endsWith("head-sha:packages/core/src/index.ts")) {
+                return "export const value = 1;\n";
+            }
+            if (operation.endsWith("head-sha:tsconfig.json")) {
+                return "{\"files\":[],\"references\":[{\"path\":\"./packages/core\"}]}";
+            }
+            if (operation.endsWith("head-sha:packages/core/tsconfig.json")) {
+                return "{\"compilerOptions\":{\"composite\":true,\"strictNullChecks\":true}}";
+            }
+            throw new Error(`Unexpected Git operation: ${operation}`);
+        });
+        const source = new GitCommittedRevisionSource("D:/repository", {run});
+
+        const snapshot = await source.read({
+            baseRef: "base",
+            headRef: "head",
+            comparison: "two-dot",
+        }, "head", AbortSignal.timeout(1_000));
+
+        expect(snapshot.typeScriptConfiguration).toMatchObject({
+            path: "tsconfig.json",
+            supportingConfigurations: [{path: "packages/core/tsconfig.json"}],
+        });
+        expect(run.mock.calls.flatMap(([arguments_]) => arguments_ as string[]))
+            .not.toContain("--build");
     });
 
     it("reads the three-dot merge base from Git objects without using workspace files", async () => {

@@ -575,10 +575,13 @@ TypeScript 跨文件调用使用 AST 解析默认、具名、namespace import �
 barrel re-export 图在四层深度内传播唯一导出名称并检测循环，分别以 `barrel-depth-unavailable`、`barrel-cycle-unavailable` 明确降级。
 TypeScript 类继承获得的方法可沿最多四层、显式可解析的继承链关联调用；超限标记 `inheritance-depth-unavailable`。Java 通配符 import
 只在包与简单类型名共同确定唯一候选时使用。
-根 `tsconfig.json` 可作为当前 revision 的受限配置输入。索引用其编译选项构建纯内存 TypeScript `Program`，源码仅来自 Git 对象快照；
-宿主强制 `noEmit`、`noLib`、禁用插件并把文件访问限制在快照映射中。仓库内相对 `extends` 由 Git 适配器按显式引用读取，限制为四层、
-八个配置文件和 512 KiB 配置总量；各层编译选项按父到子顺序合并，并以配置所在目录解析相对选项。包名、绝对/仓库外路径、
-`node_modules`、循环、缺失、无效配置、超限链及 project references 会追加 `typescript-configuration-unavailable`，语法级关系仍可保留。
+根 `tsconfig.json` 可作为当前 revision 的受限配置入口。索引用其编译选项构建纯内存 TypeScript `Program`，源码仅来自 Git 对象快照；
+宿主强制 `noEmit`、`noLib`、禁用插件并把文件访问限制在快照映射中。仓库内相对 `extends` 与 project references 均由 Git 适配器按显式
+引用从同一 revision 读取；配置继承链与项目引用图各限制为四层，所有配置合计不超过八个文件和 512 KiB。编译选项按父到子顺序
+合并，并以配置所在目录解析相对选项。被引用项目必须声明 `composite: true`，每个项目目录只能有一个配置，且显式的 `files`、`include`、
+`rootDir` 和 `rootDirs` 必须留在该项目目录内；源码按最深目录归属选择 `Program`。仅包含空 `files` 与项目引用的 solution 配置只参与
+图遍历，不拥有源码。系统不执行 `tsc --build`，也不消费 `.tsbuildinfo`、声明文件或其他编译产物。包名、绝对/仓库外路径、
+`node_modules`、循环、缺失、无效配置、超限图和目录归属歧义会追加 `typescript-configuration-unavailable`，语法级关系仍可保留。
 Java 方法影响可沿最多四层、显式可解析的类继承链传播，继续复用 `inheritance-depth-unavailable` 表示截断。
 每个已锚定的关系还会由领域策略生成最小测试义务。`TestInventoryPort` 当前仅在受限数量内发现已提交的 Vitest、Jest 与 JUnit
 测试资产，输出无正文、无路径的框架与数量摘要；未建立影响关联时覆盖为 `not-demonstrated`，不等于没有测试。发现超出上限或

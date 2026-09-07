@@ -26,6 +26,7 @@ export const resolveCommittedTypeScriptConfigurationReference = (
     currentPath: string,
     reference: string,
     committedPaths: ReadonlySet<string>,
+    kind: "extends" | "project" = "extends",
 ): string | undefined => {
     if ((!reference.startsWith("./") && !reference.startsWith("../"))
         || reference.includes("\\")
@@ -36,10 +37,20 @@ export const resolveCommittedTypeScriptConfigurationReference = (
     if (!isSafeConfigurationPath(normalized)) {
         return undefined;
     }
-    const candidates = reference.endsWith(".json")
+    const candidates = (reference.endsWith(".json")
         ? [normalized]
-        : [`${normalized}.json`, `${normalized}/tsconfig.json`];
+        : kind === "project"
+            ? [`${normalized}/tsconfig.json`, `${normalized}.json`]
+            : [`${normalized}.json`, `${normalized}/tsconfig.json`])
+        .map((candidate) => pathTools.normalize(candidate));
     return candidates.find((candidate) => isSafeConfigurationPath(candidate) && committedPaths.has(candidate));
+};
+
+const parseConfiguration = (path: string, content: string): Record<string, unknown> | undefined => {
+    const parsed = ts.parseConfigFileTextToJson(path, content);
+    return parsed.error === undefined && parsed.config !== undefined
+        ? parsed.config as Record<string, unknown>
+        : undefined;
 };
 
 /** 从 JSONC 配置中读取合法的 extends 字符串；语义错误由最终合并阶段统一降级。 */
@@ -47,11 +58,11 @@ export const readCommittedTypeScriptExtendsReferences = (
     path: string,
     content: string,
 ): readonly string[] => {
-    const parsed = ts.parseConfigFileTextToJson(path, content);
-    if (parsed.error !== undefined || parsed.config === undefined) {
+    const configuration = parseConfiguration(path, content);
+    if (configuration === undefined) {
         return [];
     }
-    const value: unknown = parsed.config.extends;
+    const value: unknown = configuration.extends;
     if (typeof value === "string") {
         return [value];
     }
@@ -60,16 +71,45 @@ export const readCommittedTypeScriptExtendsReferences = (
         : [];
 };
 
+/** 从配置中读取 project references；非法结构由最终配置图解析统一判为不可用。 */
+export const readCommittedTypeScriptProjectReferences = (
+    path: string,
+    content: string,
+): readonly string[] => {
+    const configuration = parseConfiguration(path, content);
+    const value = configuration?.references;
+    if (value === undefined) {
+        return [];
+    }
+    return Array.isArray(value) && value.every((entry): entry is {path: string} =>
+        typeof entry === "object"
+        && entry !== null
+        && typeof (entry as {path?: unknown}).path === "string")
+        ? value.map((entry) => entry.path)
+        : [];
+};
+
+/** 一个已验证配置图节点；directory 用于为源码选择最具体的项目配置。 */
+export interface ResolvedCommittedTypeScriptProject {
+    configurationPath: string;
+    directory: string;
+    options: ts.CompilerOptions;
+}
+
 /**
  * 合并已提交的受控 TypeScript 配置链。
  *
- * 任一父配置缺失、循环、越界、包含 project references 或配置诊断时整体返回不可用；
+ * 任一父/项目配置缺失、循环、越界、目录归属歧义或配置诊断时整体返回不可用；
  * 调用方仍可继续不依赖类型检查器的语法分析。
  */
-export const resolveCommittedTypeScriptCompilerOptions = (
+export const resolveCommittedTypeScriptProjects = (
     configuration: CommittedTypeScriptConfiguration,
-): ts.CompilerOptions | undefined => {
-    const configurationFiles = [configuration, ...(configuration.extendedConfigurations ?? [])];
+): readonly ResolvedCommittedTypeScriptProject[] | undefined => {
+    const configurationFiles = [configuration, ...(configuration.supportingConfigurations ?? [])];
+    if (configurationFiles.length > MAX_TYPESCRIPT_CONFIG_FILES
+        || configurationFiles.reduce((total, entry) => total + entry.content.length, 0) > MAX_TYPESCRIPT_CONFIG_CHARS) {
+        return undefined;
+    }
     const configurations = new Map(configurationFiles.map((entry) => [canonicalPath(entry.path), {
         path: canonicalPath(entry.path),
         content: entry.content,
@@ -88,11 +128,11 @@ export const resolveCommittedTypeScriptCompilerOptions = (
         if (input === undefined || visiting.has(path) || depth > MAX_TYPESCRIPT_CONFIG_DEPTH) {
             return undefined;
         }
-        const parsed = ts.parseConfigFileTextToJson(path, input.content);
-        if (parsed.error !== undefined || parsed.config === undefined || parsed.config.references !== undefined) {
+        const parsedConfiguration = parseConfiguration(path, input.content);
+        if (parsedConfiguration === undefined) {
             return undefined;
         }
-        const extendsValue: unknown = parsed.config.extends;
+        const extendsValue: unknown = parsedConfiguration.extends;
         const references = extendsValue === undefined
             ? []
             : typeof extendsValue === "string"
@@ -122,11 +162,97 @@ export const resolveCommittedTypeScriptCompilerOptions = (
         }
         const directory = pathTools.dirname(path);
         const converted = ts.convertCompilerOptionsFromJson(
-            parsed.config.compilerOptions ?? {},
+            parsedConfiguration.compilerOptions ?? {},
             `/repo/${directory === "." ? "" : directory}`,
         );
         return converted.errors.length === 0 ? {...inherited, ...converted.options} : undefined;
     };
 
-    return resolve("tsconfig.json", new Set(), 0);
+    const projects = new Map<string, ResolvedCommittedTypeScriptProject>();
+    const completedProjects = new Set<string>();
+    const staysWithinProjectDirectory = (directory: string, value: string): boolean => {
+        if (value.includes("\\") || pathTools.isAbsolute(value)) {
+            return false;
+        }
+        const resolved = pathTools.normalize(pathTools.join(directory, value));
+        return resolved === directory || resolved.startsWith(`${directory}/`);
+    };
+    const visitProject = (path: string, visiting: ReadonlySet<string>, depth: number): boolean => {
+        if (visiting.has(path) || depth > MAX_TYPESCRIPT_CONFIG_DEPTH) {
+            return false;
+        }
+        if (completedProjects.has(path)) {
+            return true;
+        }
+        const input = configurations.get(path);
+        const parsedConfiguration = input === undefined ? undefined : parseConfiguration(path, input.content);
+        const options = resolve(path, new Set(), 0);
+        if (parsedConfiguration === undefined || options === undefined) {
+            return false;
+        }
+        const directory = pathTools.dirname(path);
+        if (path !== "tsconfig.json" && directory === ".") {
+            return false;
+        }
+        if (path !== "tsconfig.json") {
+            const configuredSources = [parsedConfiguration.files, parsedConfiguration.include]
+                .filter((value) => value !== undefined);
+            if (options.composite !== true
+                || configuredSources.some((value) => !Array.isArray(value)
+                    || !value.every((entry) => typeof entry === "string"
+                        && staysWithinProjectDirectory(directory, entry)))) {
+                return false;
+            }
+            const projectDirectory = `/repo/${directory}`;
+            if ((options.rootDir !== undefined
+                    && options.rootDir !== projectDirectory
+                    && !options.rootDir.startsWith(`${projectDirectory}/`))
+                || options.rootDirs?.some((rootDirectory) => rootDirectory !== projectDirectory
+                    && !rootDirectory.startsWith(`${projectDirectory}/`)) === true) {
+                return false;
+            }
+        }
+        const referencesValue = parsedConfiguration.references;
+        const references = referencesValue === undefined
+            ? []
+            : Array.isArray(referencesValue) && referencesValue.every((entry): entry is {path: string} =>
+                typeof entry === "object"
+                && entry !== null
+                && typeof (entry as {path?: unknown}).path === "string")
+                ? referencesValue.map((entry) => entry.path)
+                : undefined;
+        if (references === undefined || (depth === MAX_TYPESCRIPT_CONFIG_DEPTH && references.length > 0)) {
+            return false;
+        }
+        const nextVisiting = new Set(visiting).add(path);
+        const valid = references.every((reference) => {
+            const projectPath = resolveCommittedTypeScriptConfigurationReference(
+                path,
+                reference,
+                new Set(configurations.keys()),
+                "project",
+            );
+            return projectPath !== undefined && visitProject(projectPath, nextVisiting, depth + 1);
+        });
+        if (!valid) {
+            return false;
+        }
+        completedProjects.add(path);
+        const hasNoConfiguredSources = Array.isArray(parsedConfiguration.files)
+            && parsedConfiguration.files.length === 0
+            && (parsedConfiguration.include === undefined
+                || (Array.isArray(parsedConfiguration.include) && parsedConfiguration.include.length === 0));
+        if (!hasNoConfiguredSources) {
+            projects.set(path, {configurationPath: path, directory, options});
+        }
+        return true;
+    };
+
+    if (!visitProject("tsconfig.json", new Set(), 0)) {
+        return undefined;
+    }
+    const resolvedProjects = [...projects.values()];
+    return new Set(resolvedProjects.map((project) => project.directory)).size === resolvedProjects.length
+        ? resolvedProjects
+        : undefined;
 };
