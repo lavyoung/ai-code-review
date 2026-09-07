@@ -7,6 +7,13 @@ import type {
 } from "../../application/review/ports/committed-revision-source-port.js";
 import type {RawCodeChange} from "../../domain/review/model/code-change.js";
 import {isSensitiveFile} from "../../domain/review/policy/sensitive-content-policy.js";
+import {
+    MAX_TYPESCRIPT_CONFIG_CHARS,
+    MAX_TYPESCRIPT_CONFIG_DEPTH,
+    MAX_TYPESCRIPT_CONFIG_FILES,
+    readCommittedTypeScriptExtendsReferences,
+    resolveCommittedTypeScriptConfigurationReference,
+} from "./committed-typescript-configuration.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_SOURCE_FILES = 100;
@@ -79,14 +86,21 @@ export class GitCommittedRevisionSource implements CommittedRevisionSourcePort {
                 return {status: "unavailable", files: []};
             }
             const listed = await this.runner.run(["ls-tree", "-r", "-z", "--name-only", resolvedRevision, "--"], signal);
-            const supportedPaths = listed.split("\0")
+            const committedPaths = listed.split("\0")
+                .filter((path) => path !== "");
+            const committedPathSet = new Set(committedPaths);
+            const supportedPaths = committedPaths
                 .filter((path) => path !== "")
-                .filter((path) => languageOf(path) !== undefined || path === "tsconfig.json")
+                .filter((path) => languageOf(path) !== undefined)
                 .filter((path) => !isSensitiveFile({path, status: "modified"}));
             const selectedPaths = supportedPaths.slice(0, MAX_SOURCE_FILES);
-            const loaded = await this.readFiles(resolvedRevision, selectedPaths, signal);
+            const [loaded, typeScriptConfiguration] = await Promise.all([
+                this.readFiles(resolvedRevision, selectedPaths, signal),
+                committedPathSet.has("tsconfig.json")
+                    ? this.readTypeScriptConfiguration(resolvedRevision, committedPathSet, signal)
+                    : Promise.resolve(undefined),
+            ]);
             const files: CommittedSourceFile[] = [];
-            let typeScriptConfiguration: CommittedRevisionSourceSnapshot["typeScriptConfiguration"];
             let totalChars = 0;
             let partial = supportedPaths.length > selectedPaths.length || loaded.some((entry) => entry.content === undefined);
             for (const entry of loaded) {
@@ -100,10 +114,6 @@ export class GitCommittedRevisionSource implements CommittedRevisionSourcePort {
                     break;
                 }
                 totalChars += entry.content.length;
-                if (entry.path === "tsconfig.json") {
-                    typeScriptConfiguration = {path: "tsconfig.json", content: entry.content};
-                    continue;
-                }
                 if (language === undefined) {
                     partial = true;
                     continue;
@@ -113,11 +123,62 @@ export class GitCommittedRevisionSource implements CommittedRevisionSourcePort {
             return {
                 status: partial ? "partial" : "available",
                 files,
+                ...(committedPathSet.has("tsconfig.json")
+                    ? {typeScriptConfigurationStatus: typeScriptConfiguration === undefined ? "unavailable" as const : "available" as const}
+                    : {}),
                 ...(typeScriptConfiguration === undefined ? {} : {typeScriptConfiguration}),
             };
         } catch {
             return {status: "unavailable", files: []};
         }
+    }
+
+    private async readTypeScriptConfiguration(
+        revision: string,
+        committedPaths: ReadonlySet<string>,
+        signal: AbortSignal,
+    ): Promise<CommittedRevisionSourceSnapshot["typeScriptConfiguration"]> {
+        const configurations: {path: string; content: string}[] = [];
+        const pending: {path: string; depth: number}[] = [{path: "tsconfig.json", depth: 0}];
+        const visited = new Set<string>();
+        let totalConfigurationChars = 0;
+        while (pending.length > 0 && configurations.length < MAX_TYPESCRIPT_CONFIG_FILES) {
+            const current = pending.shift();
+            if (current === undefined || visited.has(current.path)) {
+                continue;
+            }
+            visited.add(current.path);
+            let content: string;
+            try {
+                content = await this.runner.run(["show", "--no-textconv", `${revision}:${current.path}`], signal);
+            } catch {
+                continue;
+            }
+            if (content.length > MAX_FILE_CHARS
+                || totalConfigurationChars + content.length > MAX_TYPESCRIPT_CONFIG_CHARS) {
+                continue;
+            }
+            totalConfigurationChars += content.length;
+            configurations.push({path: current.path, content});
+            if (current.depth >= MAX_TYPESCRIPT_CONFIG_DEPTH) {
+                continue;
+            }
+            for (const reference of readCommittedTypeScriptExtendsReferences(current.path, content)) {
+                const resolved = resolveCommittedTypeScriptConfigurationReference(current.path, reference, committedPaths);
+                if (resolved !== undefined && !visited.has(resolved)) {
+                    pending.push({path: resolved, depth: current.depth + 1});
+                }
+            }
+        }
+        const [root, ...extendedConfigurations] = configurations;
+        if (root?.path !== "tsconfig.json") {
+            return undefined;
+        }
+        return {
+            path: "tsconfig.json",
+            content: root.content,
+            ...(extendedConfigurations.length === 0 ? {} : {extendedConfigurations}),
+        };
     }
 
     private async readFiles(

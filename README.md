@@ -192,8 +192,10 @@ Java 语法树确认，再使用显式类型 import、同包类型和字段/参�
 候选唯一时参与实例、静态、继承和实现解析。
 
 若当前提交包含根 `tsconfig.json`，索引会读取其编译选项并在内存中创建只包含已提交 TypeScript 快照的 `Program`，用于识别局部函数
-返回值等标识符类型。该过程强制 `noEmit`、`noLib`、禁用插件且不会访问工作区或执行构建；非法配置、`extends` 和 project references
-当前以 `typescript-configuration-unavailable` 降级。Java 已修改方法可沿最多四层、显式 import/同包可解析的类继承链关联到派生类型调用。
+返回值等标识符类型。仓库内相对 `extends` 会从同一 Git revision 按最多四层、八个配置文件和 512 KiB 总量读取并合并；包名、绝对路径、
+仓库外路径、`node_modules`、循环、缺失父配置和超限链均以 `typescript-configuration-unavailable` 降级。该过程强制 `noEmit`、`noLib`、
+禁用插件且不会访问工作区或执行构建；project references 当前仍保持不可用。Java 已修改方法可沿最多四层、显式 import/同包可解析的
+类继承链关联到派生类型调用。
 
 对已锚定的静态关系，系统还会生成“应寻找何种验证证据”的最小测试义务。它会在受限数量内从当前提交发现 Vitest、Jest 与
 JUnit 测试资产，但不运行仓库脚本。尚未建立测试与影响路径的证据关联时，覆盖状态是 `not-demonstrated`；这意味着“尚未证明”，

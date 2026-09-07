@@ -576,9 +576,10 @@ barrel re-export 图在四层深度内传播唯一导出名称并检测循环，
 TypeScript 类继承获得的方法可沿最多四层、显式可解析的继承链关联调用；超限标记 `inheritance-depth-unavailable`。Java 通配符 import
 只在包与简单类型名共同确定唯一候选时使用。
 根 `tsconfig.json` 可作为当前 revision 的受限配置输入。索引用其编译选项构建纯内存 TypeScript `Program`，源码仅来自 Git 对象快照；
-宿主强制 `noEmit`、`noLib`、禁用插件并把文件访问限制在快照映射中。配置语法错误、`extends` 或 project references 会追加
-`typescript-configuration-unavailable`，语法级关系仍可保留。Java 方法影响可沿最多四层、显式可解析的类继承链传播，继续复用
-`inheritance-depth-unavailable` 表示截断。
+宿主强制 `noEmit`、`noLib`、禁用插件并把文件访问限制在快照映射中。仓库内相对 `extends` 由 Git 适配器按显式引用读取，限制为四层、
+八个配置文件和 512 KiB 配置总量；各层编译选项按父到子顺序合并，并以配置所在目录解析相对选项。包名、绝对/仓库外路径、
+`node_modules`、循环、缺失、无效配置、超限链及 project references 会追加 `typescript-configuration-unavailable`，语法级关系仍可保留。
+Java 方法影响可沿最多四层、显式可解析的类继承链传播，继续复用 `inheritance-depth-unavailable` 表示截断。
 每个已锚定的关系还会由领域策略生成最小测试义务。`TestInventoryPort` 当前仅在受限数量内发现已提交的 Vitest、Jest 与 JUnit
 测试资产，输出无正文、无路径的框架与数量摘要；未建立影响关联时覆盖为 `not-demonstrated`，不等于没有测试。发现超出上限或
 不可用时覆盖为 `not-assessable`，并分别附带 `test-inventory-partial` 或 `test-inventory-unavailable` 限制。测试义务仅表示需要的

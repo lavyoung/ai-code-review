@@ -40,6 +40,144 @@ describe("semantic impact symbol identity", () => {
         }));
     });
 
+    it("merges a committed relative tsconfig extends chain for type resolution", async () => {
+        const diff = "@@ -2 +2 @@\n-export declare function parse(value: null): string;\n+export declare function parse(value: null): number;";
+        const base = "export declare function parse(value: string): string;\nexport declare function parse(value: null): string;\n";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                typeScriptConfiguration: {
+                    path: "tsconfig.json" as const,
+                    content: "{\"extends\":\"./config/strict.json\"}",
+                    extendedConfigurations: [{
+                        path: "config/strict.json",
+                        content: "{\"compilerOptions\":{\"strictNullChecks\":true}}",
+                    }],
+                },
+                files: revision === "base" ? [{path: "src/parser.ts", language: "typescript" as const, content: base}] : [{
+                    path: "src/parser.ts", language: "typescript" as const, content: base.replace("null): string", "null): number"),
+                }, {
+                    path: "src/config-consumer.ts",
+                    language: "typescript" as const,
+                    content: "import {parse} from './parser.js';\nfunction input() { return null; }\nparse(input());\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/parser.ts", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/parser.ts", status: "modified"}],
+            chunks: [{id: "extended-config-chunk", path: "src/parser.ts", oldRange: {startLine: 2, endLine: 2}, newRange: {startLine: 2, endLine: 2}, content: diff}],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.limitations).not.toContain("typescript-configuration-unavailable");
+        expect(result.relations).toContainEqual(expect.objectContaining({
+            kind: "calls",
+            sourcePath: "src/config-consumer.ts",
+            targetSymbol: expect.objectContaining({signature: "(null)"}),
+        }));
+    });
+
+    it("degrades a cyclic committed tsconfig extends chain without losing syntax relations", async () => {
+        const diff = "@@ -1 +1 @@\n-export function convert() { return 1; }\n+export function convert() { return 2; }";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                typeScriptConfiguration: {
+                    path: "tsconfig.json" as const,
+                    content: "{\"extends\":\"./config/base.json\"}",
+                    extendedConfigurations: [{
+                        path: "config/base.json",
+                        content: "{\"extends\":\"../tsconfig.json\"}",
+                    }],
+                },
+                files: [{
+                    path: "src/converter.ts",
+                    language: "typescript" as const,
+                    content: revision === "base" ? "export function convert() { return 1; }" : "export function convert() { return 2; }",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/converter.ts", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/converter.ts", status: "modified"}],
+            chunks: [{id: "cyclic-config-chunk", path: "src/converter.ts", oldRange: {startLine: 1, endLine: 1}, newRange: {startLine: 1, endLine: 1}, content: diff}],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.limitations).toContain("typescript-configuration-unavailable");
+        expect(result.relations).toContainEqual(expect.objectContaining({kind: "symbol-change"}));
+    });
+
+    it.each([{
+        name: "missing parent",
+        root: "{\"extends\":\"./config/missing.json\"}",
+        extendedConfigurations: [],
+    }, {
+        name: "repository escape",
+        root: "{\"extends\":\"../outside.json\"}",
+        extendedConfigurations: [],
+    }, {
+        name: "node_modules parent",
+        root: "{\"extends\":\"./node_modules/shared/tsconfig.json\"}",
+        extendedConfigurations: [{
+            path: "node_modules/shared/tsconfig.json",
+            content: "{\"compilerOptions\":{\"strict\":true}}",
+        }],
+    }, {
+        name: "project references",
+        root: "{\"references\":[{\"path\":\"./packages/core\"}]}",
+        extendedConfigurations: [],
+    }, {
+        name: "extends depth overflow",
+        root: "{\"extends\":\"./config/level-1.json\"}",
+        extendedConfigurations: [1, 2, 3, 4].map((level) => ({
+            path: `config/level-${level}.json`,
+            content: `{\"extends\":\"./level-${level + 1}.json\"}`,
+        })),
+    }])("degrades $name TypeScript configuration without losing syntax relations", async ({
+        root,
+        extendedConfigurations,
+    }) => {
+        const diff = "@@ -1 +1 @@\n-export function convert() { return 1; }\n+export function convert() { return 2; }";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                typeScriptConfiguration: {
+                    path: "tsconfig.json" as const,
+                    content: root,
+                    extendedConfigurations,
+                },
+                files: [{
+                    path: "src/converter.ts",
+                    language: "typescript" as const,
+                    content: revision === "base" ? "export function convert() { return 1; }" : "export function convert() { return 2; }",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/converter.ts", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/converter.ts", status: "modified"}],
+            chunks: [{id: "unavailable-config-chunk", path: "src/converter.ts", oldRange: {startLine: 1, endLine: 1}, newRange: {startLine: 1, endLine: 1}, content: diff}],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.limitations).toContain("typescript-configuration-unavailable");
+        expect(result.relations).toContainEqual(expect.objectContaining({kind: "symbol-change"}));
+    });
+
     it("degrades an invalid committed TypeScript configuration without losing syntax relations", async () => {
         const diff = "@@ -1 +1 @@\n-export function convert() { return 1; }\n+export function convert() { return 2; }";
         const revisionSource = {

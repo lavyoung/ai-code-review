@@ -12,10 +12,17 @@ export interface CommittedSourceFile {
 export interface CommittedRevisionSourceSnapshot {
     status: "available" | "partial" | "unavailable";
     files: readonly CommittedSourceFile[];
+    /** 仅在提交中存在根 tsconfig 时返回；不可用状态禁止回退到默认类型配置。 */
+    typeScriptConfigurationStatus?: "available" | "unavailable";
     /** 仅允许当前 revision 根目录的 TypeScript 配置；适配器不会解析或执行插件。 */
     typeScriptConfiguration?: {
         path: "tsconfig.json";
         content: string;
+        /** 仅包含从根配置通过安全相对 `extends` 解析到的已提交父配置。 */
+        extendedConfigurations?: readonly {
+            path: string;
+            content: string;
+        }[];
     };
 }
 

@@ -21,8 +21,10 @@ import type {
 } from "../../application/review/ports/semantic-impact-index-port.js";
 import type {
     CommittedRevisionSourcePort,
+    CommittedRevisionSourceSnapshot,
     CommittedSourceFile,
 } from "../../application/review/ports/committed-revision-source-port.js";
+import {resolveCommittedTypeScriptCompilerOptions} from "./committed-typescript-configuration.js";
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/u;
 const typeScriptImport = /^\s*(?:import|export)\s+(?:.+?\s+from\s+)?["']([^"']+)["']/u;
@@ -449,29 +451,22 @@ type TypeScriptTypeResolver = (path: string, position: number) => string;
 
 const createTypeScriptTypeResolver = (
     files: readonly CommittedSourceFile[],
-    configuration: {path: "tsconfig.json"; content: string} | undefined,
+    configuration: CommittedRevisionSourceSnapshot["typeScriptConfiguration"],
     limitations: Set<ImpactPackage["limitations"][number]>,
 ): TypeScriptTypeResolver | undefined => {
     const typeScriptFiles = files.filter((file) => file.language === "typescript");
     if (typeScriptFiles.length === 0) {
         return undefined;
     }
-    const parsedConfiguration = configuration === undefined
-        ? {config: {}}
-        : ts.parseConfigFileTextToJson(configuration.path, configuration.content);
-    if (parsedConfiguration.error !== undefined || parsedConfiguration.config === undefined) {
+    const resolvedOptions = configuration === undefined
+        ? {}
+        : resolveCommittedTypeScriptCompilerOptions(configuration);
+    if (resolvedOptions === undefined) {
         limitations.add("typescript-configuration-unavailable");
         return undefined;
     }
-    if (parsedConfiguration.config.extends !== undefined || parsedConfiguration.config.references !== undefined) {
-        limitations.add("typescript-configuration-unavailable");
-    }
-    const converted = ts.convertCompilerOptionsFromJson(parsedConfiguration.config.compilerOptions ?? {}, "/repo");
-    if (converted.errors.length > 0) {
-        limitations.add("typescript-configuration-unavailable");
-    }
     const options: ts.CompilerOptions = {
-        ...converted.options,
+        ...resolvedOptions,
         noEmit: true,
         noLib: true,
         allowJs: false,
@@ -1274,7 +1269,8 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
 
         let repositorySymbols: SymbolCandidate[] = [];
         let headSourceFiles: readonly CommittedSourceFile[] = [];
-        let headTypeScriptConfiguration: {path: "tsconfig.json"; content: string} | undefined;
+        let headTypeScriptConfiguration: CommittedRevisionSourceSnapshot["typeScriptConfiguration"];
+        let headTypeScriptConfigurationUnavailable = false;
         if (this.revisionSource !== undefined && rawCodeChange.revisionRange !== undefined) {
             const [baseSnapshot, headSnapshot] = await Promise.all([
                 this.revisionSource.read(rawCodeChange.revisionRange, "base", signal),
@@ -1292,6 +1288,10 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
             ];
             headSourceFiles = headSnapshot.files;
             headTypeScriptConfiguration = headSnapshot.typeScriptConfiguration;
+            headTypeScriptConfigurationUnavailable = headSnapshot.typeScriptConfigurationStatus === "unavailable";
+            if (headTypeScriptConfigurationUnavailable) {
+                limitations.add("typescript-configuration-unavailable");
+            }
         }
         const changedSnapshotSymbols = selectChangedSymbols(repositorySymbols, parsedFiles);
         const snapshotCoveredFiles = new Set(changedSnapshotSymbols.map((symbol) => `${symbol.revision}:${symbol.path}`));
@@ -1408,11 +1408,13 @@ export class ChangedImportSemanticImpactIndex implements SemanticImpactIndexPort
             repositorySymbols,
             limitations,
         );
-        const typeResolver = createTypeScriptTypeResolver(
-            headSourceFiles,
-            headTypeScriptConfiguration,
-            limitations,
-        );
+        const typeResolver = headTypeScriptConfigurationUnavailable
+            ? undefined
+            : createTypeScriptTypeResolver(
+                headSourceFiles,
+                headTypeScriptConfiguration,
+                limitations,
+            );
         appendRepositoryCallRelations(
             relations,
             headSourceFiles,
