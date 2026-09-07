@@ -205,6 +205,41 @@ describe("createImpactPackage", () => {
         });
     });
 
+    it("keeps consumer compatibility closure unknown for a ruleset-confirmed structural break", () => {
+        const result = createImpactPackage([{
+            id: "contract-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "contracts/openapi.yaml",
+            sourceLine: 2,
+            target: "openapi",
+            kind: "contract-definition",
+            completeness: "partial",
+        }, {
+            id: "breaking-1",
+            changeAnchorId: "chunk-1",
+            sourcePath: "contracts/openapi.yaml",
+            sourceLine: 2,
+            target: "openapi:openapi-path-removed",
+            kind: "contract-breaking-change",
+            completeness: "complete",
+            contractChange: {
+                rulesetVersion: "v1",
+                classification: "breaking",
+                strategy: "openapi-client-backward",
+                rule: "openapi-path-removed",
+            },
+        }]);
+
+        expect(result.impacts[0]).toMatchObject({
+            kind: "contract",
+            closure: {compatibility: "unknown"},
+            relations: [
+                {kind: "contract-definition"},
+                {kind: "contract-breaking-change", completeness: "complete"},
+            ],
+        });
+    });
+
     it("demonstrates contract validation without claiming consumer compatibility", () => {
         expect(createImpactPackage([{
             id: "contract-1",

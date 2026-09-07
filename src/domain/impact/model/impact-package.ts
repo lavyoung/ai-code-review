@@ -11,7 +11,28 @@ export type ImpactRelationKind = "module-import"
     | "publishes"
     | "consumes"
     | "persists"
-    | "contract-definition";
+    | "contract-definition"
+    | "contract-breaking-change";
+
+/** 由本地版本化规则集确认的契约兼容性破坏；不代表未登记消费者或运行时流量。 */
+export interface ContractCompatibilityChange {
+    rulesetVersion: "v1";
+    classification: "breaking";
+    strategy: "openapi-client-backward" | "asyncapi-channel-backward" | "json-schema-instance-backward";
+    rule: "contract-removed"
+        | "openapi-path-removed"
+        | "openapi-operation-removed"
+        | "openapi-required-parameter-added"
+        | "openapi-parameter-became-required"
+        | "openapi-required-request-body-added"
+        | "openapi-success-response-removed"
+        | "asyncapi-channel-removed"
+        | "asyncapi-operation-removed"
+        | "json-schema-required-property-added"
+        | "json-schema-enum-narrowed"
+        | "json-schema-type-narrowed"
+        | "json-schema-additional-properties-disabled";
+}
 
 /** 跨 revision 使用的语言级符号身份；稳定 ID 不包含源码摘要。 */
 export interface SymbolIdentity {
@@ -48,6 +69,7 @@ export interface StaticImpactRelation {
     sourceSymbol?: SymbolIdentity;
     targetSymbol?: SymbolIdentity;
     symbolMapping?: SymbolIdentityMapping;
+    contractChange?: ContractCompatibilityChange;
 }
 
 /** 当前变更可追溯的影响结论；它不宣称运行时行为或完整调用图。 */
@@ -165,6 +187,8 @@ export interface ImpactPackage {
         | "unsupported-language"
         | "impact-index-unavailable"
         | "contract-catalog-unavailable"
+        | "contract-diff-unavailable"
+        | "contract-diff-truncated"
         | "impact-package-truncated"
         | "source-change-unanchored"
         | "symbol-identity-ambiguous"

@@ -602,9 +602,17 @@ Java 编译器，复杂边界、通配符捕获和运行时分派仍保持未知
 匹配到当前已审核消费者目录、当前不可变消费者快照和本次契约锚点；仅当同一影响关联的全部已登记消费者均被证明时，才写入
 `consumer-compatibility` 证据并完成范围限定的 `compatibility` 义务。它不代表完整生产消费者集合，不形成全局兼容性或门禁结论；任何
 遗漏、目录失效、签名/revision 不匹配均保持 `not-assessable`。
-`ContractCatalogPort` 当前只识别明确的 OpenAPI、AsyncAPI 与 `docs/context/contracts/` JSON/YAML Schema 新增改动，并将其锚定为
-`contract-definition` 关系；它不会将名称相似的文档作为契约，也不会解析消费者或做兼容性判定。契约影响产生 `contract` 和
-`compatibility` 测试义务；在引入受控契约验证与消费者目录前，二者的覆盖状态均为 `not-assessable`。
+`ContractCatalogPort` 只识别明确的 OpenAPI、AsyncAPI 与 `docs/context/contracts/` JSON/YAML Schema，不会把名称相似的文档作为契约。
+`CommittedContractSourcePort` 从同一 Git 对比范围读取 base/head 已提交契约，最多 16 个文件、单文件 512 KiB、总计 2 MiB，不读取工作区。
+普通改动锚定为 `contract-definition`，只说明契约已改。版本化 `v1` 规则集还可生成不含原始元素名称的完整
+`contract-breaking-change`：OpenAPI 使用客户端向后兼容策略，覆盖路径/操作移除、必要参数或请求体新增、参数变为必要以及成功响应移除；
+AsyncAPI 使用通道向后兼容策略，覆盖通道和操作移除；JSON Schema 使用旧实例接受兼容策略，覆盖必填属性新增、类型/枚举收窄和禁止额外
+属性。删除整个有效契约也属于结构破坏。版本族迁移、`$ref`、JSON Schema 组合规则、无效结构、读取失败或资源超限分别以
+`contract-diff-unavailable`/`contract-diff-truncated` 降级，禁止补全推断。
+
+结构兼容性破坏只代表所声明策略下的规范差异，不证明生产消费者存在或已受影响，也不会改变 `closure.compatibility: unknown`。契约影响仍
+产生 `contract` 和 `compatibility` 测试义务；契约格式验证与消费者兼容证明只匹配 `contract-definition`，不能伪装成规则事实的验证来源。
+后者仅能由当前审核目录中全部已登记消费者快照的受控证明完成。
 `BusinessContextPort` 只读取 HEAD 中可选的 `docs/context/capabilities.yml`。每条能力必须有稳定 `id`、`owner`、审核和过期日期、
 `authority: approved` 及无通配符路径前缀；任何一条失效、过期或格式不合规时整个目录降级为不可用。只有安全 diff chunk 的路径与
 有效前缀精确匹配时才将能力 ID 与 owner 写入对应影响；目录路径、描述和其他原文不进入模型输入。未配置、未匹配或不可用时，AI 不得

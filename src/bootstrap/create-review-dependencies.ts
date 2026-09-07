@@ -16,6 +16,7 @@ import {GitCommittedRevisionSource} from "../infrastructure/impact/git-committed
 import {CommittedTestInventory} from "../infrastructure/impact/committed-test-inventory.js";
 import {SignedSandboxTestExecutionEvidence} from "../infrastructure/impact/signed-sandbox-test-execution-evidence.js";
 import {ChangedContractCatalog} from "../infrastructure/impact/changed-contract-catalog.js";
+import {GitCommittedContractSource} from "../infrastructure/impact/git-committed-contract-source.js";
 import {CommittedBusinessContextCatalog} from "../infrastructure/impact/committed-business-context-catalog.js";
 import {CommittedExternalConsumerCatalog} from "../infrastructure/impact/committed-external-consumer-catalog.js";
 import {SignedSandboxContractValidationEvidence} from "../infrastructure/impact/signed-sandbox-contract-validation-evidence.js";
@@ -217,7 +218,7 @@ export const createReviewDependencies = (
         },
         findingVerifiers: [deterministicAnalyzerFindingVerifier],
         semanticImpactIndex: new ChangedImportSemanticImpactIndex(new GitCommittedRevisionSource(workingDirectory)),
-        contractCatalog: new ChangedContractCatalog(),
+        contractCatalog: new ChangedContractCatalog(new GitCommittedContractSource(workingDirectory)),
         businessContext: new CommittedBusinessContextCatalog(new LocalCommittedFileReader(workingDirectory)),
         externalConsumerCatalog: new CommittedExternalConsumerCatalog(new LocalCommittedFileReader(workingDirectory)),
         testInventory: new CommittedTestInventory(workingDirectory),

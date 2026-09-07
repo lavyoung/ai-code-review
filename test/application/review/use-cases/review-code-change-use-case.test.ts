@@ -218,6 +218,21 @@ describe("reviewCodeChangeUseCase", () => {
             kind: "contract-definition" as const,
             completeness: "partial" as const,
         };
+        const breakingRelation = {
+            id: "breaking-1",
+            changeAnchorId: "contract-chunk",
+            sourcePath: "contracts/openapi.yaml",
+            sourceLine: 2,
+            target: "openapi:openapi-path-removed",
+            kind: "contract-breaking-change" as const,
+            completeness: "complete" as const,
+            contractChange: {
+                rulesetVersion: "v1" as const,
+                classification: "breaking" as const,
+                strategy: "openapi-client-backward" as const,
+                rule: "openapi-path-removed" as const,
+            },
+        };
 
         await reviewCodeChangeUseCase({
             reviewInput: {rawCodeChange: {fileChanges: []}, codeChange: contractCodeChange},
@@ -232,7 +247,10 @@ describe("reviewCodeChangeUseCase", () => {
             analyzerBudget: {totalTimeoutMs: 1_000, maxConcurrency: 1, maxAiRequestCount: 1, maxModelInputChars: 10_000},
             findingVerifiers: [],
             semanticImpactIndex: {analyze: vi.fn().mockResolvedValue({relations: [], limitations: []})},
-            contractCatalog: {analyze: vi.fn().mockResolvedValue({relations: [contractRelation], limitations: []})},
+            contractCatalog: {analyze: vi.fn().mockResolvedValue({
+                relations: [contractRelation, breakingRelation],
+                limitations: [],
+            })},
             externalConsumerCatalog: {
                 resolve: vi.fn().mockResolvedValue({
                     status: "available" as const,
@@ -255,7 +273,13 @@ describe("reviewCodeChangeUseCase", () => {
         expect(analyze).toHaveBeenCalledWith(expect.objectContaining({
             impactPackage: expect.objectContaining({
                 impactCoverage: [
-                    expect.objectContaining({status: "demonstrated"}),
+                    expect.objectContaining({
+                        status: "demonstrated",
+                        evidence: [{
+                            kind: "contract-validation",
+                            referenceId: "contract-validation:contract-1",
+                        }],
+                    }),
                     expect.objectContaining({
                         status: "not-assessable",
                         limitation: "consumer-compatibility-unavailable",

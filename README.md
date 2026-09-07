@@ -229,9 +229,15 @@ JUnit 测试资产，但不运行仓库脚本。尚未建立测试与影响路�
 `demonstrated`。此结论的范围仅为“已登记消费者”，绝不表示完整生产消费者集合或全局兼容性；任一缺失、过期、签名/revision 不匹配或目录
 不可用时仍为 `not-assessable`。
 
-对于明确的版本化契约位置（`openapi` / `asyncapi` 文件，以及 `docs/context/contracts/` 下的 JSON/YAML Schema），系统会识别
-已锚定的新增改动，并生成 `contract` 与 `compatibility` 验证义务。它不解析消费者、不判定破坏性变更，也不声称兼容；没有受控的
-契约验证证据时状态固定为 `not-assessable`，仅供 AI 给出人工复核建议。
+对于明确的版本化契约位置（`openapi` / `asyncapi` 文件，以及 `docs/context/contracts/` 下的 JSON/YAML Schema），系统会从同一 Git
+对比范围读取受限的 base/head 已提交快照。`contract-definition` 仅表示契约发生改动；只有带 `contractChange.rulesetVersion: v1` 的完整
+`contract-breaking-change` 才表示本地规则确认的结构兼容性破坏。v1 覆盖 OpenAPI 路径、操作、必要参数/请求体和成功响应收窄，AsyncAPI
+通道/操作移除，以及 JSON Schema 必填属性、类型、枚举和额外属性接受范围收窄。规则策略分别是客户端向后兼容、通道向后兼容和旧实例
+接受兼容，不会混用生产者/消费者方向。版本族迁移、`$ref`、JSON Schema 组合关键字、无效或超限输入会以
+`contract-diff-unavailable`/`contract-diff-truncated` 保持未知；API 路径、通道名、schema 属性名及其派生摘要不会进入模型输入。
+
+结构破坏也不等于某个生产消费者已受影响。系统仍会生成 `contract` 与 `compatibility` 验证义务；消费者兼容性范围只限经审核目录中的
+不可变消费者快照。没有相应的受控证明时状态保持 `not-assessable`，AI 只能给出人工复核建议。
 
 ### 可选：业务能力目录
 

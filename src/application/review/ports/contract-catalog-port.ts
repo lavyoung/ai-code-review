@@ -1,7 +1,7 @@
 import type {CodeChange, RawCodeChange} from "../../../domain/review/model/code-change.js";
 import type {ImpactPackage, StaticImpactRelation} from "../../../domain/impact/model/impact-package.js";
 
-/** 已提交版本中版本化契约改动的安全发现结果；不包含消费者或兼容性结论。 */
+/** 已提交版本中版本化契约改动的安全发现结果；兼容性只允许来自本地版本化规则集。 */
 export interface ContractCatalogResult {
     relations: readonly StaticImpactRelation[];
     limitations: ImpactPackage["limitations"];

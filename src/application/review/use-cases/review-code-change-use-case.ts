@@ -2,6 +2,7 @@ import type {CodeChange, ReviewChangeInput} from "../../../domain/review/model/c
 import type {
     BusinessContextSummary,
     ExternalConsumerContextSummary,
+    ImpactPackage,
     StaticImpactRelation,
 } from "../../../domain/impact/model/impact-package.js";
 import type {ReviewAnalysis} from "../../../domain/review/model/review-finding.js";
@@ -44,7 +45,7 @@ export interface ReviewCodeChangeDependencies {
     testInventory?: TestInventoryPort;
     /** 可选的受控沙箱通过证明；失败或不可用不得伪造覆盖。 */
     testExecutionEvidence?: TestExecutionEvidencePort;
-    /** 可选的本地契约目录；只发现变更，不能得出兼容性结论。 */
+    /** 可选的本地契约目录；兼容性结论只能来自受控版本化规则。 */
     contractCatalog?: ContractCatalogPort;
     /** 可选的经审核业务能力目录；无效或过期目录不得产生业务结论。 */
     businessContext?: BusinessContextPort;
@@ -86,7 +87,7 @@ export const reviewCodeChangeUseCase = async (
     let testInventory;
     let passedTestIds: readonly string[] = [];
     let contractRelations: StaticImpactRelation[] = [];
-    let contractLimitations: ("contract-catalog-unavailable")[] = [];
+    let contractLimitations: ImpactPackage["limitations"] = [];
     let businessContext: BusinessContextSummary = {status: "unavailable", associations: []};
     let consumerContext: ExternalConsumerContextSummary = {status: "unavailable", associations: []};
     let validatedContractRelationIds: readonly string[] = [];
@@ -121,7 +122,7 @@ export const reviewCodeChangeUseCase = async (
                 AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
             );
             contractRelations = [...result.relations];
-            contractLimitations = [...result.limitations.filter((limitation) => limitation === "contract-catalog-unavailable")];
+            contractLimitations = [...result.limitations];
         } catch {
             contractLimitations = ["contract-catalog-unavailable"];
         }
@@ -152,7 +153,8 @@ export const reviewCodeChangeUseCase = async (
                 AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
             );
             validatedContractRelationIds = contractRelations
-                .filter((relation) => validatedPaths.includes(relation.sourcePath))
+                .filter((relation) => relation.kind === "contract-definition"
+                    && validatedPaths.includes(relation.sourcePath))
                 .map((relation) => relation.id);
         } catch {
             // 签名、revision 或读取失败时保持没有契约验证证明。
@@ -164,7 +166,8 @@ export const reviewCodeChangeUseCase = async (
                 AbortSignal.timeout(dependencies.analyzerBudget.totalTimeoutMs),
             );
             validatedConsumerCompatibility = consumerContext.associations.flatMap((association) => contractRelations
-                .filter((relation) => relation.changeAnchorId === association.changeAnchorId)
+                .filter((relation) => relation.kind === "contract-definition"
+                    && relation.changeAnchorId === association.changeAnchorId)
                 .filter((relation) => claims.some((claim) => claim.contractPath === relation.sourcePath
                     && claim.consumerId === association.consumer.id
                     && claim.consumerSourceRevision === association.consumer.sourceRevision))

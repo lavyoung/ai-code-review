@@ -45,6 +45,8 @@ describe("buildStructuredReviewPrompt", () => {
         expect(prompt.system).toContain("chunkId and evidence are required");
         expect(prompt.system).toContain("Never infer a syntax, configuration, dependency, or business defect from that placeholder");
         expect(prompt.system).toContain("treat its relations as limited static evidence");
+        expect(prompt.system).toContain("contract-definition means only that a versioned contract changed");
+        expect(prompt.system).toContain("contract-diff-unavailable and contract-diff-truncated");
         expect(prompt.user).toContain("Review these committed, sanitized diff chunks.");
         expect(prompt.user).toContain('"id":"chunk-1"');
         expect(prompt.user).toContain("+const example = true;");
