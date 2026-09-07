@@ -582,7 +582,11 @@ TypeScript 类继承获得的方法可沿最多四层、显式可解析的继承
 `rootDir` 和 `rootDirs` 必须留在该项目目录内；源码按最深目录归属选择 `Program`。仅包含空 `files` 与项目引用的 solution 配置只参与
 图遍历，不拥有源码。系统不执行 `tsc --build`，也不消费 `.tsbuildinfo`、声明文件或其他编译产物。包名、绝对/仓库外路径、
 `node_modules`、循环、缺失、无效配置、超限图和目录归属歧义会追加 `typescript-configuration-unavailable`，语法级关系仍可保留。
-Java 方法影响可沿最多四层、显式可解析的类继承链传播，继续复用 `inheritance-depth-unavailable` 表示截断。
+Java 方法影响可沿最多四层、显式可解析的类与接口 `extends`/`implements` 图传播，继续复用 `inheritance-depth-unavailable` 表示截断。
+接口方法（包括默认方法）的类型参数会按每条继承边逐层替换，并用于受支持的重载筛选。派生类型声明同名同参数数量的方法时，系统保守地
+视为可能覆盖，停止该分支并标记 `dynamic-dispatch-unavailable`。原始类型、类型实参数量不匹配或菱形路径产生冲突替换时标记
+`generic-substitution-unavailable`，不得选取任一路径形成调用事实；继承循环标记 `inheritance-cycle-unavailable` 并停止派生归因。该阶段不启动
+Java 编译器，复杂边界、通配符捕获和运行时分派仍保持未知。
 每个已锚定的关系还会由领域策略生成最小测试义务。`TestInventoryPort` 当前仅在受限数量内发现已提交的 Vitest、Jest 与 JUnit
 测试资产，输出无正文、无路径的框架与数量摘要；未建立影响关联时覆盖为 `not-demonstrated`，不等于没有测试。发现超出上限或
 不可用时覆盖为 `not-assessable`，并分别附带 `test-inventory-partial` 或 `test-inventory-unavailable` 限制。测试义务仅表示需要的

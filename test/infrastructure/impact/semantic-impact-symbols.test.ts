@@ -293,6 +293,197 @@ describe("semantic impact symbol identity", () => {
         }));
     });
 
+    it("links a Java interface default method through multi-hop generic inheritance", async () => {
+        const diff = "@@ -4 +4 @@\n-    return \"old\";\n+    return \"new\";";
+        const baseFormatter = [
+            "package api;",
+            "public interface Formatter<T> {",
+            "  default String format(T value) {",
+            "    return \"old\";",
+            "  }",
+            "  default String format(Integer value) { return \"number\"; }",
+            "}",
+        ].join("\n");
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                files: revision === "base" ? [{
+                    path: "src/main/java/api/Formatter.java",
+                    language: "java" as const,
+                    content: baseFormatter,
+                }] : [{
+                    path: "src/main/java/api/Formatter.java",
+                    language: "java" as const,
+                    content: baseFormatter.replace("return \"old\"", "return \"new\""),
+                }, {
+                    path: "src/main/java/format/BaseFormatter.java",
+                    language: "java" as const,
+                    content: "package format;\nimport api.Formatter;\npublic abstract class BaseFormatter<U> implements Formatter<U> {}\n",
+                }, {
+                    path: "src/main/java/format/StringFormatter.java",
+                    language: "java" as const,
+                    content: "package format;\npublic final class StringFormatter extends BaseFormatter<String> {}\n",
+                }, {
+                    path: "src/main/java/app/FormatterController.java",
+                    language: "java" as const,
+                    content: "package app;\nimport format.StringFormatter;\nclass FormatterController {\n  StringFormatter formatter;\n  String render() { return formatter.format(\"value\"); }\n}\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/main/java/api/Formatter.java", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/main/java/api/Formatter.java", status: "modified"}],
+            chunks: [{
+                id: "java-default-generic-call",
+                path: "src/main/java/api/Formatter.java",
+                oldRange: {startLine: 4, endLine: 4},
+                newRange: {startLine: 4, endLine: 4},
+                content: diff,
+            }],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.limitations).not.toContain("generic-substitution-unavailable");
+        expect(result.relations).toContainEqual(expect.objectContaining({
+            kind: "calls",
+            sourcePath: "src/main/java/app/FormatterController.java",
+            targetSymbol: expect.objectContaining({
+                qualifiedName: "api.Formatter#format",
+                signature: "(T)",
+            }),
+        }));
+    });
+
+    it("does not guess a Java generic overload through a raw implementation type", async () => {
+        const diff = "@@ -4 +4 @@\n-    return \"old\";\n+    return \"new\";";
+        const baseFormatter = "package api;\npublic interface Formatter<T> {\n  default String format(T value) {\n    return \"old\";\n  }\n  default String format(Integer value) { return \"number\"; }\n}\n";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                files: revision === "base" ? [{
+                    path: "src/main/java/api/Formatter.java", language: "java" as const, content: baseFormatter,
+                }] : [{
+                    path: "src/main/java/api/Formatter.java",
+                    language: "java" as const,
+                    content: baseFormatter.replace("return \"old\"", "return \"new\""),
+                }, {
+                    path: "src/main/java/format/RawFormatter.java",
+                    language: "java" as const,
+                    content: "package format;\nimport api.Formatter;\npublic class RawFormatter implements Formatter {}\n",
+                }, {
+                    path: "src/main/java/app/FormatterController.java",
+                    language: "java" as const,
+                    content: "package app;\nimport format.RawFormatter;\nclass FormatterController {\n  RawFormatter formatter;\n  String render() { return formatter.format(\"value\"); }\n}\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/main/java/api/Formatter.java", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/main/java/api/Formatter.java", status: "modified"}],
+            chunks: [{id: "java-raw-generic-call", path: "src/main/java/api/Formatter.java", oldRange: {startLine: 4, endLine: 4}, newRange: {startLine: 4, endLine: 4}, content: diff}],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.limitations).toContain("generic-substitution-unavailable");
+        expect(result.relations).not.toContainEqual(expect.objectContaining({
+            kind: "calls",
+            sourcePath: "src/main/java/app/FormatterController.java",
+            targetSymbol: expect.objectContaining({qualifiedName: "api.Formatter#format", signature: "(T)"}),
+        }));
+    });
+
+    it("does not attribute an overridden Java call to an interface default method", async () => {
+        const diff = "@@ -4 +4 @@\n-    return \"old\";\n+    return \"new\";";
+        const baseFormatter = "package api;\npublic interface Formatter {\n  default String format(String value) {\n    return \"old\";\n  }\n}\n";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                files: revision === "base" ? [{
+                    path: "src/main/java/api/Formatter.java", language: "java" as const, content: baseFormatter,
+                }] : [{
+                    path: "src/main/java/api/Formatter.java",
+                    language: "java" as const,
+                    content: baseFormatter.replace("return \"old\"", "return \"new\""),
+                }, {
+                    path: "src/main/java/format/StringFormatter.java",
+                    language: "java" as const,
+                    content: "package format;\nimport api.Formatter;\npublic class StringFormatter implements Formatter {\n  public String format(String value) { return value; }\n}\n",
+                }, {
+                    path: "src/main/java/app/FormatterController.java",
+                    language: "java" as const,
+                    content: "package app;\nimport format.StringFormatter;\nclass FormatterController {\n  StringFormatter formatter;\n  String render() { return formatter.format(\"value\"); }\n}\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/main/java/api/Formatter.java", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/main/java/api/Formatter.java", status: "modified"}],
+            chunks: [{id: "java-overridden-default", path: "src/main/java/api/Formatter.java", oldRange: {startLine: 4, endLine: 4}, newRange: {startLine: 4, endLine: 4}, content: diff}],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.limitations).toContain("dynamic-dispatch-unavailable");
+        expect(result.relations).not.toContainEqual(expect.objectContaining({
+            kind: "calls",
+            sourcePath: "src/main/java/app/FormatterController.java",
+            targetSymbol: expect.objectContaining({qualifiedName: "api.Formatter#format"}),
+        }));
+    });
+
+    it("degrades a cyclic Java interface inheritance graph", async () => {
+        const diff = "@@ -4 +4 @@\n-    return \"old\";\n+    return \"new\";";
+        const baseInterface = "package api;\npublic interface A extends B {\n  default String format(String value) {\n    return \"old\";\n  }\n}\n";
+        const revisionSource = {
+            read: async (_range: unknown, revision: "base" | "head") => ({
+                status: "available" as const,
+                files: revision === "base" ? [{
+                    path: "src/main/java/api/A.java", language: "java" as const, content: baseInterface,
+                }] : [{
+                    path: "src/main/java/api/A.java",
+                    language: "java" as const,
+                    content: baseInterface.replace("return \"old\"", "return \"new\""),
+                }, {
+                    path: "src/main/java/api/B.java",
+                    language: "java" as const,
+                    content: "package api;\npublic interface B extends A {}\n",
+                }, {
+                    path: "src/main/java/app/FormatterController.java",
+                    language: "java" as const,
+                    content: "package app;\nimport api.B;\nclass FormatterController {\n  B formatter;\n  String render() { return formatter.format(\"value\"); }\n}\n",
+                }],
+            }),
+        };
+        const result = await new ChangedImportSemanticImpactIndex(revisionSource).analyze({
+            revisionRange: {baseRef: "base", headRef: "head", comparison: "two-dot"},
+            fileChanges: [{file: {path: "src/main/java/api/A.java", status: "modified"}, diff}],
+        }, {
+            diff: "",
+            files: [{path: "src/main/java/api/A.java", status: "modified"}],
+            chunks: [{id: "java-interface-cycle", path: "src/main/java/api/A.java", oldRange: {startLine: 4, endLine: 4}, newRange: {startLine: 4, endLine: 4}, content: diff}],
+            excludedFileCount: 0,
+            redactedValueCount: 0,
+        }, AbortSignal.timeout(1_000));
+
+        expect(result.limitations).toContain("inheritance-cycle-unavailable");
+        expect(result.relations).not.toContainEqual(expect.objectContaining({
+            kind: "calls",
+            sourcePath: "src/main/java/app/FormatterController.java",
+            targetSymbol: expect.objectContaining({qualifiedName: "api.A#format"}),
+        }));
+    });
+
     it("resolves a one-hop aliased TypeScript barrel re-export", async () => {
         const diff = "@@ -2 +2 @@\n-  return oldValue;\n+  return newValue;";
         const base = "export function convert() {\n  return oldValue;\n}\n";

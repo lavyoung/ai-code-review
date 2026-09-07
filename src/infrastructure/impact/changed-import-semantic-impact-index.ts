@@ -58,6 +58,12 @@ interface SymbolCandidate {
     isOwnerExported: boolean;
 }
 
+interface JavaMethodOwner {
+    owner: SymbolCandidate;
+    typeParameters: readonly string[];
+    substitutions: ReadonlyMap<string, string>;
+}
+
 const digest = (value: string, length = 16): string =>
     createHash("sha256").update(value).digest("hex").slice(0, length);
 
@@ -113,11 +119,59 @@ const parseChangedLines = (diff: string): DiffLine[] => {
 const sourceLines = (content: string, revision: Revision): DiffLine[] => content.split(/\r?\n/u)
     .map((line, index) => ({revision, line: index + 1, content: line}));
 
+/** 按顶层逗号拆分泛型、参数或实参，避免把嵌套类型参数误判为多个参数。 */
+const splitTopLevelComma = (value: string): string[] => {
+    const entries: string[] = [];
+    let start = 0;
+    let angleDepth = 0;
+    let parenthesisDepth = 0;
+    let bracketDepth = 0;
+    let braceDepth = 0;
+    let quote: "\"" | "'" | undefined;
+    for (let index = 0; index < value.length; index += 1) {
+        const character = value[index];
+        if (quote !== undefined) {
+            if (character === quote && value[index - 1] !== "\\") {
+                quote = undefined;
+            }
+            continue;
+        }
+        if (character === "\"" || character === "'") {
+            quote = character;
+        } else if (character === "<") {
+            angleDepth += 1;
+        } else if (character === ">") {
+            angleDepth = Math.max(0, angleDepth - 1);
+        } else if (character === "(") {
+            parenthesisDepth += 1;
+        } else if (character === ")") {
+            parenthesisDepth = Math.max(0, parenthesisDepth - 1);
+        } else if (character === "[") {
+            bracketDepth += 1;
+        } else if (character === "]") {
+            bracketDepth = Math.max(0, bracketDepth - 1);
+        } else if (character === "{") {
+            braceDepth += 1;
+        } else if (character === "}") {
+            braceDepth = Math.max(0, braceDepth - 1);
+        } else if (character === ","
+            && angleDepth === 0
+            && parenthesisDepth === 0
+            && bracketDepth === 0
+            && braceDepth === 0) {
+            entries.push(value.slice(start, index).trim());
+            start = index + 1;
+        }
+    }
+    entries.push(value.slice(start).trim());
+    return entries.filter((entry) => entry !== "");
+};
+
 const normalizeParameters = (parameters: string, language: Language): string => {
     if (parameters.trim() === "") {
         return "()";
     }
-    const types = parameters.split(",").map((parameter) => {
+    const types = splitTopLevelComma(parameters).map((parameter) => {
         const normalized = parameter
             .replace(/@[A-Za-z_$][\w.$]*(?:\([^)]*\))?/gu, "")
             .replace(/\b(?:final|readonly|public|private|protected)\b/gu, "")
@@ -445,6 +499,7 @@ interface LocatedCall {
     line: number;
     argumentCount: number;
     argumentTypes: readonly string[];
+    javaTypeSubstitutions?: readonly (readonly [string, string])[];
 }
 
 type TypeScriptTypeResolver = (path: string, position: number) => string;
@@ -900,12 +955,134 @@ const javaFileImportsOwner = (file: CommittedSourceFile, owner: SymbolCandidate)
         || callerPackage === packageName;
 };
 
+interface JavaTypeReference {
+    qualifiedOrSimpleName: string;
+    typeArguments: readonly string[];
+}
+
+interface JavaTypeDefinition {
+    typeParameters: readonly string[];
+    superTypes: readonly JavaTypeReference[];
+}
+
+const matchingAngleBracket = (value: string, start: number): number | undefined => {
+    let depth = 0;
+    for (let index = start; index < value.length; index += 1) {
+        if (value[index] === "<") {
+            depth += 1;
+        } else if (value[index] === ">") {
+            depth -= 1;
+            if (depth === 0) {
+                return index;
+            }
+        }
+    }
+    return undefined;
+};
+
+const parseJavaTypeReference = (value: string): JavaTypeReference | undefined => {
+    const normalized = value.replace(/@[A-Za-z_$][\w.$]*(?:\([^)]*\))?/gu, "").trim();
+    const angleStart = normalized.indexOf("<");
+    const angleEnd = angleStart < 0 ? undefined : matchingAngleBracket(normalized, angleStart);
+    if (angleStart >= 0 && (angleEnd === undefined || normalized.slice(angleEnd + 1).trim() !== "")) {
+        return undefined;
+    }
+    const qualifiedOrSimpleName = (angleStart < 0 ? normalized : normalized.slice(0, angleStart)).trim();
+    if (!/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/u.test(qualifiedOrSimpleName)) {
+        return undefined;
+    }
+    return {
+        qualifiedOrSimpleName,
+        typeArguments: angleStart < 0 || angleEnd === undefined
+            ? []
+            : splitTopLevelComma(normalized.slice(angleStart + 1, angleEnd)),
+    };
+};
+
+/** 读取单个已提交 Java 顶层类型的泛型参数和直接父类型，不解析或执行注解处理器。 */
+const readJavaTypeDefinition = (
+    file: CommittedSourceFile,
+    owner: SymbolCandidate,
+): JavaTypeDefinition | undefined => {
+    const declaration = new RegExp(`\\b(?:class|interface|record)\\s+${escapeRegExp(owner.name)}\\b`, "u")
+        .exec(file.content);
+    if (declaration?.index === undefined) {
+        return undefined;
+    }
+    const bodyStart = file.content.indexOf("{", declaration.index + declaration[0].length);
+    if (bodyStart < 0) {
+        return undefined;
+    }
+    let remainder = file.content.slice(declaration.index + declaration[0].length, bodyStart).trim();
+    let typeParameters: readonly string[] = [];
+    if (remainder.startsWith("<")) {
+        const typeParametersEnd = matchingAngleBracket(remainder, 0);
+        if (typeParametersEnd === undefined) {
+            return undefined;
+        }
+        const parameterEntries = splitTopLevelComma(remainder.slice(1, typeParametersEnd));
+        typeParameters = parameterEntries
+            .map((parameter) => /^(?:@[A-Za-z_$][\w.$]*\s+)*([A-Za-z_$][\w$]*)/u.exec(parameter)?.[1])
+            .filter((parameter): parameter is string => parameter !== undefined);
+        if (typeParameters.length !== parameterEntries.length || new Set(typeParameters).size !== typeParameters.length) {
+            return undefined;
+        }
+        remainder = remainder.slice(typeParametersEnd + 1);
+    }
+    const clause = (
+        keyword: "extends" | "implements",
+        endKeywords: readonly string[],
+    ): readonly JavaTypeReference[] | undefined => {
+        const startMatch = new RegExp(`\\b${keyword}\\b`, "u").exec(remainder);
+        if (startMatch?.index === undefined) {
+            return [];
+        }
+        const valueStart = startMatch.index + startMatch[0].length;
+        const valueEnd = endKeywords
+            .map((endKeyword) => new RegExp(`\\b${endKeyword}\\b`, "u").exec(remainder.slice(valueStart))?.index)
+            .filter((index): index is number => index !== undefined)
+            .reduce((minimum, index) => Math.min(minimum, valueStart + index), remainder.length);
+        const entries = splitTopLevelComma(remainder.slice(valueStart, valueEnd));
+        const references = entries.map(parseJavaTypeReference);
+        return references.every((reference): reference is JavaTypeReference => reference !== undefined)
+            ? references
+            : undefined;
+    };
+    const extendedTypes = clause("extends", ["implements", "permits"]);
+    const implementedTypes = clause("implements", ["permits"]);
+    if (extendedTypes === undefined || implementedTypes === undefined) {
+        return undefined;
+    }
+    return {
+        typeParameters,
+        superTypes: [...extendedTypes, ...implementedTypes],
+    };
+};
+
+const substituteJavaTypes = (value: string, substitutions: ReadonlyMap<string, string>): string =>
+    [...substitutions.entries()].reduce(
+        (current, [parameter, replacement]) => current.replace(new RegExp(`\\b${escapeRegExp(parameter)}\\b`, "gu"), replacement),
+        value,
+    );
+
+const javaReferenceMatchesOwner = (
+    file: CommittedSourceFile,
+    reference: JavaTypeReference,
+    owner: SymbolCandidate,
+): boolean => reference.qualifiedOrSimpleName.includes(".")
+    ? reference.qualifiedOrSimpleName === owner.identity.qualifiedName
+    : reference.qualifiedOrSimpleName === owner.name && javaFileImportsOwner(file, owner);
+
+/**
+ * 从方法声明所属类型向派生类型遍历显式 Java 继承图，并逐边组合泛型替换。
+ * 覆盖、循环、超深与冲突路径会停止相应推导，调用方只能消费返回的安全子集。
+ */
 const findJavaMethodOwners = (
     target: SymbolCandidate,
     files: readonly CommittedSourceFile[],
     repositorySymbols: readonly SymbolCandidate[],
     limitations: Set<ImpactPackage["limitations"][number]>,
-): SymbolCandidate[] => {
+): JavaMethodOwner[] => {
     const ownerQualifiedName = target.identity.qualifiedName.split("#")[0];
     if (ownerQualifiedName === undefined || !target.identity.qualifiedName.includes("#")) {
         return [];
@@ -913,64 +1090,174 @@ const findJavaMethodOwners = (
     const directOwner = repositorySymbols.find((candidate) => candidate.revision === "head"
         && candidate.identity.language === "java"
         && candidate.identity.qualifiedName === ownerQualifiedName
-        && candidate.identity.signature === "class");
-    if (directOwner === undefined) {
+        && ["class", "interface", "record"].includes(candidate.identity.signature ?? ""));
+    const directFile = directOwner === undefined ? undefined : files.find((file) => file.path === directOwner.path);
+    const directDefinition = directOwner === undefined || directFile === undefined
+        ? undefined
+        : readJavaTypeDefinition(directFile, directOwner);
+    if (directOwner === undefined || directDefinition === undefined) {
         return [];
     }
-    const owners = [directOwner];
-    const visited = new Set([directOwner.identity.stableId]);
-    let frontier = [directOwner];
-    for (let depth = 0; depth < 4 && frontier.length > 0; depth += 1) {
-        const next: SymbolCandidate[] = [];
-        for (const currentOwner of frontier) {
-            const currentName = symbolName(currentOwner.identity);
-            const extendsPattern = new RegExp(
-                `\\bextends\\s+${escapeRegExp(currentName)}(?:\\s*<[^>{}]+>)?(?=\\s|\\{|implements\\b)`,
-                "u",
-            );
-            for (const candidate of repositorySymbols.filter((symbol) => symbol.revision === "head"
-                && symbol.identity.language === "java"
-                && symbol.identity.signature === "class"
-                && !visited.has(symbol.identity.stableId))) {
-                const file = files.find((source) => source.path === candidate.path);
-                if (file === undefined || !javaFileImportsOwner(file, currentOwner) || !extendsPattern.test(file.content)) {
-                    continue;
-                }
-                visited.add(candidate.identity.stableId);
-                owners.push(candidate);
-                next.push(candidate);
-            }
+    const directSubstitutions = new Map(directDefinition.typeParameters.map((parameter) => [parameter, parameter]));
+    const direct: JavaMethodOwner = {
+        owner: directOwner,
+        typeParameters: directDefinition.typeParameters,
+        substitutions: directSubstitutions,
+    };
+    const owners = [direct];
+    const mappingKey = (substitutions: ReadonlyMap<string, string>): string =>
+        JSON.stringify([...substitutions.entries()].sort(([left], [right]) => left.localeCompare(right)));
+    const visited = new Map([[directOwner.identity.stableId, mappingKey(directSubstitutions)]]);
+    const pending: {state: JavaMethodOwner; depth: number; ancestors: ReadonlySet<string>}[] = [{
+        state: direct,
+        depth: 0,
+        ancestors: new Set([directOwner.identity.stableId]),
+    }];
+    let ambiguousInheritance = false;
+    while (pending.length > 0) {
+        const current = pending.shift();
+        if (current === undefined) {
+            continue;
         }
-        frontier = next;
+        for (const candidate of repositorySymbols.filter((symbol) => symbol.revision === "head"
+            && symbol.identity.language === "java"
+            && ["class", "interface", "record"].includes(symbol.identity.signature ?? "")
+            && symbol.identity.stableId !== current.state.owner.identity.stableId)) {
+            const file = files.find((source) => source.path === candidate.path);
+            const definition = file === undefined ? undefined : readJavaTypeDefinition(file, candidate);
+            if (file === undefined || definition === undefined) {
+                continue;
+            }
+            const references = definition.superTypes.filter((reference) =>
+                javaReferenceMatchesOwner(file, reference, current.state.owner));
+            if (references.length === 0) {
+                continue;
+            }
+            if (references.length !== 1) {
+                ambiguousInheritance = true;
+                limitations.add("generic-substitution-unavailable");
+                continue;
+            }
+            if (current.ancestors.has(candidate.identity.stableId)) {
+                ambiguousInheritance = true;
+                limitations.add("inheritance-cycle-unavailable");
+                continue;
+            }
+            if (current.depth >= 4) {
+                limitations.add("inheritance-depth-unavailable");
+                continue;
+            }
+            const reference = references[0] as JavaTypeReference;
+            const currentParameters = current.state.typeParameters;
+            const edgeSubstitutions = new Map<string, string>();
+            if (currentParameters.length > 0 && reference.typeArguments.length === 0) {
+                limitations.add("generic-substitution-unavailable");
+                for (const parameter of currentParameters) {
+                    edgeSubstitutions.set(parameter, "unknown");
+                }
+            } else if (reference.typeArguments.length !== currentParameters.length) {
+                limitations.add("generic-substitution-unavailable");
+                continue;
+            } else {
+                currentParameters.forEach((parameter, index) => {
+                    edgeSubstitutions.set(parameter, reference.typeArguments[index] ?? "unknown");
+                });
+            }
+            const substitutions = new Map([...current.state.substitutions.entries()].map(([parameter, value]) => [
+                parameter,
+                substituteJavaTypes(value, edgeSubstitutions),
+            ]));
+            const targetParameterCount = splitTopLevelComma(target.identity.signature?.slice(1, -1) ?? "").length;
+            const overridesTarget = repositorySymbols.some((symbol) => symbol.revision === "head"
+                && symbol.identity.qualifiedName === `${candidate.identity.qualifiedName}#${target.name}`
+                && symbol.identity.signature?.startsWith("(") === true
+                && splitTopLevelComma(symbol.identity.signature.slice(1, -1)).length === targetParameterCount);
+            if (overridesTarget) {
+                limitations.add("dynamic-dispatch-unavailable");
+                continue;
+            }
+            const key = mappingKey(substitutions);
+            const previousKey = visited.get(candidate.identity.stableId);
+            if (previousKey !== undefined) {
+                if (previousKey !== key) {
+                    ambiguousInheritance = true;
+                    limitations.add("generic-substitution-unavailable");
+                }
+                continue;
+            }
+            visited.set(candidate.identity.stableId, key);
+            const state: JavaMethodOwner = {
+                owner: candidate,
+                typeParameters: definition.typeParameters,
+                substitutions,
+            };
+            owners.push(state);
+            pending.push({
+                state,
+                depth: current.depth + 1,
+                ancestors: new Set(current.ancestors).add(candidate.identity.stableId),
+            });
+        }
     }
-    if (frontier.length > 0) {
-        limitations.add("inheritance-depth-unavailable");
-    }
-    return owners;
+    return ambiguousInheritance ? [direct] : owners;
 };
 
+/** 在已解析方法所有者范围内定位调用，并携带接收者对应的泛型替换供重载筛选。 */
 const findImportedJavaCalls = (
     file: CommittedSourceFile,
     target: SymbolCandidate,
-    methodOwners: readonly SymbolCandidate[],
+    methodOwners: readonly JavaMethodOwner[],
+    limitations: Set<ImpactPackage["limitations"][number]>,
 ): LocatedCall[] => {
     const [, method] = target.identity.qualifiedName.split("#");
     if (method === undefined) {
         return [];
     }
-    const importedOwners = methodOwners.filter((owner) => javaFileImportsOwner(file, owner));
+    const importedOwners = methodOwners.filter(({owner}) => javaFileImportsOwner(file, owner));
     if (importedOwners.length === 0) {
         return [];
     }
-    const receiverNames = new Set<string>();
-    for (const owner of importedOwners) {
-        const ownerName = symbolName(owner.identity);
-        receiverNames.add(ownerName);
-        const bindingPattern = new RegExp(`\\b${escapeRegExp(ownerName)}(?:<[^;=,)]+>)?\\s+([A-Za-z_$][\\w$]*)`, "gu");
+    const receiverMappings = new Map<string, Map<string, string>[]>();
+    const addReceiver = (name: string, substitutions: ReadonlyMap<string, string>): void => {
+        const existing = receiverMappings.get(name) ?? [];
+        const key = JSON.stringify([...substitutions.entries()].sort(([left], [right]) => left.localeCompare(right)));
+        if (!existing.some((candidate) => JSON.stringify([...candidate.entries()]
+            .sort(([left], [right]) => left.localeCompare(right))) === key)) {
+            existing.push(new Map(substitutions));
+        }
+        receiverMappings.set(name, existing);
+    };
+    for (const methodOwner of importedOwners) {
+        const ownerName = symbolName(methodOwner.owner.identity);
+        addReceiver(ownerName, methodOwner.substitutions);
+        const bindingPattern = new RegExp(
+            `\\b${escapeRegExp(ownerName)}\\s*(?:<([^;=()]+)>)?\\s+([A-Za-z_$][\\w$]*)`,
+            "gu",
+        );
         for (const binding of file.content.matchAll(bindingPattern)) {
-            if (binding[1] !== undefined) {
-                receiverNames.add(binding[1]);
+            const bindingName = binding[2];
+            if (bindingName === undefined) {
+                continue;
             }
+            const typeArguments = binding[1] === undefined ? [] : splitTopLevelComma(binding[1]);
+            const ownerBindings = new Map<string, string>();
+            if (methodOwner.typeParameters.length > 0 && typeArguments.length === 0) {
+                limitations.add("generic-substitution-unavailable");
+                for (const parameter of methodOwner.typeParameters) {
+                    ownerBindings.set(parameter, "unknown");
+                }
+            } else if (typeArguments.length !== methodOwner.typeParameters.length) {
+                limitations.add("generic-substitution-unavailable");
+                continue;
+            } else {
+                methodOwner.typeParameters.forEach((parameter, index) => {
+                    ownerBindings.set(parameter, typeArguments[index] ?? "unknown");
+                });
+            }
+            addReceiver(bindingName, new Map([...methodOwner.substitutions.entries()].map(([parameter, value]) => [
+                parameter,
+                substituteJavaTypes(value, ownerBindings),
+            ])));
         }
     }
     const localValueTypes = new Map<string, string>();
@@ -979,10 +1266,6 @@ const findImportedJavaCalls = (
             localValueTypes.set(binding[2], binding[1]);
         }
     }
-    const methodPattern = new RegExp(
-        `\\b(?:${[...receiverNames].map(escapeRegExp).join("|")})\\s*\\.\\s*${escapeRegExp(method)}\\s*\\(`,
-        "u",
-    );
     const calls: LocatedCall[] = [];
     const cursor = javaParser.parse(file.content).cursor();
     do {
@@ -990,12 +1273,24 @@ const findImportedJavaCalls = (
             continue;
         }
         const invocation = file.content.slice(cursor.from, cursor.to);
-        if (methodPattern.test(invocation)) {
+        const matchingSubstitutions = [...receiverMappings.entries()]
+            .filter(([receiver]) => new RegExp(
+                `\\b${escapeRegExp(receiver)}\\s*\\.\\s*${escapeRegExp(method)}\\s*\\(`,
+                "u",
+            ).test(invocation))
+            .flatMap(([, substitutions]) => substitutions);
+        const distinctSubstitutions = new Map(matchingSubstitutions.map((substitutions) => [
+            JSON.stringify([...substitutions.entries()].sort(([left], [right]) => left.localeCompare(right))),
+            substitutions,
+        ]));
+        if (distinctSubstitutions.size === 1) {
             const argumentsText = invocation.slice(invocation.indexOf("(") + 1, invocation.lastIndexOf(")")).trim();
+            const arguments_ = argumentsText === "" ? [] : splitTopLevelComma(argumentsText);
+            const substitutions = [...distinctSubstitutions.values()][0] as ReadonlyMap<string, string>;
             calls.push({
                 line: file.content.slice(0, cursor.from).split(/\r?\n/u).length,
-                argumentCount: argumentsText === "" ? 0 : argumentsText.split(",").length,
-                argumentTypes: argumentsText === "" ? [] : argumentsText.split(",").map((argument) => {
+                argumentCount: arguments_.length,
+                argumentTypes: arguments_.map((argument) => {
                     const value = argument.trim();
                     return /^"|^'/u.test(value)
                         ? "String"
@@ -1005,7 +1300,10 @@ const findImportedJavaCalls = (
                                 ? "boolean"
                                 : localValueTypes.get(value) ?? "unknown";
                 }),
+                javaTypeSubstitutions: [...substitutions.entries()],
             });
+        } else if (distinctSubstitutions.size > 1) {
+            limitations.add("generic-substitution-unavailable");
         }
     } while (cursor.next());
     return calls;
@@ -1125,21 +1423,28 @@ const appendRepositoryCallRelations = (
             }
             const calls = file.language === "typescript"
                 ? findImportedTypeScriptCalls(file, target, files, limitations, typeScriptMethodOwners, typeResolver)
-                : findImportedJavaCalls(file, target, javaMethodOwners);
+                : findImportedJavaCalls(file, target, javaMethodOwners, limitations);
             for (const call of calls) {
                 const signature = target.identity.signature;
                 if (signature?.startsWith("(") === true) {
+                    const javaSubstitutions = new Map(call.javaTypeSubstitutions ?? []);
                     const overloads = [...new Map(repositorySymbols
                         .filter((candidate) => candidate.revision === "head"
                             && candidate.identity.qualifiedName === target.identity.qualifiedName
                             && candidate.identity.signature?.startsWith("(") === true)
                         .map((candidate) => [candidate.identity.stableId, candidate])).values()];
                     const compatible = overloads.filter((candidate) => {
-                        const parameters = candidate.identity.signature?.slice(1, -1);
-                        return (parameters === "" ? 0 : parameters?.split(",").length) === call.argumentCount;
+                        const candidateSignature = candidate.identity.signature === undefined
+                            ? undefined
+                            : substituteJavaTypes(candidate.identity.signature, javaSubstitutions);
+                        const parameters = candidateSignature?.slice(1, -1);
+                        return (parameters === "" ? 0 : splitTopLevelComma(parameters ?? "").length) === call.argumentCount;
                     });
                     const typeCompatible = compatible.length <= 1 ? compatible : compatible.filter((candidate) => {
-                        const parameters = candidate.identity.signature?.slice(1, -1).split(",") ?? [];
+                        const candidateSignature = candidate.identity.signature === undefined
+                            ? undefined
+                            : substituteJavaTypes(candidate.identity.signature, javaSubstitutions);
+                        const parameters = splitTopLevelComma(candidateSignature?.slice(1, -1) ?? "");
                         return parameters.every((parameter, index) =>
                             acceptsArgumentType(parameter, call.argumentTypes[index] ?? "unknown", target.identity.language));
                     });

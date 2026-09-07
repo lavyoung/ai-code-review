@@ -199,6 +199,11 @@ Java 语法树确认，再使用显式类型 import、同包类型和字段/参�
 `typescript-configuration-unavailable` 降级。该过程强制 `noEmit`、`noLib`、禁用插件，不执行 `tsc --build`、不读取编译产物，也不会访问
 工作区。Java 已修改方法可沿最多四层、显式 import/同包可解析的类继承链关联到派生类型调用。
 
+Java 接口方法（包括默认方法）可沿显式 `extends`/`implements` 链传播到调用方，并在最多四层内将接口或基类的类型参数替换为派生类型
+提供的实参；该结果仅用于现有字面量和局部基础类型可验证范围内的重载筛选。实现类声明同名同参数数量的方法时，该分支视为可能覆盖并停止
+归因。原始类型、类型参数数量不一致或同一类型经不同路径得到冲突替换时会标记 `generic-substitution-unavailable`；继承循环标记
+`inheritance-cycle-unavailable`；覆盖或其他无法静态确定的分派标记 `dynamic-dispatch-unavailable`。这些限制均不得解释为无影响或作为门禁结论。
+
 对已锚定的静态关系，系统还会生成“应寻找何种验证证据”的最小测试义务。它会在受限数量内从当前提交发现 Vitest、Jest 与
 JUnit 测试资产，但不运行仓库脚本。尚未建立测试与影响路径的证据关联时，覆盖状态是 `not-demonstrated`；这意味着“尚未证明”，
 而非“缺少测试”。发现不完整或不可用时状态为 `not-assessable`。AI 只能据此提出可供人工确认的测试建议，不能因此报告缺失测试
